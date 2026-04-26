@@ -1,0 +1,587 @@
+import 'package:flutter/material.dart';
+
+import '../data/mock_user_settings.dart';
+
+class UserSettingsPage extends StatefulWidget {
+  const UserSettingsPage({
+    super.key,
+    required this.initialSettings,
+    required this.initialSelectedId,
+  });
+
+  final List<UserSetting> initialSettings;
+  final String? initialSelectedId;
+
+  @override
+  State<UserSettingsPage> createState() => _UserSettingsPageState();
+}
+
+class _UserSettingsPageState extends State<UserSettingsPage> {
+  late final List<UserSetting> _settings;
+  late String? _selectedId;
+
+  @override
+  void initState() {
+    super.initState();
+    _settings = widget.initialSettings.map((item) => item.copyWith()).toList();
+    _selectedId = widget.initialSelectedId;
+    
+    // 如果选中的ID无效，默认选择第一个
+    if (_selectedId != null && !_settings.any((item) => item.id == _selectedId)) {
+      _selectedId = _settings.isNotEmpty ? _settings.first.id : null;
+    }
+  }
+
+  Future<void> _onBack() async {
+    Navigator.of(context).pop(
+      UserSettingsPageResult(
+        settings: List<UserSetting>.unmodifiable(_settings),
+        selectedId: _selectedId,
+      ),
+    );
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _onCreateRequested() async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
+    Color selectedColor = const Color(0xFF5C6BC0);
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('新建用户设定'),
+              content: SizedBox(
+                width: 440,
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: '名字',
+                          hintText: '请输入名字',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return '名字不能为空';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: descriptionController,
+                        maxLines: 5,
+                        minLines: 4,
+                        textAlignVertical: TextAlignVertical.top,
+                        decoration: const InputDecoration(
+                          labelText: '描述',
+                          hintText: '请输入用户设定描述',
+                          alignLabelWithHint: true,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Text('颜色：'),
+                          const SizedBox(width: 8),
+                          ...[
+                            const Color(0xFF5C6BC0),
+                            const Color(0xFF00897B),
+                            const Color(0xFFD81B60),
+                            const Color(0xFFE76F51),
+                            const Color(0xFF277DA1),
+                          ].map((color) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  selectedColor = color;
+                                });
+                              },
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: selectedColor == color
+                                      ? Border.all(color: Colors.black, width: 2)
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          )),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      final newSetting = UserSetting(
+                        id: generateUserSettingId(),
+                        name: nameController.text.trim(),
+                        prompt: descriptionController.text.trim(),
+                        colorValue: selectedColor.toARGB32(),
+                      );
+                      
+                      setState(() {
+                        _settings.add(newSetting);
+                        _selectedId ??= newSetting.id;
+                      });
+                      
+                      Navigator.of(context).pop();
+                      _showMessage('已创建用户设定');
+                    }
+                  },
+                  child: const Text('创建'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openEditDialog(UserSetting setting) async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController(text: setting.name);
+    final descriptionController = TextEditingController(text: setting.prompt);
+    Color selectedColor = setting.color;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('编辑用户设定'),
+              content: SizedBox(
+                width: 440,
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: '名字',
+                          hintText: '请输入名字',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return '名字不能为空';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: descriptionController,
+                        maxLines: 5,
+                        minLines: 4,
+                        textAlignVertical: TextAlignVertical.top,
+                        decoration: const InputDecoration(
+                          labelText: '描述',
+                          hintText: '请输入用户设定描述',
+                          alignLabelWithHint: true,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Text('颜色：'),
+                          const SizedBox(width: 8),
+                          ...[
+                            const Color(0xFF5C6BC0),
+                            const Color(0xFF00897B),
+                            const Color(0xFFD81B60),
+                            const Color(0xFFE76F51),
+                            const Color(0xFF277DA1),
+                          ].map((color) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  selectedColor = color;
+                                });
+                              },
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: selectedColor == color
+                                      ? Border.all(color: Colors.black, width: 2)
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          )),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    // 删除
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('确认删除'),
+                        content: Text('确定要删除「${setting.name}」吗？'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('取消'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red,
+                            ),
+                            child: const Text('删除'),
+                          ),
+                        ],
+                      ),
+                    );
+                    
+                    if (confirmed == true) {
+                      setState(() {
+                        _settings.removeWhere((s) => s.id == setting.id);
+                        if (_selectedId == setting.id && _settings.isNotEmpty) {
+                          _selectedId = _settings.first.id;
+                        }
+                      });
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                        _showMessage('已删除用户设定');
+                      }
+                    }
+                  },
+                  child: Text('删除', style: TextStyle(color: Colors.red.shade700)),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      final updatedSetting = setting.copyWith(
+                        name: nameController.text.trim(),
+                        prompt: descriptionController.text.trim(),
+                        color: selectedColor,
+                      );
+                      
+                      setState(() {
+                        final index = _settings.indexWhere((s) => s.id == setting.id);
+                        if (index != -1) {
+                          _settings[index] = updatedSetting;
+                        }
+                      });
+                      
+                      Navigator.of(context).pop();
+                      _showMessage('已保存');
+                    }
+                  },
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _onBack();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _onBack,
+          ),
+          title: const Text('用户设定管理'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: _onCreateRequested,
+              tooltip: '新建',
+            ),
+          ],
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount = switch (constraints.maxWidth) {
+              < 640 => 2,
+              < 920 => 2,
+              < 1200 => 3,
+              _ => 4,
+            };
+
+            if (_settings.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.person_outline,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '暂无用户设定',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: _onCreateRequested,
+                      icon: const Icon(Icons.add),
+                      label: const Text('创建用户设定'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return GridView.builder(
+              padding: const EdgeInsets.all(12),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.6,
+              ),
+              itemCount: _settings.length,
+              itemBuilder: (context, index) {
+                final setting = _settings[index];
+                return _UserSettingGridCard(
+                  setting: setting,
+                  isSelected: setting.id == _selectedId,
+                  onTap: () => _openEditDialog(setting),
+                  onSelect: () {
+                    setState(() {
+                      _selectedId = setting.id;
+                    });
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class UserSettingsPageResult {
+  const UserSettingsPageResult({
+    required this.settings,
+    required this.selectedId,
+  });
+
+  final List<UserSetting> settings;
+  final String? selectedId;
+}
+
+class _UserSettingGridCard extends StatelessWidget {
+  const _UserSettingGridCard({
+    required this.setting,
+    required this.isSelected,
+    required this.onTap,
+    required this.onSelect,
+  });
+
+  final UserSetting setting;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected
+                  ? setting.color.withValues(alpha: 0.8)
+                  : Colors.grey.shade200,
+              width: isSelected ? 2 : 1,
+            ),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                setting.color.withValues(alpha: 0.12),
+                Colors.white,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _UserSettingAvatar(setting: setting, size: 36),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        setting.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (isSelected)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: setting.color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '当前',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: setting.color,
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.edit_outlined,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Text(
+                    setting.prompt.trim().isEmpty ? '暂无描述内容' : setting.prompt,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '点击编辑',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: setting.color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UserSettingAvatar extends StatelessWidget {
+  const _UserSettingAvatar({
+    required this.setting,
+    required this.size,
+  });
+
+  final UserSetting setting;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: setting.color.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        setting.avatarText,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.4,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
