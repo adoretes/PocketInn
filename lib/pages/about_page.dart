@@ -22,11 +22,11 @@ class AboutPage extends StatelessWidget {
             subtitle: '当前应用版本详情',
             child: Column(
               children: [
-                _InfoRow(label: '版本号', value: '1.0.0'),
+                _InfoRow(label: '版本号', value: '1.0.1'),
                 const SizedBox(height: 8),
                 _InfoRow(label: '构建号', value: '1'),
                 const SizedBox(height: 8),
-                _InfoRow(label: '构建时间', value: '2026-04-26'),
+                _InfoRow(label: '构建时间', value: '2026-04-27'),
               ],
             ),
           ),
@@ -40,10 +40,10 @@ class AboutPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.0',
+                  version: 'v1.0.1',
                   date: '2026-04-26',
                   changes: [
-                    '首次发布',
+                    '添加本地化支持，更新依赖项，重构文本编辑器字段，优化角色和世界书编辑页面，增加滑动唤出侧边栏',
                   ],
                 ),
               ],

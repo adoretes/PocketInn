@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/api_configs.dart';
 import 'data/app_settings.dart';
@@ -63,6 +64,15 @@ class MyApp extends StatelessWidget {
           themeMode: settings.colorMode.themeMode,
           theme: buildAppTheme(settings.themePreset, Brightness.light),
           darkTheme: buildAppTheme(settings.themePreset, Brightness.dark),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('zh', 'CN'),
+            Locale('en', 'US'),
+          ],
           home: const ChatPage(),
         );
       },
