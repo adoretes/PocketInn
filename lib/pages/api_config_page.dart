@@ -303,20 +303,12 @@ class _OpenAICompatibleConfigPageState
       apiKey: '',
       model: '',
       customBody: '',
-      enabled: false,
     );
     _initControllersForItem(newItem);
     setState(() {
       _configItems.add(newItem);
       _expandedIds.add(newItem.id);
     });
-  }
-
-  Future<void> _toggleEnabled(ApiConfig item, bool value) async {
-    setState(() {
-      item.enabled = value;
-    });
-    await _persistConfigs();
   }
 
   void _toggleExpanded(ApiConfig item) {
@@ -415,11 +407,6 @@ class _OpenAICompatibleConfigPageState
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  Switch(
-                    value: item.enabled,
-                    onChanged: (value) => _toggleEnabled(item, value),
-                    activeThumbColor: Colors.green,
                   ),
                   Icon(
                     isExpanded ? Icons.expand_less : Icons.expand_more,

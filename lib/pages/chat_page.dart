@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../data/api_configs.dart';
 import '../data/app_settings.dart';
@@ -22,6 +22,7 @@ import '../services/chat_variable_service.dart';
 import '../services/openai_compatible_api_service.dart';
 import '../services/preset_service.dart';
 import '../services/world_book_service.dart';
+import '../widgets/expanded_text_editor_field.dart';
 import 'chat_sidebar_page.dart';
 import 'world_book_edit_page.dart';
 
@@ -936,11 +937,12 @@ class _ChatPageState extends State<ChatPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
-                TextField(
+                ExpandedTextEditorField(
                   controller: controller,
                   autofocus: true,
                   maxLines: 10,
                   minLines: 3,
+                  dialogTitle: message.isMe ? '编辑用户消息' : '编辑角色消息',
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     hintText: '输入消息内容',
@@ -1224,9 +1226,15 @@ class _ChatPageState extends State<ChatPage> {
         !_isSending && _inputText.trim().isNotEmpty && _activeSession != null;
     final session = _activeSession;
     final character = _activeCharacter;
+    final drawerEdgeDragWidth = (MediaQuery.sizeOf(context).width * 0.18).clamp(
+      72.0,
+      120.0,
+    );
 
     return Scaffold(
       key: _scaffoldKey,
+      drawerEnableOpenDragGesture: true,
+      drawerEdgeDragWidth: drawerEdgeDragWidth,
       drawer: const Drawer(child: SafeArea(child: ChatSidebarPage())),
       appBar: AppBar(
         leading: IconButton(
@@ -1374,6 +1382,7 @@ class _ChatPageState extends State<ChatPage> {
     bool hasBackground,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
+    final hasWorldBooks = _worldBooks.isNotEmpty;
     // 获取所有选中的世界书
     final selectedWorldBooks = _worldBooks
         .where((item) => _selectedWorldBookIds.contains(item.id))
@@ -1471,7 +1480,9 @@ class _ChatPageState extends State<ChatPage> {
                 builder: (context) => ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 148),
                   child: TextButton.icon(
-                    onPressed: () => _onWorldBookPressed(context),
+                    onPressed: hasWorldBooks
+                        ? () => _onWorldBookPressed(context)
+                        : null,
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -1792,8 +1803,13 @@ class _MessageBubble extends StatelessWidget {
       ),
       strong: baseTextStyle.copyWith(
         color: emphasisColor.withValues(alpha: 0.68),
-        fontWeight: FontWeight.normal,
+        fontWeight: FontWeight.w600,
         letterSpacing: 0.2,
+      ),
+      del: baseTextStyle.copyWith(
+        // 添加这一项
+        color: textColor,
+        decoration: TextDecoration.none,
       ),
       code: TextStyle(
         fontSize: 14,

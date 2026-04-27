@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/world_book.dart';
 import '../services/world_book_service.dart';
+import '../widgets/expanded_text_editor_field.dart';
 
 /// 标签输入框组件 - 支持输入多个关键词
 class _TagInputField extends StatefulWidget {
@@ -116,10 +117,7 @@ class _NumberInputField extends StatelessWidget {
 
 /// 下拉选择框选项
 class _SelectOption {
-  const _SelectOption({
-    required this.label,
-    required this.value,
-  });
+  const _SelectOption({required this.label, required this.value});
 
   final String label;
   final int value;
@@ -152,10 +150,10 @@ class _SelectField extends StatelessWidget {
           border: const OutlineInputBorder(),
         ),
         items: options
-            .map((opt) => DropdownMenuItem(
-                  value: opt.value,
-                  child: Text(opt.label),
-                ))
+            .map(
+              (opt) =>
+                  DropdownMenuItem(value: opt.value, child: Text(opt.label)),
+            )
             .toList(),
         onChanged: (newValue) {
           if (newValue != null) {
@@ -169,10 +167,7 @@ class _SelectField extends StatelessWidget {
 
 /// 表单区域标题组件
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.title,
-    this.icon,
-  });
+  const _SectionTitle({required this.title, this.icon});
 
   final String title;
   final IconData? icon;
@@ -201,11 +196,25 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+class _FieldHint extends StatelessWidget {
+  const _FieldHint(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+      ),
+    );
+  }
+}
+
 class WorldBookEditPage extends StatefulWidget {
-  const WorldBookEditPage({
-    super.key,
-    required this.worldBook,
-  });
+  const WorldBookEditPage({super.key, required this.worldBook});
 
   final WorldBook worldBook;
 
@@ -223,7 +232,9 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.worldBook.name);
-    _descriptionController = TextEditingController(text: widget.worldBook.description);
+    _descriptionController = TextEditingController(
+      text: widget.worldBook.description,
+    );
     _entries = widget.worldBook.entries.map((item) => item.copyWith()).toList();
   }
 
@@ -274,7 +285,9 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
 
   bool _hasChanges() {
     if (_nameController.text != widget.worldBook.name) return true;
-    if (_descriptionController.text != widget.worldBook.description) return true;
+    if (_descriptionController.text != widget.worldBook.description) {
+      return true;
+    }
     if (_entries.length != widget.worldBook.entries.length) return true;
     for (var i = 0; i < _entries.length; i++) {
       if (_entries[i] != widget.worldBook.entries[i]) return true;
@@ -291,8 +304,8 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
 
     try {
       final updatedBook = widget.worldBook.copyWith(
-        name: _nameController.text.trim().isEmpty 
-            ? widget.worldBook.name 
+        name: _nameController.text.trim().isEmpty
+            ? widget.worldBook.name
             : _nameController.text.trim(),
         description: _descriptionController.text,
         entries: _entries,
@@ -302,15 +315,15 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
       await WorldBookService.instance.save(updatedBook);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已保存')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已保存')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('保存失败: $e')));
       }
     } finally {
       if (mounted) {
@@ -322,9 +335,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
   }
 
   Future<void> _onCreateEntry() async {
-    final newEntry = WorldBookService.instance.createEntry(
-      comment: '新条目',
-    );
+    final newEntry = WorldBookService.instance.createEntry(comment: '新条目');
 
     setState(() {
       _entries = [..._entries, newEntry];
@@ -389,6 +400,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     var sticky = entry.sticky;
     var cooldown = entry.cooldown;
     var delay = entry.delay;
+    final contentController = TextEditingController(text: content);
 
     // 下拉选项 - selectiveLogic 包含 NONE 选项
     const selectiveLogicOptions = [
@@ -404,6 +416,13 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
       _SelectOption(label: '角色定义之后', value: 1),
     ];
 
+    void syncConstantState(bool value) {
+      constant = value;
+      if (constant) {
+        selectiveLogic = -1;
+      }
+    }
+
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -414,9 +433,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
           title: Container(
             padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
             decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200),
-              ),
+              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
             ),
             child: Row(
               children: [
@@ -512,10 +529,11 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                         const SizedBox(height: 16),
 
                         // content - 多行文本框
-                        TextFormField(
-                          initialValue: content,
+                        ExpandedTextEditorField(
+                          controller: contentController,
                           maxLines: 5,
                           minLines: 4,
+                          dialogTitle: '编辑世界书条目内容',
                           textAlignVertical: TextAlignVertical.top,
                           style: const TextStyle(
                             fontFamily: 'monospace',
@@ -550,31 +568,33 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                           value: constant,
                           onChanged: (value) {
                             setDialogState(() {
-                              constant = value ?? false;
+                              syncConstantState(value ?? false);
                             });
                           },
                           contentPadding: EdgeInsets.zero,
                           controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('始终注入'),
+                          title: const Text('常驻激活'),
                         ),
                         const SizedBox(height: 12),
 
-                        // selectiveLogic - 下拉选择
-                        _SelectField(
-                          value: selectiveLogic,
-                          label: '匹配逻辑',
-                          options: selectiveLogicOptions,
-                          width: double.infinity,
-                          onChanged: (value) {
-                            setDialogState(() {
-                              selectiveLogic = value;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
+                        if (!constant) ...[
+                          // selectiveLogic - 下拉选择
+                          _SelectField(
+                            value: selectiveLogic,
+                            label: '匹配逻辑',
+                            options: selectiveLogicOptions,
+                            width: double.infinity,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectiveLogic = value;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                        ],
 
                         // keysecondary - 标签输入框（仅当 selectiveLogic != -1 时显示）
-                        if (selectiveLogic != -1)
+                        if (!constant && selectiveLogic != -1)
                           Opacity(
                             opacity: constant ? 0.5 : 1.0,
                             child: IgnorePointer(
@@ -591,40 +611,30 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                               ),
                             ),
                           ),
-                        if (selectiveLogic != -1) const SizedBox(height: 16),
+                        if (!constant && selectiveLogic != -1)
+                          const SizedBox(height: 16),
 
                         // depth - 数字输入框
-                        Row(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _NumberInputField(
                               value: depth,
                               label: '扫描深度',
                               minValue: 0,
                               maxValue: 20,
-                              width: 180,
+                              width: double.infinity,
                               onChanged: (value) {
                                 depth = value;
                               },
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                '在当前消息之前多少条内扫描',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ),
+                            const _FieldHint('在当前消息之前多少条消息内扫描关键词'),
                           ],
                         ),
                         const SizedBox(height: 24),
 
                         // ========== 注入控制区域 ==========
-                        const _SectionTitle(
-                          title: '注入控制',
-                          icon: Icons.tune,
-                        ),
+                        const _SectionTitle(title: '注入控制', icon: Icons.tune),
 
                         // position - 下拉选择
                         _SelectField(
@@ -641,66 +651,64 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                         const SizedBox(height: 16),
 
                         // order - 数字输入框
-                        Row(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _NumberInputField(
                               value: order,
                               label: '优先级',
                               minValue: 0,
                               maxValue: 999,
-                              width: 180,
+                              width: double.infinity,
                               onChanged: (value) {
                                 order = value;
                               },
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                '同位置时数值小的先注入',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ),
+                            const _FieldHint('同一注入位置时，数值越小越先注入'),
                           ],
                         ),
                         const SizedBox(height: 16),
 
                         // sticky, cooldown, delay - 数字输入框组
-                        Wrap(
-                          spacing: 16,
-                          runSpacing: 16,
+                        Row(
                           children: [
-                            _NumberInputField(
-                              value: sticky,
-                              label: '持续消息数',
-                              minValue: 0,
-                              maxValue: 99,
-                              width: 160,
-                              onChanged: (value) {
-                                sticky = value;
-                              },
+                            Expanded(
+                              child: _NumberInputField(
+                                value: sticky,
+                                label: '持续',
+                                minValue: 0,
+                                maxValue: 999,
+                                width: double.infinity,
+                                onChanged: (value) {
+                                  sticky = value;
+                                },
+                              ),
                             ),
-                            _NumberInputField(
-                              value: cooldown,
-                              label: '冷却消息数',
-                              minValue: 0,
-                              maxValue: 99,
-                              width: 160,
-                              onChanged: (value) {
-                                cooldown = value;
-                              },
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _NumberInputField(
+                                value: cooldown,
+                                label: '冷却',
+                                minValue: 0,
+                                maxValue: 999,
+                                width: double.infinity,
+                                onChanged: (value) {
+                                  cooldown = value;
+                                },
+                              ),
                             ),
-                            _NumberInputField(
-                              value: delay,
-                              label: '延迟消息数',
-                              minValue: 0,
-                              maxValue: 99,
-                              width: 160,
-                              onChanged: (value) {
-                                delay = value;
-                              },
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _NumberInputField(
+                                value: delay,
+                                label: '延迟',
+                                minValue: 0,
+                                maxValue: 999,
+                                width: double.infinity,
+                                onChanged: (value) {
+                                  delay = value;
+                                },
+                              ),
                             ),
                           ],
                         ),
@@ -718,22 +726,23 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
             ),
             FilledButton(
               onPressed: () {
-                    if (formKey.currentState?.validate() ?? false) {
-                      if (key.isEmpty && !constant) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('请输入至少一个关键词')),
-                        );
-                        return;
-                      }
-                      Navigator.of(context).pop(true);
-                    }
-                  },
+                if (formKey.currentState?.validate() ?? false) {
+                  if (key.isEmpty && !constant) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('请输入至少一个关键词')));
+                    return;
+                  }
+                  Navigator.of(context).pop(true);
+                }
+              },
               child: const Text('保存'),
             ),
           ],
         );
       },
     );
+    contentController.dispose();
 
     if (saved == true && mounted) {
       // 更新条目
@@ -743,7 +752,8 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
         content: content,
         comment: comment,
         constant: constant,
-        selectiveLogic: selectiveLogic,
+        selective: !constant && selectiveLogic != -1,
+        selectiveLogic: constant ? -1 : selectiveLogic,
         depth: depth,
         position: position,
         order: order,
@@ -854,11 +864,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.child,
-    this.trailing,
-  });
+  const _SectionCard({required this.title, required this.child, this.trailing});
 
   final String title;
   final Widget child;
@@ -990,10 +996,7 @@ class _WorldBookEntryTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Switch(
-                value: entry.isEnabled,
-                onChanged: onToggle,
-              ),
+              Switch(value: entry.isEnabled, onChanged: onToggle),
               const SizedBox(width: 4),
               _EntryActionButton(
                 icon: Icons.delete_outline,
@@ -1031,10 +1034,7 @@ class _EntryActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.grey.shade300),
         ),
-        child: IconButton(
-          onPressed: onPressed,
-          icon: Icon(icon, size: 18),
-        ),
+        child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 18)),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/world_book.dart';
 import '../services/world_book_service.dart';
+import '../widgets/expanded_text_editor_field.dart';
 
 class RoleEditPage extends StatefulWidget {
   const RoleEditPage({
@@ -59,11 +60,17 @@ class _RoleEditPageState extends State<RoleEditPage> {
     );
 
     nameController = TextEditingController(text: data['name'] ?? '');
-    descriptionController = TextEditingController(text: data['description'] ?? '');
-    personalityController = TextEditingController(text: data['personality'] ?? '');
+    descriptionController = TextEditingController(
+      text: data['description'] ?? '',
+    );
+    personalityController = TextEditingController(
+      text: data['personality'] ?? '',
+    );
     scenarioController = TextEditingController(text: data['scenario'] ?? '');
     firstMesController = TextEditingController(text: data['first_mes'] ?? '');
-    mesExampleController = TextEditingController(text: data['mes_example'] ?? '');
+    mesExampleController = TextEditingController(
+      text: data['mes_example'] ?? '',
+    );
     creatorNotesController = TextEditingController(
       text: data['creator_notes'] ?? '',
     );
@@ -157,12 +164,13 @@ class _RoleEditPageState extends State<RoleEditPage> {
       'mes_example': mesExampleController.text.trim(),
       'creator_notes': creatorNotesController.text.trim(),
       'system_prompt': systemPromptController.text.trim(),
-      'post_history_instructions':
-          postHistoryInstructionsController.text.trim(),
+      'post_history_instructions': postHistoryInstructionsController.text
+          .trim(),
       'alternate_greetings': alternateGreetings,
       'tags': normalizedTags,
       'character_book':
-          data['character_book'] ?? <String, dynamic>{'entries': {}, 'extensions': {}},
+          data['character_book'] ??
+          <String, dynamic>{'entries': {}, 'extensions': {}},
       'extensions': data['extensions'] ?? <String, dynamic>{},
     };
 
@@ -344,7 +352,17 @@ class _RoleEditPageState extends State<RoleEditPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,color: Colors.white,shadows: [Shadow(color: Colors.black45, offset: Offset(0, 1), blurRadius: 1)]),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                color: Colors.black45,
+                offset: Offset(0, 1),
+                blurRadius: 1,
+              ),
+            ],
+          ),
           onPressed: () => Navigator.maybePop(context),
         ),
         title: TextField(
@@ -353,7 +371,13 @@ class _RoleEditPageState extends State<RoleEditPage> {
             color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            shadows: [Shadow(color: Colors.black45, offset: Offset(0, 1), blurRadius: 1)],
+            shadows: [
+              Shadow(
+                color: Colors.black45,
+                offset: Offset(0, 1),
+                blurRadius: 1,
+              ),
+            ],
           ),
           decoration: InputDecoration(
             hintText: '角色名称',
@@ -365,8 +389,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
             disabledBorder: InputBorder.none,
             errorText:
                 _showValidationError && nameController.text.trim().isEmpty
-                    ? '必填'
-                    : null,
+                ? '必填'
+                : null,
             errorStyle: const TextStyle(color: Colors.white70),
           ),
         ),
@@ -377,18 +401,44 @@ class _RoleEditPageState extends State<RoleEditPage> {
               Icons.image_outlined,
               color: Colors.white,
               size: 18,
-              shadows: [Shadow(color: Colors.black45, offset: Offset(0, 1), blurRadius: 1)],
+              shadows: [
+                Shadow(
+                  color: Colors.black45,
+                  offset: Offset(0, 1),
+                  blurRadius: 1,
+                ),
+              ],
             ),
             label: const Text(
               '设置立绘',
-              style: TextStyle(color: Colors.white, fontSize: 14,shadows: [Shadow(color: Colors.black45, offset: Offset(0, 1), blurRadius: 1)],),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                shadows: [
+                  Shadow(
+                    color: Colors.black45,
+                    offset: Offset(0, 1),
+                    blurRadius: 1,
+                  ),
+                ],
+              ),
             ),
           ),
           TextButton(
             onPressed: _onSave,
             child: const Text(
               '保存',
-              style: TextStyle(color: Colors.white, fontSize: 16,shadows: [Shadow(color: Colors.black45, offset: Offset(0, 1), blurRadius: 1)],),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                shadows: [
+                  Shadow(
+                    color: Colors.black45,
+                    offset: Offset(0, 1),
+                    blurRadius: 1,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -432,13 +482,15 @@ class _RoleEditPageState extends State<RoleEditPage> {
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
-                        TextFormField(
+                        ExpandedTextEditorField(
                           controller: descriptionController,
                           maxLines: 5,
+                          dialogTitle: '编辑角色设定',
                           decoration: InputDecoration(
                             labelText: '角色设定',
                             border: const OutlineInputBorder(),
-                            errorText: _showValidationError &&
+                            errorText:
+                                _showValidationError &&
                                     descriptionController.text.trim().isEmpty
                                 ? '必填'
                                 : null,
@@ -454,22 +506,25 @@ class _RoleEditPageState extends State<RoleEditPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        TextFormField(
+                        ExpandedTextEditorField(
                           controller: scenarioController,
-                          maxLines: 2,
+                          maxLines: 3,
+                          dialogTitle: '编辑当前场景',
                           decoration: const InputDecoration(
                             labelText: '当前场景',
                             border: OutlineInputBorder(),
                           ),
                         ),
                         const SizedBox(height: 16),
-                        TextFormField(
+                        ExpandedTextEditorField(
                           controller: firstMesController,
                           maxLines: 10,
+                          dialogTitle: '编辑初见开场',
                           decoration: InputDecoration(
                             labelText: '初见开场',
                             border: const OutlineInputBorder(),
-                            errorText: _showValidationError &&
+                            errorText:
+                                _showValidationError &&
                                     firstMesController.text.trim().isEmpty
                                 ? '必填'
                                 : null,
@@ -477,9 +532,9 @@ class _RoleEditPageState extends State<RoleEditPage> {
                         ),
                         const SizedBox(height: 8),
                         Theme(
-                          data: Theme.of(context).copyWith(
-                            dividerColor: Colors.transparent,
-                          ),
+                          data: Theme.of(
+                            context,
+                          ).copyWith(dividerColor: Colors.transparent),
                           child: Container(
                             decoration: BoxDecoration(
                               color: Colors.grey.shade50,
@@ -514,33 +569,6 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                   maxLines: 4,
                                   decoration: const InputDecoration(
                                     labelText: '对话示例',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: creatorNotesController,
-                                  maxLines: 3,
-                                  decoration: const InputDecoration(
-                                    labelText: '创作者注释',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: systemPromptController,
-                                  maxLines: 3,
-                                  decoration: const InputDecoration(
-                                    labelText: '系统提示词',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: postHistoryInstructionsController,
-                                  maxLines: 3,
-                                  decoration: const InputDecoration(
-                                    labelText: '对话历史后指令',
                                     border: OutlineInputBorder(),
                                   ),
                                 ),
@@ -592,7 +620,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                             onPressed: _currentGreetingIndex > 0
                                                 ? _previousGreeting
                                                 : null,
-                                            visualDensity: VisualDensity.compact,
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(),
                                           ),
@@ -601,11 +630,15 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                               Icons.keyboard_arrow_down,
                                               size: 20,
                                             ),
-                                            onPressed: _currentGreetingIndex <
-                                                    _greetingControllers.length - 1
+                                            onPressed:
+                                                _currentGreetingIndex <
+                                                    _greetingControllers
+                                                            .length -
+                                                        1
                                                 ? _nextGreeting
                                                 : null,
-                                            visualDensity: VisualDensity.compact,
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(),
                                           ),
@@ -615,7 +648,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                               size: 20,
                                             ),
                                             onPressed: _addNewGreeting,
-                                            visualDensity: VisualDensity.compact,
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(),
                                           ),
@@ -625,7 +659,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                               size: 20,
                                             ),
                                             onPressed: _removeCurrentGreeting,
-                                            visualDensity: VisualDensity.compact,
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(),
                                           ),
@@ -635,11 +670,40 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                   ),
                                 ),
                                 const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: creatorNotesController,
+                                  maxLines: 2,
+                                  decoration: const InputDecoration(
+                                    labelText: '创作者注释',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: systemPromptController,
+                                  maxLines: 2,
+                                  decoration: const InputDecoration(
+                                    labelText: '系统提示词',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: postHistoryInstructionsController,
+                                  maxLines: 2,
+                                  decoration: const InputDecoration(
+                                    labelText: '对话历史后指令',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
                                 const Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
                                     '标签',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 8),

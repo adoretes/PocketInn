@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/preset.dart';
 import '../services/preset_service.dart';
+import '../widgets/expanded_text_editor_field.dart';
 
 class PresetEditPage extends StatefulWidget {
   const PresetEditPage({
@@ -55,15 +56,16 @@ class _PresetEditPageState extends State<PresetEditPage> {
   Future<void> _onSave() async {
     final trimmedName = _nameController.text.trim();
     if (trimmedName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('预设名称不能为空')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('预设名称不能为空')));
       return;
     }
 
     _preset
       ..name = trimmedName
-      ..temperature = double.tryParse(_temperatureController.text) ?? _preset.temperature
+      ..temperature =
+          double.tryParse(_temperatureController.text) ?? _preset.temperature
       ..openaiMaxContext =
           int.tryParse(_contextController.text) ?? _preset.openaiMaxContext
       ..openaiMaxTokens =
@@ -73,9 +75,9 @@ class _PresetEditPageState extends State<PresetEditPage> {
     await PresetService.instance.save(_preset);
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('预设已保存')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('预设已保存')));
     Navigator.pop(context, true);
   }
 
@@ -144,12 +146,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
           onPressed: () => Navigator.maybePop(context),
         ),
         title: Text(widget.isNewPreset ? '新建预设' : _preset.name),
-        actions: [
-          TextButton(
-            onPressed: _onSave,
-            child: const Text('保存'),
-          ),
-        ],
+        actions: [TextButton(onPressed: _onSave, child: const Text('保存'))],
       ),
       body: Column(
         children: [
@@ -231,7 +228,10 @@ class _PresetEditPageState extends State<PresetEditPage> {
           child: _preset.prompts.isEmpty
               ? const Center(child: Text('暂无条目'))
               : ReorderableListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   itemCount: _preset.prompts.length,
                   onReorder: _reorderPrompts,
                   buildDefaultDragHandles: false,
@@ -242,9 +242,13 @@ class _PresetEditPageState extends State<PresetEditPage> {
                       prompt: prompt,
                       index: index,
                       isExpanded: _expandedPrompts.contains(prompt.identifier),
-                      onToggleExpanded: () => _toggleExpanded(prompt.identifier),
-                      onToggleEnabled: (value) => _togglePromptEnabled(prompt, value),
-                      onDelete: prompt.isDefault ? null : () => _deletePrompt(prompt),
+                      onToggleExpanded: () =>
+                          _toggleExpanded(prompt.identifier),
+                      onToggleEnabled: (value) =>
+                          _togglePromptEnabled(prompt, value),
+                      onDelete: prompt.isDefault
+                          ? null
+                          : () => _deletePrompt(prompt),
                     );
                   },
                 ),
@@ -396,7 +400,10 @@ class _PromptCardState extends State<_PromptCard> {
                       icon: const Icon(Icons.delete_outline, color: Colors.red),
                       onPressed: widget.onDelete,
                       tooltip: '删除',
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
                       padding: EdgeInsets.zero,
                       iconSize: 20,
                     ),
@@ -423,7 +430,10 @@ class _PromptCardState extends State<_PromptCard> {
                     decoration: const InputDecoration(
                       labelText: '名字',
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                     onChanged: (value) {
                       setState(() {
@@ -432,13 +442,17 @@ class _PromptCardState extends State<_PromptCard> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  TextField(
+                  ExpandedTextEditorField(
                     controller: _contentController,
                     maxLines: 5,
+                    dialogTitle: '编辑预设条目内容',
                     decoration: const InputDecoration(
                       labelText: '内容',
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                     onChanged: (value) {
                       prompt.content = value;
@@ -454,7 +468,10 @@ class _PromptCardState extends State<_PromptCard> {
                           segments: const [
                             ButtonSegment(value: 'system', label: Text('系统')),
                             ButtonSegment(value: 'user', label: Text('用户')),
-                            ButtonSegment(value: 'assistant', label: Text('助手')),
+                            ButtonSegment(
+                              value: 'assistant',
+                              label: Text('助手'),
+                            ),
                           ],
                           selected: {prompt.role},
                           onSelectionChanged: (selection) {
@@ -497,16 +514,18 @@ class _PromptCardState extends State<_PromptCard> {
                   TextField(
                     controller: _depthController,
                     keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: const InputDecoration(
                       labelText: '注入深度',
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                     onChanged: (value) {
-                      prompt.injectionDepth = int.tryParse(value) ?? prompt.injectionDepth;
+                      prompt.injectionDepth =
+                          int.tryParse(value) ?? prompt.injectionDepth;
                     },
                   ),
                 ],
