@@ -1,4 +1,4 @@
-package com.example.pocket_inn
+package com.adoretes.pocketinn
 
 import io.flutter.embedding.android.FlutterActivity
 

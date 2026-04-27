@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      build_name: ${{ steps.meta.outputs.build_name }}
+      build_number: ${{ steps.meta.outputs.build_number }}
       tag_name: ${{ steps.meta.outputs.tag_name }}
       release_name: ${{ steps.meta.outputs.release_name }}
     steps:
@@ -30,15 +32,24 @@ jobs:
         id: meta
         shell: bash
         run: |
-          version="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)"
+          pubspec_version="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+          version="${pubspec_version%%+*}"
           short_sha="${GITHUB_SHA::7}"
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             tag_name="${GITHUB_REF#refs/tags/}"
           else
             tag_name="ci-${short_sha}"
           fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            build_name="${GITHUB_REF#refs/tags/v}"
+          else
+            build_name="${version}"
+          fi
+          build_number="${GITHUB_RUN_NUMBER}"
           release_name="PocketInn ${version} (${short_sha})"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "build_name=${build_name}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${build_number}" >> "$GITHUB_OUTPUT"
           echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
           echo "release_name=${release_name}" >> "$GITHUB_OUTPUT"
 
@@ -77,10 +88,10 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/upload-keystore.jks" >> "$GITHUB_ENV"
 
       - name: Build Android APK
-        run: flutter build apk --release
+        run: flutter build apk --release --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}"
 
       - name: Build Android App Bundle
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}"
 
       - name: Collect Android artifacts
         shell: bash
@@ -115,7 +126,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release
+        run: flutter build windows --release --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}"
 
       - name: Package Windows build
         shell: pwsh
@@ -192,11 +203,11 @@ jobs:
 
       - name: Build signed iOS IPA
         if: ${{ steps.ios_signing.outputs.signed == 'true' }}
-        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+        run: flutter build ipa --release --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}" --export-options-plist=ios/ExportOptions.plist
 
       - name: Build iOS app without codesign
         if: ${{ steps.ios_signing.outputs.signed != 'true' }}
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}"
 
       - name: Package signed iOS IPA
         if: ${{ steps.ios_signing.outputs.signed == 'true' }}
