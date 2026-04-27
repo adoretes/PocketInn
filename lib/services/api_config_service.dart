@@ -44,6 +44,12 @@ class ApiConfigService {
     });
   }
 
+  Future<void> resetToDefaults() async {
+    _checkInitialized();
+    await StorageService.instance.deleteJsonFile(_filename);
+    await _bootstrapDefaultsIfNeeded();
+  }
+
   String generateId() => 'api_config_${DateTime.now().millisecondsSinceEpoch}';
 
   Future<void> _bootstrapDefaultsIfNeeded() async {

@@ -152,6 +152,35 @@ class ApiRequestLogService {
     await StorageService.instance.remove(_storageKey);
   }
 
+  Future<void> reload() async {
+    final storage = StorageService.instance;
+    final raw = storage.getString(_storageKey);
+    if (raw == null || raw.trim().isEmpty) {
+      logsNotifier.value = const <ApiRequestLogEntry>[];
+      _initialized = true;
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        logsNotifier.value = decoded
+            .whereType<Map>()
+            .map(
+              (item) => ApiRequestLogEntry.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            )
+            .toList(growable: false);
+      } else {
+        logsNotifier.value = const <ApiRequestLogEntry>[];
+      }
+    } catch (_) {
+      logsNotifier.value = const <ApiRequestLogEntry>[];
+    }
+    _initialized = true;
+  }
+
   Future<void> _persist(List<ApiRequestLogEntry> logs) async {
     final encoded = jsonEncode(logs.map((item) => item.toJson()).toList());
     await StorageService.instance.setString(_storageKey, encoded);

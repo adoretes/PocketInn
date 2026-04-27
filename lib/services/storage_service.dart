@@ -93,6 +93,52 @@ class StorageService {
     await _prefs.remove(key);
   }
 
+  /// 清空 SharedPreferences 和应用数据目录
+  Future<void> clearAllData() async {
+    _checkInitialized();
+
+    await _prefs.clear();
+
+    final dir = Directory(_dataDir);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+    await dir.create(recursive: true);
+  }
+
+  Map<String, dynamic> exportPreferences() {
+    _checkInitialized();
+
+    final data = <String, dynamic>{};
+    for (final key in _prefs.getKeys()) {
+      data[key] = _prefs.get(key);
+    }
+    return data;
+  }
+
+  Future<void> importPreferences(Map<String, dynamic> data) async {
+    _checkInitialized();
+
+    await _prefs.clear();
+    for (final entry in data.entries) {
+      final value = entry.value;
+      if (value is String) {
+        await _prefs.setString(entry.key, value);
+      } else if (value is int) {
+        await _prefs.setInt(entry.key, value);
+      } else if (value is double) {
+        await _prefs.setDouble(entry.key, value);
+      } else if (value is bool) {
+        await _prefs.setBool(entry.key, value);
+      } else if (value is List) {
+        await _prefs.setStringList(
+          entry.key,
+          value.map((item) => item.toString()).toList(growable: false),
+        );
+      }
+    }
+  }
+
   // ==================== JSON 文件操作 ====================
 
   /// 读取 JSON 文件

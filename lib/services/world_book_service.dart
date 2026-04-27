@@ -165,6 +165,18 @@ class WorldBookService {
     await _saveIndexInfo(infos);
   }
 
+  Future<void> clearAllData() async {
+    _checkInitialized();
+
+    await StorageService.instance.deleteJsonFile(_indexFilename);
+
+    final dir = Directory(_worldBooksPath);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+    await dir.create(recursive: true);
+  }
+
   /// 创建新的世界书
   Future<WorldBook> create({
     required String name,

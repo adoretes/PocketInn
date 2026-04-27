@@ -303,6 +303,21 @@ class PresetService {
     return imported;
   }
 
+  Future<void> resetToDefaults() async {
+    _checkInitialized();
+
+    await StorageService.instance.deleteJsonFile(_indexFilename);
+    await StorageService.instance.remove(_selectedPresetKey);
+
+    final dir = Directory(_presetsPath);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+    await dir.create(recursive: true);
+
+    await _bootstrapBuiltinDefaultIfNeeded();
+  }
+
   String generateId() => 'preset-${DateTime.now().millisecondsSinceEpoch}';
 
   String _basenameWithoutJson(String filename) {

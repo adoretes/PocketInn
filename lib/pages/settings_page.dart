@@ -4,6 +4,7 @@ import '../data/mock_user_settings.dart';
 import 'about_page.dart';
 import 'api_config_page.dart';
 import 'char_list_page.dart';
+import 'data_management_page.dart';
 import 'general_settings_page.dart';
 import 'preset_page.dart';
 import 'user_settings_page.dart';
@@ -54,6 +55,10 @@ class SettingsPage extends StatelessWidget {
             builder: (_) => const OpenAICompatibleConfigPage(),
           ),
         );
+      case _SettingsItemType.data:
+        await navigator.push(
+          MaterialPageRoute(builder: (_) => const DataManagementPage()),
+        );
       case _SettingsItemType.about:
         await navigator.push(
           MaterialPageRoute(builder: (_) => const AboutPage()),
@@ -100,6 +105,12 @@ class SettingsPage extends StatelessWidget {
         subtitle: '配置模型服务与接口参数',
         icon: Icons.hub_outlined,
         type: _SettingsItemType.api,
+      ),
+      const _SettingsItem(
+        title: '数据管理',
+        subtitle: '备份、恢复与清除本地数据',
+        icon: Icons.storage_rounded,
+        type: _SettingsItemType.data,
       ),
       const _SettingsItem(
         title: '关于',
@@ -180,5 +191,6 @@ enum _SettingsItemType {
   worldBook,
   presets,
   api,
+  data,
   about,
 }

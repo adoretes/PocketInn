@@ -220,6 +220,26 @@ class CharacterService {
     return record;
   }
 
+  Future<void> clearAllData() async {
+    _checkInitialized();
+
+    await StorageService.instance.deleteJsonFile(_indexFilename);
+
+    final dir = Directory(_charactersPath);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+
+    for (final path in [
+      _charactersPath,
+      _dataPath,
+      _imagesPath,
+      _thumbnailsPath,
+    ]) {
+      await Directory(path).create(recursive: true);
+    }
+  }
+
   Future<void> save(CharacterCardRecord record) async {
     _checkInitialized();
 

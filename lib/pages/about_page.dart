@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
-class AboutPage extends StatelessWidget {
+class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
 
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -22,9 +27,9 @@ class AboutPage extends StatelessWidget {
             subtitle: '当前应用版本详情',
             child: Column(
               children: [
-                _InfoRow(label: '版本号', value: '1.0.1'),
+                _InfoRow(label: '版本号', value: '1.0.2'),
                 const SizedBox(height: 8),
-                _InfoRow(label: '构建号', value: '1'),
+                _InfoRow(label: '构建号', value: '3'),
                 const SizedBox(height: 8),
                 _InfoRow(label: '构建时间', value: '2026-04-27'),
               ],

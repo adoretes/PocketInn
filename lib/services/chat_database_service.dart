@@ -18,6 +18,7 @@ class ChatDatabaseService {
   static const String _dbName = 'pocket_inn_chat.db';
 
   Database? _database;
+  String? _dbPath;
   int _idSequence = 0;
 
   Future<void> initialize() async {
@@ -33,6 +34,7 @@ class ChatDatabaseService {
 
     final appDir = await getApplicationDocumentsDirectory();
     final dbPath = p.join(appDir.path, _dbName);
+    _dbPath = dbPath;
 
     _database = await databaseFactory.openDatabase(
       dbPath,
@@ -46,6 +48,34 @@ class ChatDatabaseService {
         },
       ),
     );
+  }
+
+  Future<void> clearAllData() async {
+    await deleteDatabaseFiles();
+    _idSequence = 0;
+    await initialize();
+    _notifyChanged();
+  }
+
+  Future<void> close() async {
+    final db = _database;
+    if (db == null) {
+      return;
+    }
+    await db.close();
+    _database = null;
+  }
+
+  String? get databasePath => _dbPath;
+
+  Future<void> deleteDatabaseFiles() async {
+    await close();
+
+    final dbPath = _dbPath;
+    if (dbPath == null) {
+      return;
+    }
+    await databaseFactory.deleteDatabase(dbPath);
   }
 
   Database get _db {
