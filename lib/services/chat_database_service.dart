@@ -476,34 +476,31 @@ class ChatDatabaseService {
   }
 
   Future<void> deleteSession(String sessionId) async {
-    await _db.transaction((tx) async {
-      final messageRows = await tx.query(
-        'chat_messages',
-        columns: ['id'],
-        where: 'session_id = ?',
-        whereArgs: [sessionId],
-      );
-      final messageIds = messageRows
-          .map((row) => row['id'] as String)
-          .toList(growable: false);
+    final deletedCount = await _deleteSessionsByIds([sessionId]);
+    if (deletedCount > 0) {
+      _notifyChanged();
+    }
+  }
 
-      if (messageIds.isNotEmpty) {
-        final placeholders = List.filled(messageIds.length, '?').join(',');
-        await tx.delete(
-          'chat_branch_state',
-          where:
-              'parent_message_id IN ($placeholders) OR active_child_message_id IN ($placeholders)',
-          whereArgs: [...messageIds, ...messageIds],
-        );
-      }
-      await tx.delete(
-        'chat_branch_state',
-        where: 'parent_message_id = ?',
-        whereArgs: [_rootBranchKey(sessionId)],
-      );
-      await tx.delete('chat_sessions', where: 'id = ?', whereArgs: [sessionId]);
-    });
-    _notifyChanged();
+  Future<int> deleteSessionsByCharacterId(String characterId) async {
+    final rows = await _db.query(
+      'chat_sessions',
+      columns: ['id'],
+      where: 'character_id = ?',
+      whereArgs: [characterId],
+    );
+    final sessionIds = rows
+        .map((row) => row['id'] as String)
+        .toList(growable: false);
+    if (sessionIds.isEmpty) {
+      return 0;
+    }
+
+    final deletedCount = await _deleteSessionsByIds(sessionIds);
+    if (deletedCount > 0) {
+      _notifyChanged();
+    }
+    return deletedCount;
   }
 
   Future<void> deleteMessageBranch({
@@ -696,6 +693,53 @@ class ChatDatabaseService {
 
     _notifyChanged();
     return node;
+  }
+
+  Future<int> _deleteSessionsByIds(List<String> sessionIds) async {
+    if (sessionIds.isEmpty) {
+      return 0;
+    }
+
+    final sessionPlaceholders = List.filled(sessionIds.length, '?').join(',');
+    final rootKeys = sessionIds.map(_rootBranchKey).toList(growable: false);
+    final rootPlaceholders = List.filled(rootKeys.length, '?').join(',');
+
+    return _db.transaction((tx) async {
+      final messageRows = await tx.query(
+        'chat_messages',
+        columns: ['id'],
+        where: 'session_id IN ($sessionPlaceholders)',
+        whereArgs: sessionIds,
+      );
+      final messageIds = messageRows
+          .map((row) => row['id'] as String)
+          .toList(growable: false);
+
+      if (messageIds.isNotEmpty) {
+        final messagePlaceholders = List.filled(
+          messageIds.length,
+          '?',
+        ).join(',');
+        await tx.delete(
+          'chat_branch_state',
+          where:
+              'parent_message_id IN ($messagePlaceholders) OR active_child_message_id IN ($messagePlaceholders)',
+          whereArgs: [...messageIds, ...messageIds],
+        );
+      }
+
+      await tx.delete(
+        'chat_branch_state',
+        where: 'parent_message_id IN ($rootPlaceholders)',
+        whereArgs: rootKeys,
+      );
+
+      return tx.delete(
+        'chat_sessions',
+        where: 'id IN ($sessionPlaceholders)',
+        whereArgs: sessionIds,
+      );
+    });
   }
 
   void _notifyChanged() {

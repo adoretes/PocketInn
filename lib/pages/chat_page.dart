@@ -465,10 +465,10 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                           const SizedBox(height: 8),
                           Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                            spacing: 2,
+                            runSpacing: 2,
                             children: [
-                              OutlinedButton.icon(
+                              TextButton.icon(
                                 onPressed: currentConfig == null
                                     ? null
                                     : () async {
@@ -708,6 +708,7 @@ class _ChatPageState extends State<ChatPage> {
     final RenderBox button = context.findRenderObject() as RenderBox;
     final Offset position = button.localToGlobal(Offset.zero);
     final Size size = button.size;
+    final colorScheme = Theme.of(context).colorScheme;
 
     showMenu<String>(
       context: context,
@@ -736,7 +737,9 @@ class _ChatPageState extends State<ChatPage> {
               Icon(
                 isSelected ? Icons.check_box : Icons.check_box_outline_blank,
                 size: 20,
-                color: isSelected ? worldBook.color : Colors.grey,
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1393,10 +1396,9 @@ class _ChatPageState extends State<ChatPage> {
         : selectedWorldBooks.length == 1
         ? selectedWorldBooks.first.name
         : '${selectedWorldBooks.length} 本世界书';
-    // 使用第一个选中世界书的颜色作为图标颜色
     final worldBookColor = selectedWorldBooks.isNotEmpty
-        ? selectedWorldBooks.first.color
-        : Colors.grey;
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
     // 是否启用毛玻璃效果（有背景且设置开启）
     final useGlassEffect = hasBackground && settings.inputGlassEffect;
 

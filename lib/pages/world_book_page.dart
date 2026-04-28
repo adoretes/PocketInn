@@ -76,7 +76,6 @@ class _WorldBookPageState extends State<WorldBookPage> {
 
   Future<void> _onCreate() async {
     final nameController = TextEditingController(text: '新世界书');
-    final color = ValueNotifier<Color>(const Color(0xFF4B6CB7));
 
     final result = await showDialog<bool>(
       context: context,
@@ -94,40 +93,6 @@ class _WorldBookPageState extends State<WorldBookPage> {
                 ),
                 autofocus: true,
               ),
-              const SizedBox(height: 16),
-              ValueListenableBuilder<Color>(
-                valueListenable: color,
-                builder: (context, value, child) {
-                  return Row(
-                    children: [
-                      const Text('颜色：'),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () async {
-                          final newColor = await showDialog<Color>(
-                            context: context,
-                            builder: (context) {
-                              return _ColorPickerDialog(initialColor: value);
-                            },
-                          );
-                          if (newColor != null) {
-                            color.value = newColor;
-                          }
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: value,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
             ],
           ),
           actions: [
@@ -144,16 +109,13 @@ class _WorldBookPageState extends State<WorldBookPage> {
       },
     );
 
+    final normalizedName = nameController.text.trim();
     nameController.dispose();
-    color.dispose();
 
     if (result == true && mounted) {
       try {
         await WorldBookService.instance.create(
-          name: nameController.text.trim().isEmpty 
-              ? '新世界书' 
-              : nameController.text.trim(),
-          colorValue: color.value.toARGB32(),
+          name: normalizedName.isEmpty ? '新世界书' : normalizedName,
         );
         await _loadWorldBooks();
       } catch (e) {
@@ -348,31 +310,28 @@ class _WorldBookCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = colorScheme.primary;
+
     return Material(
-      color: Colors.white,
+      color: colorScheme.surface,
       borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: colorScheme.outlineVariant),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                worldBook.color.withValues(alpha: 0.16),
-                Colors.white,
+                accent.withValues(alpha: 0.12),
+                colorScheme.surface,
               ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 14,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -382,13 +341,13 @@ class _WorldBookCard extends StatelessWidget {
                   width: 54,
                   height: 54,
                   decoration: BoxDecoration(
-                    color: worldBook.color,
+                    color: colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(18),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(
+                  child: Icon(
                     Icons.menu_book_outlined,
-                    color: Colors.white,
+                    color: colorScheme.onPrimaryContainer,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -413,7 +372,7 @@ class _WorldBookCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           height: 1.45,
-                          color: Colors.grey.shade700,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -422,7 +381,7 @@ class _WorldBookCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: worldBook.color,
+                          color: accent,
                         ),
                       ),
                     ],
@@ -466,105 +425,23 @@ class _ListActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Tooltip(
       message: tooltip,
       child: Ink(
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.88),
+          color: colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: colorScheme.outlineVariant),
         ),
         child: IconButton(
           onPressed: onPressed,
           icon: Icon(icon, size: 18),
         ),
       ),
-    );
-  }
-}
-
-/// 颜色选择对话框
-class _ColorPickerDialog extends StatefulWidget {
-  const _ColorPickerDialog({required this.initialColor});
-
-  final Color initialColor;
-
-  @override
-  State<_ColorPickerDialog> createState() => _ColorPickerDialogState();
-}
-
-class _ColorPickerDialogState extends State<_ColorPickerDialog> {
-  late Color _selectedColor;
-
-  static const List<Color> _presetColors = [
-    Color(0xFF4B6CB7),
-    Color(0xFF2A9D8F),
-    Color(0xFFB56576),
-    Color(0xFFE76F51),
-    Color(0xFFF4A261),
-    Color(0xFFE9C46A),
-    Color(0xFF264653),
-    Color(0xFF1D3557),
-    Color(0xFF457B9D),
-    Color(0xFFA8DADC),
-    Color(0xFF6D597A),
-    Color(0xFFB56576),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedColor = widget.initialColor;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('选择颜色'),
-      content: SizedBox(
-        width: 240,
-        child: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: _presetColors.map((color) {
-            final isSelected = color.toARGB32() == _selectedColor.toARGB32();
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedColor = color;
-                });
-              },
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isSelected ? Colors.black : Colors.grey.shade300,
-                    width: isSelected ? 3 : 1,
-                  ),
-                ),
-                child: isSelected
-                    ? const Icon(Icons.check, color: Colors.white, size: 20)
-                    : null,
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_selectedColor),
-          child: const Text('确定'),
-        ),
-      ],
     );
   }
 }

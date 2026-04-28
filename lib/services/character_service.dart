@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/character_card.dart';
 import '../models/world_book.dart';
+import 'chat_database_service.dart';
 import 'png_character_card_codec.dart';
 import 'storage_service.dart';
 import 'world_book_service.dart';
@@ -72,17 +73,19 @@ class CharacterService {
     }
 
     final items = data['characters'] as List<dynamic>? ?? const [];
-    final summaries = items
-        .map(
-          (item) =>
-              CharacterSummary.fromJson(Map<String, dynamic>.from(item as Map)),
-        )
-        .toList()
-      ..sort((a, b) {
-        final aTime = a.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bTime = b.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bTime.compareTo(aTime);
-      });
+    final summaries =
+        items
+            .map(
+              (item) => CharacterSummary.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            final aTime = a.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+            final bTime = b.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+            return bTime.compareTo(aTime);
+          });
 
     var changed = false;
     final hydrated = <CharacterSummary>[];
@@ -270,6 +273,9 @@ class CharacterService {
     _checkInitialized();
 
     final record = await loadById(id);
+    await ChatDatabaseService.instance.initialize();
+    await ChatDatabaseService.instance.deleteSessionsByCharacterId(id);
+
     if (record != null) {
       await _deleteIfExists(File('$_dataPath/$id.json'));
       if (record.originalImagePath.isNotEmpty) {
@@ -828,5 +834,6 @@ class _PreparedImageAssets {
   final String thumbnailPath;
   final int? cardColorValue;
 
-  bool get clearCardColorValue => cardColorValue == null && thumbnailPath.isEmpty;
+  bool get clearCardColorValue =>
+      cardColorValue == null && thumbnailPath.isEmpty;
 }

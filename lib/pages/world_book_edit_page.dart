@@ -847,7 +847,6 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _WorldBookEntryTile(
                               entry: entry,
-                              color: widget.worldBook.color,
                               onTap: () => _openEntryDialog(entry),
                               onToggle: (value) => _onToggleEntry(entry, value),
                               onDelete: () => _onDeleteEntry(entry),
@@ -915,20 +914,20 @@ class _SectionCard extends StatelessWidget {
 class _WorldBookEntryTile extends StatelessWidget {
   const _WorldBookEntryTile({
     required this.entry,
-    required this.color,
     required this.onTap,
     required this.onToggle,
     required this.onDelete,
   });
 
   final WorldBookEntry entry;
-  final Color color;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggle;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+
     return Material(
       color: color.withValues(alpha: 0.08),
       borderRadius: BorderRadius.circular(20),

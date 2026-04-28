@@ -457,6 +457,13 @@ class _CharacterCard extends StatelessWidget {
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black45,
+                                      blurRadius: 1,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -465,6 +472,13 @@ class _CharacterCard extends StatelessWidget {
                                 style: const TextStyle(
                                   fontSize: 14,
                                   color: Colors.white70,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black45,
+                                      blurRadius: 1,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
