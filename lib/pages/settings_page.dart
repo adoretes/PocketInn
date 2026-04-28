@@ -51,9 +51,7 @@ class SettingsPage extends StatelessWidget {
         );
       case _SettingsItemType.api:
         await navigator.push(
-          MaterialPageRoute(
-            builder: (_) => const OpenAICompatibleConfigPage(),
-          ),
+          MaterialPageRoute(builder: (_) => const OpenAICompatibleConfigPage()),
         );
       case _SettingsItemType.data:
         await navigator.push(
@@ -72,7 +70,7 @@ class SettingsPage extends StatelessWidget {
     final items = <_SettingsItem>[
       const _SettingsItem(
         title: '通用设置',
-        subtitle: '主题、通知与基础偏好',
+        subtitle: '颜色模式、主题与基础偏好',
         icon: Icons.tune_rounded,
         type: _SettingsItemType.general,
       ),
@@ -121,9 +119,7 @@ class SettingsPage extends StatelessWidget {
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置'),
-      ),
+      appBar: AppBar(title: const Text('设置')),
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: items.length,
@@ -144,10 +140,7 @@ class SettingsPage extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  item.icon,
-                  color: colorScheme.primary,
-                ),
+                child: Icon(item.icon, color: colorScheme.primary),
               ),
               title: Text(
                 item.title,

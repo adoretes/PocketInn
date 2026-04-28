@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/app_settings.dart';
+import 'custom_theme_page.dart';
 
 class GeneralSettingsPage extends StatelessWidget {
   const GeneralSettingsPage({super.key});
@@ -10,52 +11,30 @@ class GeneralSettingsPage extends StatelessWidget {
     return ValueListenableBuilder<AppSettings>(
       valueListenable: appSettingsNotifier,
       builder: (context, settings, _) {
-        final colorScheme = Theme.of(context).colorScheme;
-
         return Scaffold(
           appBar: AppBar(title: const Text('通用设置')),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _SectionCard(
-                title: '颜色模式',
-                subtitle: '切换应用的亮暗外观',
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: AppColorMode.values.map((mode) {
-                    final selected = settings.colorMode == mode;
-                    return _ChoiceChipCard(
-                      label: mode.label,
-                      selected: selected,
-                      icon: switch (mode) {
-                        AppColorMode.system => Icons.brightness_auto_outlined,
-                        AppColorMode.dark => Icons.dark_mode_outlined,
-                        AppColorMode.light => Icons.light_mode_outlined,
-                      },
-                      accentColor: colorScheme.primary,
-                      onTap: () => updateAppSettings(colorMode: mode),
-                    );
-                  }).toList(),
-                ),
+              _ColorModeDropdownTile(
+                value: settings.colorMode,
+                onChanged: (mode) => updateAppSettings(colorMode: mode),
               ),
               const SizedBox(height: 16),
-              _SectionCard(
-                title: '主题',
-                subtitle: '选择你偏好的主色风格',
-                child: Column(
-                  children: AppThemePreset.values.map((preset) {
-                    final selected = settings.themePreset == preset;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _ThemeOptionTile(
-                        preset: preset,
-                        selected: selected,
-                        onTap: () => updateAppSettings(themePreset: preset),
-                      ),
-                    );
-                  }).toList(),
-                ),
+              _ThemePresetDropdownTile(
+                settings: settings,
+                onChanged: (preset) => updateAppSettings(themePreset: preset),
+              ),
+              const SizedBox(height: 16),
+              _NavigationSectionCard(
+                title: '主题配置',
+                subtitle: '编辑当前主题的颜色、引号、阴影、文本样式',
+                icon: Icons.palette_outlined,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CustomThemePage()),
+                  );
+                },
               ),
               const SizedBox(height: 16),
               _SectionCard(
@@ -224,55 +203,85 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _ChoiceChipCard extends StatelessWidget {
-  const _ChoiceChipCard({
-    required this.label,
-    required this.selected,
-    required this.icon,
-    required this.accentColor,
-    required this.onTap,
-  });
+class _ColorModeDropdownTile extends StatelessWidget {
+  const _ColorModeDropdownTile({required this.value, required this.onChanged});
 
-  final String label;
-  final bool selected;
-  final IconData icon;
-  final Color accentColor;
-  final VoidCallback onTap;
+  final AppColorMode value;
+  final ValueChanged<AppColorMode> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          color: selected
-              ? accentColor.withValues(alpha: 0.12)
-              : colorScheme.surfaceContainerHighest,
-          border: Border.all(
-            color: selected ? accentColor : colorScheme.outlineVariant,
-            width: selected ? 1.5 : 1,
-          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colorScheme.outlineVariant),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected ? accentColor : colorScheme.onSurfaceVariant,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '颜色模式',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '切换应用的亮暗外观',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: selected ? accentColor : colorScheme.onSurface,
+            const SizedBox(width: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 120, maxWidth: 140),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<AppColorMode>(
+                  value: value,
+                  isExpanded: true,
+                  borderRadius: BorderRadius.circular(16),
+                  focusColor: Colors.transparent,
+                  dropdownColor: colorScheme.surface,
+                  iconEnabledColor: colorScheme.onSurfaceVariant,
+                  items: AppColorMode.values.map((mode) {
+                    return DropdownMenuItem<AppColorMode>(
+                      value: mode,
+                      child: Row(
+                        children: [
+                          Icon(
+                            switch (mode) {
+                              AppColorMode.system =>
+                                Icons.brightness_auto_outlined,
+                              AppColorMode.dark => Icons.dark_mode_outlined,
+                              AppColorMode.light => Icons.light_mode_outlined,
+                            },
+                            size: 18,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(mode.label),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (mode) {
+                    if (mode != null) {
+                      onChanged(mode);
+                    }
+                  },
+                ),
               ),
             ),
           ],
@@ -282,71 +291,177 @@ class _ChoiceChipCard extends StatelessWidget {
   }
 }
 
-class _ThemeOptionTile extends StatelessWidget {
-  const _ThemeOptionTile({
-    required this.preset,
-    required this.selected,
+class _ThemePresetDropdownTile extends StatelessWidget {
+  const _ThemePresetDropdownTile({
+    required this.settings,
+    required this.onChanged,
+  });
+
+  final AppSettings settings;
+  final ValueChanged<AppThemePreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '预设主题',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '切换当前使用的主题配置',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 120, maxWidth: 140),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<AppThemePreset>(
+                  value: settings.themePreset,
+                  isExpanded: true,
+                  borderRadius: BorderRadius.circular(16),
+                  focusColor: Colors.transparent,
+                  dropdownColor: colorScheme.surface,
+                  iconEnabledColor: colorScheme.onSurfaceVariant,
+                  items: AppThemePreset.values.map((preset) {
+                    final swatchColor = resolveThemeColor(
+                      settings,
+                      preset: preset,
+                    );
+                    return DropdownMenuItem<AppThemePreset>(
+                      value: preset,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  swatchColor.withValues(alpha: 0.95),
+                                  swatchColor.withValues(alpha: 0.62),
+                                ],
+                              ),
+                              border: Border.all(
+                                color: swatchColor.withValues(alpha: 0.24),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(preset.label),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (preset) {
+                    if (preset != null) {
+                      onChanged(preset);
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavigationSectionCard extends StatelessWidget {
+  const _NavigationSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
     required this.onTap,
   });
 
-  final AppThemePreset preset;
-  final bool selected;
+  final String title;
+  final String subtitle;
+  final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final accentColor = preset.seedColor;
 
     return Material(
-      color: selected
-          ? accentColor.withValues(alpha: 0.10)
-          : colorScheme.surfaceContainerLow,
+      color: colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected ? accentColor : colorScheme.outlineVariant,
-              width: selected ? 1.5 : 1,
-            ),
+            border: Border.all(color: colorScheme.outlineVariant),
           ),
           child: Row(
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      accentColor.withValues(alpha: 0.92),
-                      accentColor.withValues(alpha: 0.58),
-                    ],
-                  ),
+                  color: colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
+                alignment: Alignment.center,
+                child: Icon(icon, color: colorScheme.primary),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  preset.label,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_off_rounded,
-                color: selected ? accentColor : colorScheme.outline,
+                Icons.chevron_right_rounded,
+                color: colorScheme.onSurfaceVariant,
               ),
             ],
           ),

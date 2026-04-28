@@ -62,17 +62,14 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           title: 'PocketInn',
           themeMode: settings.colorMode.themeMode,
-          theme: buildAppTheme(settings.themePreset, Brightness.light),
-          darkTheme: buildAppTheme(settings.themePreset, Brightness.dark),
+          theme: buildAppTheme(settings, Brightness.light),
+          darkTheme: buildAppTheme(settings, Brightness.dark),
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
           ],
-          supportedLocales: const [
-            Locale('zh', 'CN'),
-            Locale('en', 'US'),
-          ],
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
           home: const ChatPage(),
         );
       },

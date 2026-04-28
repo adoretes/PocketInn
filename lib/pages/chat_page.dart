@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../data/api_configs.dart';
 import '../data/app_settings.dart';
@@ -22,6 +21,7 @@ import '../services/chat_variable_service.dart';
 import '../services/openai_compatible_api_service.dart';
 import '../services/preset_service.dart';
 import '../services/world_book_service.dart';
+import '../widgets/chat_markdown_body.dart';
 import '../widgets/expanded_text_editor_field.dart';
 import 'chat_sidebar_page.dart';
 import 'world_book_edit_page.dart';
@@ -1661,7 +1661,6 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMe = message.isMe;
     final colorScheme = Theme.of(context).colorScheme;
-    final markdownText = _formatMessageForMarkdown(message.text);
 
     return ValueListenableBuilder<AppSettings>(
       valueListenable: appSettingsNotifier,
@@ -1670,19 +1669,14 @@ class _MessageBubble extends StatelessWidget {
 
         if (isMe) {
           // 用户消息：保持原有气泡样式
-          return _buildUserBubble(
-            context,
-            colorScheme,
-            showAvatar,
-            markdownText,
-          );
+          return _buildUserBubble(context, colorScheme, settings, showAvatar);
         } else {
           // 角色消息：全宽无背景
           return _buildCharacterBubble(
             context,
             colorScheme,
+            settings,
             showAvatar,
-            markdownText,
           );
         }
       },
@@ -1693,8 +1687,8 @@ class _MessageBubble extends StatelessWidget {
   Widget _buildUserBubble(
     BuildContext context,
     ColorScheme colorScheme,
+    AppSettings settings,
     bool showAvatar,
-    String markdownText,
   ) {
     final bubbleColor = colorScheme.primaryContainer;
     final textColor = colorScheme.onPrimaryContainer;
@@ -1725,15 +1719,12 @@ class _MessageBubble extends StatelessWidget {
                 ),
                 child: Semantics(
                   container: true,
-                  child: MarkdownBody(
-                    data: markdownText,
-                    styleSheet: _buildMarkdownStyleSheet(
-                      textColor: textColor,
-                      emphasisColor: colorScheme.primary,
-                      inlineCodeColor: inlineCodeColor,
-                      codeBlockColor: codeBlockColor,
-                    ),
-                    selectable: true,
+                  child: ChatMarkdownBody(
+                    text: message.text,
+                    settings: settings,
+                    textColor: textColor,
+                    inlineCodeColor: inlineCodeColor,
+                    codeBlockColor: codeBlockColor,
                   ),
                 ),
               ),
@@ -1753,8 +1744,8 @@ class _MessageBubble extends StatelessWidget {
   Widget _buildCharacterBubble(
     BuildContext context,
     ColorScheme colorScheme,
+    AppSettings settings,
     bool showAvatar,
-    String markdownText,
   ) {
     final textColor = colorScheme.onSurface;
     final inlineCodeColor = colorScheme.surfaceContainerHigh;
@@ -1780,15 +1771,12 @@ class _MessageBubble extends StatelessWidget {
                   // 消息内容
                   Semantics(
                     container: true,
-                    child: MarkdownBody(
-                      data: markdownText,
-                      styleSheet: _buildMarkdownStyleSheet(
-                        textColor: textColor,
-                        emphasisColor: colorScheme.primary,
-                        inlineCodeColor: inlineCodeColor,
-                        codeBlockColor: codeBlockColor,
-                      ),
-                      selectable: true,
+                    child: ChatMarkdownBody(
+                      text: message.text,
+                      settings: settings,
+                      textColor: textColor,
+                      inlineCodeColor: inlineCodeColor,
+                      codeBlockColor: codeBlockColor,
                     ),
                   ),
                   // 操作按钮行（包含索引按钮在右下角）
@@ -1799,48 +1787,6 @@ class _MessageBubble extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-
-  MarkdownStyleSheet _buildMarkdownStyleSheet({
-    required Color textColor,
-    required Color emphasisColor,
-    required Color inlineCodeColor,
-    required Color codeBlockColor,
-  }) {
-    const baseTextStyle = TextStyle(fontSize: 15, height: 1.5);
-
-    return MarkdownStyleSheet(
-      p: baseTextStyle.copyWith(color: textColor),
-      em: baseTextStyle.copyWith(
-        color: emphasisColor,
-        fontStyle: FontStyle.normal,
-      ),
-      strong: baseTextStyle.copyWith(
-        color: emphasisColor.withValues(alpha: 0.68),
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.2,
-      ),
-      del: baseTextStyle.copyWith(
-        // 添加这一项
-        color: textColor,
-        decoration: TextDecoration.none,
-      ),
-      code: TextStyle(
-        fontSize: 14,
-        color: textColor,
-        backgroundColor: inlineCodeColor,
-        fontFamily: 'monospace',
-      ),
-      codeblockDecoration: BoxDecoration(
-        color: codeBlockColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      horizontalRuleDecoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: textColor.withValues(alpha: 0.25), width: 0.3),
-        ),
-      ),
     );
   }
 
@@ -1930,48 +1876,6 @@ class _MessageBubble extends StatelessWidget {
         color: colorScheme.onSecondaryContainer,
       ),
     );
-  }
-
-  String _formatMessageForMarkdown(String input) {
-    if (input.isEmpty) {
-      return input;
-    }
-
-    final protectedPattern = RegExp(r'```[\s\S]*?```|`[^`\n]+`', dotAll: true);
-    final buffer = StringBuffer();
-    var cursor = 0;
-
-    for (final match in protectedPattern.allMatches(input)) {
-      if (match.start > cursor) {
-        buffer.write(
-          _emphasizeBracketSegments(input.substring(cursor, match.start)),
-        );
-      }
-      buffer.write(match.group(0));
-      cursor = match.end;
-    }
-
-    if (cursor < input.length) {
-      buffer.write(_emphasizeBracketSegments(input.substring(cursor)));
-    }
-
-    return buffer.toString();
-  }
-
-  String _emphasizeBracketSegments(String input) {
-    final pattern = RegExp(r'[（(][^()（）\n]+[)）]');
-    return input.replaceAllMapped(pattern, (match) {
-      final segment = match.group(0)!;
-      final content = segment.substring(1, segment.length - 1).trim();
-      final start = match.start;
-      final end = match.end;
-      final previous = start > 0 ? input[start - 1] : '';
-      final next = end < input.length ? input[end] : '';
-      if (content.isEmpty || previous == '*' || next == '*') {
-        return segment;
-      }
-      return '**$content**';
-    });
   }
 
   /// 构建操作按钮行
