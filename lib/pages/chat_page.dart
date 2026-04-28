@@ -1229,17 +1229,29 @@ class _ChatPageState extends State<ChatPage> {
         !_isSending && _inputText.trim().isNotEmpty && _activeSession != null;
     final session = _activeSession;
     final character = _activeCharacter;
+    final theme = Theme.of(context);
     final drawerEdgeDragWidth = (MediaQuery.sizeOf(context).width * 0.18).clamp(
       72.0,
       120.0,
     );
+    final topContentPadding =
+        MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final overlayStyle = theme.brightness == Brightness.dark
+        ? SystemUiOverlayStyle.light
+        : SystemUiOverlayStyle.dark;
 
     return Scaffold(
       key: _scaffoldKey,
+      extendBodyBehindAppBar: true,
       drawerEnableOpenDragGesture: true,
       drawerEdgeDragWidth: drawerEdgeDragWidth,
       drawer: const Drawer(child: SafeArea(child: ChatSidebarPage())),
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: overlayStyle,
         leading: IconButton(
           icon: const Icon(Icons.format_list_bulleted),
           onPressed: _onChatListPressed,
@@ -1250,16 +1262,11 @@ class _ChatPageState extends State<ChatPage> {
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    session?.title ?? '聊天',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+            child: Text(
+              session?.title ?? '聊天',
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),
@@ -1308,66 +1315,72 @@ class _ChatPageState extends State<ChatPage> {
               Column(
                 children: [
                   Expanded(
-                    child: visibleMessages.isEmpty
-                        ? const Center(child: Text('这段聊天还没有消息'))
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                    child: Padding(
+                      padding: EdgeInsets.only(top: topContentPadding),
+                      child: visibleMessages.isEmpty
+                          ? const Center(child: Text('这段聊天还没有消息'))
+                          : ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                12,
+                                16,
+                                12,
+                              ),
+                              itemCount: visibleMessages.length,
+                              itemBuilder: (context, index) {
+                                final msg = visibleMessages[index];
+                                final isLastMessage =
+                                    index == visibleMessages.length - 1;
+                                final isLastUserMessageWithoutReply =
+                                    isLastMessage && msg.isMe;
+                                final isLastCharacterMessage =
+                                    isLastMessage && !msg.isMe;
+                                final isRegeneratingUserMessage =
+                                    _regeneratingUserMessageId != null &&
+                                    msg.id == _regeneratingUserMessageId;
+                                final showActions =
+                                    msg.id != null &&
+                                    (!_isSending || isRegeneratingUserMessage);
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _MessageBubble(
+                                    message: msg,
+                                    userSetting: _currentUserSetting(),
+                                    character: _activeCharacter,
+                                    isLastUserMessageWithoutReply:
+                                        isLastUserMessageWithoutReply,
+                                    isLastCharacterMessage:
+                                        isLastCharacterMessage,
+                                    showActions: showActions,
+                                    isBusyRegenerating:
+                                        isRegeneratingUserMessage,
+                                    onCopy: () => _onCopyMessage(msg),
+                                    onEdit: () => _onEditMessage(index),
+                                    onDelete: () => _onDeleteMessage(index),
+                                    onGenerate:
+                                        isLastUserMessageWithoutReply &&
+                                            showActions &&
+                                            !isRegeneratingUserMessage
+                                        ? () => _regenerateFromUserMessage(
+                                            userMessageIndex: index,
+                                          )
+                                        : null,
+                                    onRegenerate:
+                                        isLastCharacterMessage && showActions
+                                        ? () => _onRegenerateMessage(index)
+                                        : null,
+                                    onSelectPreviousVariant: msg.hasMultiple
+                                        ? () => _onSwitchMessageVariant(msg, -1)
+                                        : null,
+                                    onSelectNextVariant: msg.hasMultiple
+                                        ? () => _onSwitchMessageVariant(msg, 1)
+                                        : null,
+                                  ),
+                                );
+                              },
                             ),
-                            itemCount: visibleMessages.length,
-                            itemBuilder: (context, index) {
-                              final msg = visibleMessages[index];
-                              final isLastMessage =
-                                  index == visibleMessages.length - 1;
-                              final isLastUserMessageWithoutReply =
-                                  isLastMessage && msg.isMe;
-                              final isLastCharacterMessage =
-                                  isLastMessage && !msg.isMe;
-                              final isRegeneratingUserMessage =
-                                  _regeneratingUserMessageId != null &&
-                                  msg.id == _regeneratingUserMessageId;
-                              final showActions =
-                                  msg.id != null &&
-                                  (!_isSending || isRegeneratingUserMessage);
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: _MessageBubble(
-                                  message: msg,
-                                  userSetting: _currentUserSetting(),
-                                  character: _activeCharacter,
-                                  isLastUserMessageWithoutReply:
-                                      isLastUserMessageWithoutReply,
-                                  isLastCharacterMessage:
-                                      isLastCharacterMessage,
-                                  showActions: showActions,
-                                  isBusyRegenerating: isRegeneratingUserMessage,
-                                  onCopy: () => _onCopyMessage(msg),
-                                  onEdit: () => _onEditMessage(index),
-                                  onDelete: () => _onDeleteMessage(index),
-                                  onGenerate:
-                                      isLastUserMessageWithoutReply &&
-                                          showActions &&
-                                          !isRegeneratingUserMessage
-                                      ? () => _regenerateFromUserMessage(
-                                          userMessageIndex: index,
-                                        )
-                                      : null,
-                                  onRegenerate:
-                                      isLastCharacterMessage && showActions
-                                      ? () => _onRegenerateMessage(index)
-                                      : null,
-                                  onSelectPreviousVariant: msg.hasMultiple
-                                      ? () => _onSwitchMessageVariant(msg, -1)
-                                      : null,
-                                  onSelectNextVariant: msg.hasMultiple
-                                      ? () => _onSwitchMessageVariant(msg, 1)
-                                      : null,
-                                ),
-                              );
-                            },
-                          ),
+                    ),
                   ),
                   _buildInputArea(isSendEnabled, settings, hasBackground),
                 ],

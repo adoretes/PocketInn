@@ -27,11 +27,11 @@ class _AboutPageState extends State<AboutPage> {
             subtitle: '当前应用版本详情',
             child: Column(
               children: [
-                _InfoRow(label: '版本号', value: '1.0.2'),
+                _InfoRow(label: '版本号', value: '1.0.3'),
                 const SizedBox(height: 8),
-                _InfoRow(label: '构建号', value: '3'),
+                _InfoRow(label: '构建号', value: '4'),
                 const SizedBox(height: 8),
-                _InfoRow(label: '构建时间', value: '2026-04-27'),
+                _InfoRow(label: '构建时间', value: '2026-04-28'),
               ],
             ),
           ),
@@ -45,10 +45,10 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.1',
-                  date: '2026-04-26',
+                  version: 'v1.0.3',
+                  date: '2026-04-28',
                   changes: [
-                    '添加本地化支持，更新依赖项，重构文本编辑器字段，优化角色和世界书编辑页面，增加滑动唤出侧边栏',
+                    '优化界面和体验，',
                   ],
                 ),
               ],
