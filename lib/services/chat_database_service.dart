@@ -285,6 +285,108 @@ class ChatDatabaseService {
     _notifyChanged();
   }
 
+  Future<void> resetSession({
+    required String sessionId,
+    required String title,
+    required String? selectedUserSettingId,
+    required List<String> selectedWorldBookIds,
+    required String? selectedPresetId,
+    List<String> openingAssistantMessages = const [],
+  }) async {
+    final normalizedTitle = title.trim().isNotEmpty ? title.trim() : '新聊天';
+    final now = DateTime.now();
+    final normalizedOpeningMessages = openingAssistantMessages
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    final openingMessageIds = [
+      for (var i = 0; i < normalizedOpeningMessages.length; i++)
+        _generateId('message'),
+    ];
+
+    await _db.transaction((tx) async {
+      final messageRows = await tx.query(
+        'chat_messages',
+        columns: ['id'],
+        where: 'session_id = ?',
+        whereArgs: [sessionId],
+      );
+      final messageIds = messageRows
+          .map((row) => row['id'] as String)
+          .toList(growable: false);
+
+      if (messageIds.isNotEmpty) {
+        final messagePlaceholders = List.filled(
+          messageIds.length,
+          '?',
+        ).join(',');
+        await tx.delete(
+          'chat_branch_state',
+          where:
+              'parent_message_id IN ($messagePlaceholders) OR active_child_message_id IN ($messagePlaceholders)',
+          whereArgs: [...messageIds, ...messageIds],
+        );
+      }
+
+      await tx.delete(
+        'chat_branch_state',
+        where: 'parent_message_id = ?',
+        whereArgs: [_rootBranchKey(sessionId)],
+      );
+      await tx.delete(
+        'chat_messages',
+        where: 'session_id = ?',
+        whereArgs: [sessionId],
+      );
+      await tx.update(
+        'chat_sessions',
+        {
+          'title': normalizedTitle,
+          'selected_user_setting_id': selectedUserSettingId,
+          'selected_preset_id': selectedPresetId,
+          'current_leaf_message_id': openingMessageIds.isNotEmpty
+              ? openingMessageIds.first
+              : null,
+          'last_message_preview': normalizedOpeningMessages.isNotEmpty
+              ? normalizedOpeningMessages.first
+              : '',
+          'updated_at': now.toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [sessionId],
+      );
+      await _replaceSessionWorldBooks(
+        tx,
+        sessionId: sessionId,
+        worldBookIds: selectedWorldBookIds,
+      );
+
+      for (var i = 0; i < normalizedOpeningMessages.length; i++) {
+        final openingNode = ChatNode(
+          id: openingMessageIds[i],
+          sessionId: sessionId,
+          parentId: null,
+          role: ChatNodeRole.assistant,
+          text: normalizedOpeningMessages[i],
+          createdAt: now,
+          siblingOrder: i,
+        );
+        await tx.insert('chat_messages', _nodeToMap(openingNode));
+      }
+
+      if (openingMessageIds.isNotEmpty) {
+        await _setActiveChild(
+          tx,
+          sessionId: sessionId,
+          parentMessageId: null,
+          childMessageId: openingMessageIds.first,
+        );
+      }
+    });
+
+    _notifyChanged();
+  }
+
   Future<void> updateMessage({
     required String sessionId,
     required String messageId,

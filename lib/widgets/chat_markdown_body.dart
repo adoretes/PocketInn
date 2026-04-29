@@ -242,7 +242,7 @@ List<Shadow> _buildMessageTextShadows(Brightness brightness) {
 
 final List<RegExp> _quotePatterns = <RegExp>[
   RegExp(r'“([^“”\n]+)”'),
-  RegExp(r'‘([^‘’\n]+)’'),
+  //RegExp(r'‘([^‘’\n]+)’'),
   RegExp(r'「([^「」\n]+)」'),
   RegExp(r'『([^『』\n]+)』'),
   RegExp(r'(?<!\w)"([^"\n]+)"(?!\w)'),

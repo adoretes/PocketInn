@@ -27,9 +27,9 @@ class _AboutPageState extends State<AboutPage> {
             subtitle: '当前应用版本详情',
             child: Column(
               children: [
-                _InfoRow(label: '版本号', value: '1.0.3'),
+                _InfoRow(label: '版本号', value: '1.0.4'),
                 const SizedBox(height: 8),
-                _InfoRow(label: '构建号', value: '4'),
+                _InfoRow(label: '构建号', value: '5'),
                 const SizedBox(height: 8),
                 _InfoRow(label: '构建时间', value: '2026-04-28'),
               ],
@@ -45,10 +45,10 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.3',
-                  date: '2026-04-28',
+                  version: 'v1.0.4',
+                  date: '2026-04-29',
                   changes: [
-                    '优化界面和体验，',
+                    '添加重置聊天功能，优化用户设定选择逻辑',
                   ],
                 ),
               ],

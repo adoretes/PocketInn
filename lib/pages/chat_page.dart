@@ -16,6 +16,7 @@ import '../pages/api_request_log_page.dart';
 import '../pages/api_config_page.dart';
 import '../services/chat_character_resolver.dart';
 import '../services/chat_database_service.dart';
+import '../services/chat_opening_message_builder.dart';
 import '../services/chat_service.dart';
 import '../services/chat_variable_service.dart';
 import '../services/openai_compatible_api_service.dart';
@@ -27,6 +28,15 @@ import 'chat_sidebar_page.dart';
 import 'world_book_edit_page.dart';
 
 enum _MessageEditAction { save, saveAndSend }
+
+enum _ChatTitleDialogAction { save, reset }
+
+class _ChatTitleDialogResult {
+  const _ChatTitleDialogResult({required this.action, required this.title});
+
+  final _ChatTitleDialogAction action;
+  final String title;
+}
 
 /// 聊天页面
 class ChatPage extends StatefulWidget {
@@ -228,19 +238,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   String _resolvedUserName() {
-    final settings = userSettingsNotifier.value;
-    if (settings.isEmpty) {
-      return '默认用户';
-    }
-    final targetId = _selectedUserSettingId;
-    if (targetId != null) {
-      for (final item in settings) {
-        if (item.id == targetId) {
-          return item.name;
-        }
-      }
-    }
-    return settings.first.name;
+    return _currentUserSetting()?.name ?? '默认用户';
   }
 
   String _replaceChatVariables(String input) {
@@ -602,7 +600,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     final controller = TextEditingController(text: session.title);
-    final nextTitle = await showDialog<String>(
+    final result = await showDialog<_ChatTitleDialogResult>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -611,26 +609,57 @@ class _ChatPageState extends State<ChatPage> {
             controller: controller,
             autofocus: true,
             decoration: const InputDecoration(hintText: '输入聊天名称'),
-            onSubmitted: (value) => Navigator.of(context).pop(value),
+            onSubmitted: (value) => Navigator.of(context).pop(
+              _ChatTitleDialogResult(
+                action: _ChatTitleDialogAction.save,
+                title: value,
+              ),
+            ),
           ),
           actions: [
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(
+                _ChatTitleDialogResult(
+                  action: _ChatTitleDialogAction.reset,
+                  title: controller.text,
+                ),
+              ),
+              icon: const Icon(Icons.refresh),
+              tooltip: '按当前选择重置聊天',
+            ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text),
+              onPressed: () => Navigator.of(context).pop(
+                _ChatTitleDialogResult(
+                  action: _ChatTitleDialogAction.save,
+                  title: controller.text,
+                ),
+              ),
               child: const Text('保存'),
             ),
           ],
         );
       },
     );
+    controller.dispose();
 
-    final normalizedTitle = nextTitle?.trim();
-    if (normalizedTitle == null ||
-        normalizedTitle.isEmpty ||
-        normalizedTitle == session.title) {
+    if (result == null) {
+      return;
+    }
+
+    final normalizedTitle = result.title.trim();
+    if (result.action == _ChatTitleDialogAction.reset) {
+      final nextTitle = normalizedTitle.isEmpty
+          ? session.title
+          : normalizedTitle;
+      await _confirmAndResetChat(nextTitle);
+      return;
+    }
+
+    if (normalizedTitle.isEmpty || normalizedTitle == session.title) {
       return;
     }
 
@@ -644,6 +673,82 @@ class _ChatPageState extends State<ChatPage> {
     setState(() {
       _activeSession = session.copyWith(title: normalizedTitle);
     });
+  }
+
+  Future<void> _confirmAndResetChat(String nextTitle) async {
+    final session = _activeSession;
+    final character = _activeCharacter;
+    if (session == null || character == null || _isSending) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('重置聊天'),
+          content: const Text('将清空当前聊天记录，并按当前选择重新初始化聊天。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('重置'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final selectedUserSettingId = _currentUserSetting()?.id;
+    final openingMessages = ChatOpeningMessageBuilder.build(
+      characterCardData: character.cardJson,
+      characterName: character.name,
+      userName: _resolvedUserName(),
+    );
+
+    setState(() {
+      _isLoading = true;
+      _textController.clear();
+      _inputText = '';
+      _resetPendingMessages();
+    });
+
+    try {
+      await ChatDatabaseService.instance.resetSession(
+        sessionId: session.id,
+        title: nextTitle,
+        selectedUserSettingId: selectedUserSettingId,
+        selectedWorldBookIds: _selectedWorldBookIds.toList(),
+        selectedPresetId: _selectedPresetId,
+        openingAssistantMessages: openingMessages,
+      );
+      await _loadSession(preferredSessionId: session.id);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已按当前选择重置聊天')));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
   }
 
   void _onUserSettingsPressed(BuildContext context) {
@@ -1448,10 +1553,10 @@ class _ChatPageState extends State<ChatPage> {
                     if (settings.isEmpty) {
                       return const SizedBox.shrink();
                     }
-                    final selectedSetting = settings.firstWhere(
-                      (item) => item.id == _selectedUserSettingId,
-                      orElse: () => settings.first,
-                    );
+                    final selectedSetting = _currentUserSetting();
+                    if (selectedSetting == null) {
+                      return const SizedBox.shrink();
+                    }
 
                     return ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 148),

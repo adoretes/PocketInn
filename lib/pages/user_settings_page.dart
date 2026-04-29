@@ -25,9 +25,10 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
     super.initState();
     _settings = widget.initialSettings.map((item) => item.copyWith()).toList();
     _selectedId = widget.initialSelectedId;
-    
+
     // 如果选中的ID无效，默认选择第一个
-    if (_selectedId != null && !_settings.any((item) => item.id == _selectedId)) {
+    if (_selectedId != null &&
+        !_settings.any((item) => item.id == _selectedId)) {
       _selectedId = _settings.isNotEmpty ? _settings.first.id : null;
     }
   }
@@ -42,9 +43,9 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _onCreateRequested() async {
@@ -105,27 +106,32 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                             const Color(0xFFD81B60),
                             const Color(0xFFE76F51),
                             const Color(0xFF277DA1),
-                          ].map((color) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: GestureDetector(
-                              onTap: () {
-                                setDialogState(() {
-                                  selectedColor = color;
-                                });
-                              },
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: color,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: selectedColor == color
-                                      ? Border.all(color: Colors.black, width: 2)
-                                      : null,
+                          ].map(
+                            (color) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: GestureDetector(
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedColor = color;
+                                  });
+                                },
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: selectedColor == color
+                                        ? Border.all(
+                                            color: Colors.black,
+                                            width: 2,
+                                          )
+                                        : null,
+                                  ),
                                 ),
                               ),
                             ),
-                          )),
+                          ),
                         ],
                       ),
                     ],
@@ -148,12 +154,12 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                         prompt: descriptionController.text.trim(),
                         colorValue: selectedColor.toARGB32(),
                       );
-                      
+
                       setState(() {
                         _settings.add(newSetting);
                         _selectedId ??= newSetting.id;
                       });
-                      
+
                       Navigator.of(context).pop();
                       _showMessage('已创建用户设定');
                     }
@@ -226,27 +232,32 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                             const Color(0xFFD81B60),
                             const Color(0xFFE76F51),
                             const Color(0xFF277DA1),
-                          ].map((color) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: GestureDetector(
-                              onTap: () {
-                                setDialogState(() {
-                                  selectedColor = color;
-                                });
-                              },
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: color,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: selectedColor == color
-                                      ? Border.all(color: Colors.black, width: 2)
-                                      : null,
+                          ].map(
+                            (color) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: GestureDetector(
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedColor = color;
+                                  });
+                                },
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: selectedColor == color
+                                        ? Border.all(
+                                            color: Colors.black,
+                                            width: 2,
+                                          )
+                                        : null,
+                                  ),
                                 ),
                               ),
                             ),
-                          )),
+                          ),
                         ],
                       ),
                     ],
@@ -283,12 +294,14 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                         ],
                       ),
                     );
-                    
+
                     if (confirmed == true) {
                       setState(() {
                         _settings.removeWhere((s) => s.id == setting.id);
-                        if (_selectedId == setting.id && _settings.isNotEmpty) {
-                          _selectedId = _settings.first.id;
+                        if (_selectedId == setting.id) {
+                          _selectedId = _settings.isNotEmpty
+                              ? _settings.first.id
+                              : null;
                         }
                       });
                       if (context.mounted) {
@@ -297,7 +310,10 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                       }
                     }
                   },
-                  child: Text('删除', style: TextStyle(color: Colors.red.shade700)),
+                  child: Text(
+                    '删除',
+                    style: TextStyle(color: Colors.red.shade700),
+                  ),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -307,14 +323,16 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                         prompt: descriptionController.text.trim(),
                         color: selectedColor,
                       );
-                      
+
                       setState(() {
-                        final index = _settings.indexWhere((s) => s.id == setting.id);
+                        final index = _settings.indexWhere(
+                          (s) => s.id == setting.id,
+                        );
                         if (index != -1) {
                           _settings[index] = updatedSetting;
                         }
                       });
-                      
+
                       Navigator.of(context).pop();
                       _showMessage('已保存');
                     }
@@ -405,7 +423,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                 return _UserSettingGridCard(
                   setting: setting,
                   isSelected: setting.id == _selectedId,
-                  onTap: () => _openEditDialog(setting),
+                  onEdit: () => _openEditDialog(setting),
                   onSelect: () {
                     setState(() {
                       _selectedId = setting.id;
@@ -435,13 +453,13 @@ class _UserSettingGridCard extends StatelessWidget {
   const _UserSettingGridCard({
     required this.setting,
     required this.isSelected,
-    required this.onTap,
+    required this.onEdit,
     required this.onSelect,
   });
 
   final UserSetting setting;
   final bool isSelected;
-  final VoidCallback onTap;
+  final VoidCallback onEdit;
   final VoidCallback onSelect;
 
   @override
@@ -450,7 +468,7 @@ class _UserSettingGridCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: onTap,
+        onTap: onSelect,
         borderRadius: BorderRadius.circular(16),
         child: Ink(
           decoration: BoxDecoration(
@@ -464,10 +482,7 @@ class _UserSettingGridCard extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                setting.color.withValues(alpha: 0.12),
-                Colors.white,
-              ],
+              colors: [setting.color.withValues(alpha: 0.12), Colors.white],
             ),
             boxShadow: [
               BoxShadow(
@@ -497,31 +512,16 @@ class _UserSettingGridCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (isSelected)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: setting.color.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '当前',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: setting.color,
-                          ),
-                        ),
-                      )
-                    else
-                      Icon(
+                    IconButton(
+                      onPressed: onEdit,
+                      icon: Icon(
                         Icons.edit_outlined,
-                        size: 16,
-                        color: Colors.grey.shade600,
+                        size: 18,
+                        color: Colors.grey.shade700,
                       ),
+                      tooltip: '编辑',
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -537,15 +537,6 @@ class _UserSettingGridCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '点击编辑',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: setting.color,
-                  ),
-                ),
               ],
             ),
           ),
@@ -556,10 +547,7 @@ class _UserSettingGridCard extends StatelessWidget {
 }
 
 class _UserSettingAvatar extends StatelessWidget {
-  const _UserSettingAvatar({
-    required this.setting,
-    required this.size,
-  });
+  const _UserSettingAvatar({required this.setting, required this.size});
 
   final UserSetting setting;
   final double size;

@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import '../data/mock_user_settings.dart';
 import '../data/preset_selection.dart';
 import '../models/character_card.dart';
+import '../services/chat_opening_message_builder.dart';
 import '../services/chat_database_service.dart';
-import '../services/chat_variable_service.dart';
 import '../services/character_service.dart';
 import 'chat_page.dart';
 import 'char_edit_page.dart';
@@ -170,8 +170,8 @@ class _CharListPageState extends State<CharListPage> {
       return;
     }
     final userName = _selectedUserName();
-    final openingMessages = _extractOpeningMessages(
-      record.cardJson,
+    final openingMessages = ChatOpeningMessageBuilder.build(
+      characterCardData: record.cardJson,
       characterName: summary.name,
       userName: userName,
     );
@@ -204,51 +204,6 @@ class _CharListPageState extends State<CharListPage> {
       }
     }
     return settings.first.name;
-  }
-
-  List<String> _extractOpeningMessages(
-    Map<String, dynamic> cardJson, {
-    required String characterName,
-    required String userName,
-  }) {
-    final data = cardJson['data'];
-    if (data is! Map) {
-      return const [];
-    }
-
-    final messages = <String>[];
-    final seen = <String>{};
-
-    final firstMessage = (data['first_mes'] as String? ?? '').trim();
-    if (firstMessage.isNotEmpty) {
-      final replaced = ChatVariableService.replacePlaceholders(
-        firstMessage,
-        characterName: characterName,
-        userName: userName,
-      ).trim();
-      if (replaced.isNotEmpty && seen.add(replaced)) {
-        messages.add(replaced);
-      }
-    }
-
-    final alternates = data['alternate_greetings'];
-    if (alternates is List) {
-      for (final item in alternates) {
-        final text = item.toString().trim();
-        if (text.isNotEmpty) {
-          final replaced = ChatVariableService.replacePlaceholders(
-            text,
-            characterName: characterName,
-            userName: userName,
-          ).trim();
-          if (replaced.isNotEmpty && seen.add(replaced)) {
-            messages.add(replaced);
-          }
-        }
-      }
-    }
-
-    return messages;
   }
 
   Color _fallbackSummaryColor(CharacterSummary summary) {
