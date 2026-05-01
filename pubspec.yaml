@@ -38,3 +38,8 @@ flutter:
   assets:
     - assets/Default.json
     - assets/PInn.png
+
+  fonts:
+    - family: "LXGW WenKai Screen"
+      fonts:
+        - asset: assets/fonts/LXGWWenKaiScreen.ttf

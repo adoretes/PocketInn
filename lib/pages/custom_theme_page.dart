@@ -35,10 +35,21 @@ class CustomThemePage extends StatelessWidget {
             children: [
               _SectionCard(
                 title: '主题颜色',
-                child: _ThemeColorPaletteTile(
-                  selectedIndex: resolveThemeColorPaletteIndex(settings),
-                  onChanged: (index) =>
-                      updateThemeConfig(themeColorIndex: index),
+                child: Column(
+                  children: [
+                    _SwitchTile(
+                      title: '霞鹜文楷屏幕版',
+                      value: themeConfig.useWenKaiScreenFont,
+                      onChanged: (value) =>
+                          updateThemeConfig(useWenKaiScreenFont: value),
+                    ),
+                    const SizedBox(height: 12),
+                    _ThemeColorPaletteTile(
+                      selectedIndex: resolveThemeColorPaletteIndex(settings),
+                      onChanged: (index) =>
+                          updateThemeConfig(themeColorIndex: index),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
@@ -128,6 +139,7 @@ class _ThemePreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final themeConfig = resolveThemeConfig(settings);
     final chatTextTheme = resolveActiveChatTextTheme(settings);
 
     return Container(
@@ -154,6 +166,10 @@ class _ThemePreviewCard extends StatelessWidget {
                     ? '阴影已开启'
                     : '阴影已关闭',
                 color: colorScheme.tertiary,
+              ),
+              _PreviewChip(
+                label: themeConfig.useWenKaiScreenFont ? '文楷已启用' : '系统字体',
+                color: colorScheme.primary,
               ),
             ],
           ),

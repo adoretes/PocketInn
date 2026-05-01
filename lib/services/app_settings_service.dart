@@ -40,6 +40,7 @@ class AppSettingsService {
   static const String _keyShowAvatar = 'app_show_avatar';
   static const String _keyBackgroundOpacity = 'app_background_opacity';
   static const String _keyInputGlassEffect = 'app_input_glass_effect';
+  static const String _keyUseWenKaiScreenFont = 'app_use_wenkai_screen_font';
   static const String _keyShowApiRequestLogEntry =
       'app_show_api_request_log_entry';
 
@@ -53,6 +54,7 @@ class AppSettingsService {
     final showAvatar = storage.getBool(_keyShowAvatar);
     final backgroundOpacity = storage.getDouble(_keyBackgroundOpacity);
     final inputGlassEffect = storage.getBool(_keyInputGlassEffect);
+    final useWenKaiScreenFont = storage.getBool(_keyUseWenKaiScreenFont);
     final showApiRequestLogEntry = storage.getBool(_keyShowApiRequestLogEntry);
     final themePreset = _enumValueOrDefault(
       AppThemePreset.values,
@@ -71,6 +73,7 @@ class AppSettingsService {
       themeConfigs: _loadThemeConfigs(
         storage: storage,
         activePreset: themePreset,
+        legacyUseWenKaiScreenFont: useWenKaiScreenFont,
       ),
       showAvatar: showAvatar ?? true,
       backgroundOpacity: backgroundOpacity ?? 0.85,
@@ -147,6 +150,7 @@ class AppSettingsService {
   Map<AppThemePreset, AppThemeConfig> _loadThemeConfigs({
     required StorageService storage,
     required AppThemePreset activePreset,
+    required bool? legacyUseWenKaiScreenFont,
   }) {
     final encoded = storage.getString(_keyThemeConfigs);
     if (encoded != null && encoded.trim().isNotEmpty) {
@@ -154,7 +158,10 @@ class AppSettingsService {
         final decoded = jsonDecode(encoded);
         final data = _asMap(decoded);
         if (data != null) {
-          return _decodeThemeConfigs(data);
+          return _decodeThemeConfigs(
+            data,
+            legacyUseWenKaiScreenFont: legacyUseWenKaiScreenFont,
+          );
         }
       } catch (_) {
         // Ignore malformed persisted theme configs and fall back to legacy keys.
@@ -164,18 +171,24 @@ class AppSettingsService {
     return _loadLegacyThemeConfigs(
       storage: storage,
       activePreset: activePreset,
+      legacyUseWenKaiScreenFont: legacyUseWenKaiScreenFont,
     );
   }
 
   Map<AppThemePreset, AppThemeConfig> _decodeThemeConfigs(
     Map<String, dynamic> data,
+    {
+    required bool? legacyUseWenKaiScreenFont,
+    }
   ) {
     final themeConfigs = <AppThemePreset, AppThemeConfig>{};
 
     for (final preset in AppThemePreset.values) {
       themeConfigs[preset] = _decodeThemeConfig(
         _asMap(data[preset.name]),
-        fallback: defaultAppThemeConfigs[preset]!,
+        fallback: defaultAppThemeConfigs[preset]!.copyWith(
+          useWenKaiScreenFont: legacyUseWenKaiScreenFont ?? true,
+        ),
       );
     }
 
@@ -195,6 +208,8 @@ class AppSettingsService {
         _asInt(data['themeColorIndex']),
         fallback.themeColorIndex,
       ),
+      useWenKaiScreenFont:
+          _asBool(data['useWenKaiScreenFont']) ?? fallback.useWenKaiScreenFont,
       chatTextTheme: _decodeChatTextTheme(
         _asMap(data['chatTextTheme']),
         fallback: fallback.chatTextTheme,
@@ -265,9 +280,13 @@ class AppSettingsService {
   Map<AppThemePreset, AppThemeConfig> _loadLegacyThemeConfigs({
     required StorageService storage,
     required AppThemePreset activePreset,
+    required bool? legacyUseWenKaiScreenFont,
   }) {
     final themeConfigs = <AppThemePreset, AppThemeConfig>{
-      ...defaultAppThemeConfigs,
+      for (final entry in defaultAppThemeConfigs.entries)
+        entry.key: entry.value.copyWith(
+          useWenKaiScreenFont: legacyUseWenKaiScreenFont ?? true,
+        ),
     };
 
     final customFallback = defaultAppThemeConfigs[AppThemePreset.custom]!;
@@ -276,6 +295,7 @@ class AppSettingsService {
         storage.getInt(_keyCustomThemeColorIndex),
         customFallback.themeColorIndex,
       ),
+      useWenKaiScreenFont: legacyUseWenKaiScreenFont ?? true,
     );
 
     final activeFallback = themeConfigs[activePreset]!;
@@ -362,6 +382,7 @@ class AppSettingsService {
           config.themeColorIndex,
           fallback.themeColorIndex,
         ),
+        'useWenKaiScreenFont': config.useWenKaiScreenFont,
         'chatTextTheme': _encodeChatTextTheme(config.chatTextTheme),
       };
     }

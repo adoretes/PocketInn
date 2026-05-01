@@ -174,18 +174,23 @@ class ChatTextThemeSettings {
 class AppThemeConfig {
   const AppThemeConfig({
     required this.themeColorIndex,
+    this.useWenKaiScreenFont = true,
     this.chatTextTheme = const ChatTextThemeSettings(),
   });
 
   final int themeColorIndex;
+  final bool useWenKaiScreenFont;
   final ChatTextThemeSettings chatTextTheme;
 
   AppThemeConfig copyWith({
     int? themeColorIndex,
+    bool? useWenKaiScreenFont,
     ChatTextThemeSettings? chatTextTheme,
   }) {
     return AppThemeConfig(
       themeColorIndex: themeColorIndex ?? this.themeColorIndex,
+      useWenKaiScreenFont:
+          useWenKaiScreenFont ?? this.useWenKaiScreenFont,
       chatTextTheme: chatTextTheme ?? this.chatTextTheme,
     );
   }
@@ -410,6 +415,7 @@ void updateAppSettings({
 void updateThemeConfig({
   AppThemePreset? preset,
   int? themeColorIndex,
+  bool? useWenKaiScreenFont,
   AppQuoteStyle? quoteStyle,
   bool? enableMessageTextShadow,
   ChatTextStyleConfig? quotedTextStyle,
@@ -426,6 +432,7 @@ void updateThemeConfig({
 
   nextThemeConfigs[targetPreset] = currentConfig.copyWith(
     themeColorIndex: themeColorIndex,
+    useWenKaiScreenFont: useWenKaiScreenFont,
     chatTextTheme: currentConfig.chatTextTheme.copyWith(
       quoteStyle: quoteStyle,
       enableMessageTextShadow: enableMessageTextShadow,
@@ -504,6 +511,13 @@ ChatTextThemeSettings resolveChatTextTheme(
   return resolveThemeConfig(settings, preset: preset).chatTextTheme;
 }
 
+bool resolveUseWenKaiScreenFont(
+  AppSettings settings, {
+  AppThemePreset? preset,
+}) {
+  return resolveThemeConfig(settings, preset: preset).useWenKaiScreenFont;
+}
+
 ThemeData buildAppTheme(AppSettings settings, Brightness brightness) {
   final colorScheme = ColorScheme.fromSeed(
     seedColor: resolveThemeColor(settings),
@@ -514,6 +528,9 @@ ThemeData buildAppTheme(AppSettings settings, Brightness brightness) {
     useMaterial3: true,
     brightness: brightness,
     colorScheme: colorScheme,
+    fontFamily: resolveUseWenKaiScreenFont(settings)
+        ? 'LXGW WenKai Screen'
+        : null,
     scaffoldBackgroundColor: colorScheme.surface,
     appBarTheme: AppBarTheme(
       backgroundColor: colorScheme.surface,
