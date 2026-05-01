@@ -20,6 +20,12 @@ PocketInn 是一个基于 Flutter 开发的 AI 聊天应用，偏向角色扮演
 
 这是一个仍在开发中的项目，部分功能和界面可能会继续调整。ios 版本由于本人没有 mac 设备，暂时无法开发和测试，后续问题可能无法修复，敬请谅解。
 
+
 ## 相关项目
 
 - [SillyTavern](https://github.com/SillyTavern/SillyTavern)
+
+### 字体
+
+项目内置字体 `LXGW WenKai Screen`，来源于 [lxgw/LxgwWenKai-Screen](https://github.com/lxgw/LxgwWenKai-Screen)。
+字体许可证为 `SIL Open Font License 1.1`，随仓库附带于 [assets/fonts/OFL.txt](assets/fonts/OFL.txt)。

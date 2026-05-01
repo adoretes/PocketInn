@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
@@ -8,6 +9,14 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
+  late final Future<PackageInfo> _packageInfoFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfoFuture = PackageInfo.fromPlatform();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -25,14 +34,25 @@ class _AboutPageState extends State<AboutPage> {
           _SectionCard(
             title: '版本信息',
             subtitle: '当前应用版本详情',
-            child: Column(
-              children: [
-                _InfoRow(label: '版本号', value: '1.0.4'),
-                const SizedBox(height: 8),
-                _InfoRow(label: '构建号', value: '5'),
-                const SizedBox(height: 8),
-                _InfoRow(label: '构建时间', value: '2026-04-28'),
-              ],
+            child: FutureBuilder<PackageInfo>(
+              future: _packageInfoFuture,
+              builder: (context, snapshot) {
+                final packageInfo = snapshot.data;
+
+                return Column(
+                  children: [
+                    _InfoRow(
+                      label: '版本号',
+                      value: packageInfo?.version ?? '读取中...',
+                    ),
+                    const SizedBox(height: 8),
+                    _InfoRow(
+                      label: '构建号',
+                      value: packageInfo?.buildNumber ?? '读取中...',
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           const SizedBox(height: 16),
@@ -45,11 +65,9 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.4',
-                  date: '2026-04-29',
-                  changes: [
-                    '添加重置聊天功能，优化用户设定选择逻辑',
-                  ],
+                  version: 'v1.0.5',
+                  date: '2026-05-01',
+                  changes: ['优化预设功能', '增加自定义字体'],
                 ),
               ],
             ),
@@ -65,13 +83,24 @@ class _AboutPageState extends State<AboutPage> {
                 _LicenseItem(
                   name: 'Flutter',
                   license: 'BSD-3-Clause',
-                  onTap: () => _showLicenseDialog(context, 'Flutter', flutterLicense),
+                  onTap: () =>
+                      _showLicenseDialog(context, 'Flutter', flutterLicense),
                 ),
                 const SizedBox(height: 8),
                 _LicenseItem(
                   name: 'Dart',
                   license: 'BSD-3-Clause',
                   onTap: () => _showLicenseDialog(context, 'Dart', dartLicense),
+                ),
+                const SizedBox(height: 8),
+                _LicenseItem(
+                  name: 'LXGW WenKai Screen',
+                  license: 'SIL OFL 1.1',
+                  onTap: () => _showLicenseDialog(
+                    context,
+                    'LXGW WenKai Screen',
+                    fontLicense,
+                  ),
                 ),
               ],
             ),
@@ -134,8 +163,7 @@ class _AboutPageState extends State<AboutPage> {
 }
 
 class _AppInfoCard extends StatelessWidget {
-  static const _appIconAsset =
-      'assets/PInn.png';
+  static const _appIconAsset = 'assets/PInn.png';
 
   const _AppInfoCard({required this.colorScheme});
 
@@ -174,10 +202,7 @@ class _AppInfoCard extends StatelessWidget {
             // 应用名称
             const Text(
               'PocketInn',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -217,10 +242,7 @@ class _SectionCard extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
@@ -255,17 +277,11 @@ class _InfoRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 14,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
         ),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -318,26 +334,28 @@ class _UpdateLogItem extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        ...changes.map((change) => Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.check_circle_outline,
-                size: 16,
-                color: colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  change,
-                  style: const TextStyle(fontSize: 13, height: 1.4),
+        ...changes.map(
+          (change) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.check_circle_outline,
+                  size: 16,
+                  color: colorScheme.primary,
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    change,
+                    style: const TextStyle(fontSize: 13, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
           ),
-        )),
+        ),
       ],
     );
   }
@@ -366,10 +384,7 @@ class _LicenseItem extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              name,
-              style: const TextStyle(fontSize: 14),
-            ),
+            Text(name, style: const TextStyle(fontSize: 14)),
             Row(
               children: [
                 Text(
@@ -411,11 +426,7 @@ class _ContactItem extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 20,
-          color: colorScheme.primary,
-        ),
+        Icon(icon, size: 20, color: colorScheme.primary),
         const SizedBox(width: 12),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,10 +438,7 @@ class _ContactItem extends StatelessWidget {
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 14),
-            ),
+            Text(value, style: const TextStyle(fontSize: 14)),
           ],
         ),
       ],
@@ -495,4 +503,13 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+''';
+
+const String fontLicense = '''
+Copyright 2021-2024 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)
+Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://openfontlicense.org
 ''';
