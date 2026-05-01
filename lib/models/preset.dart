@@ -11,8 +11,11 @@ class PresetPrompt {
     this.enabled = true,
     this.injectionPosition = PresetInjectionPosition.relative,
     this.injectionDepth = 4,
+    this.injectionOrder = 100,
     Map<String, dynamic>? extra,
-  }) : extra = extra == null ? <String, dynamic>{} : Map<String, dynamic>.from(extra);
+  }) : extra = extra == null
+           ? <String, dynamic>{}
+           : Map<String, dynamic>.from(extra);
 
   final String identifier;
   String name;
@@ -23,6 +26,7 @@ class PresetPrompt {
   bool enabled;
   String injectionPosition;
   int injectionDepth;
+  int injectionOrder;
   final Map<String, dynamic> extra;
 
   bool get isDefault => defaultPromptIdentifiers.contains(identifier);
@@ -39,6 +43,7 @@ class PresetPrompt {
       enabled: map['enabled'] as bool? ?? true,
       injectionPosition: _decodeInjectionPosition(map['injection_position']),
       injectionDepth: _readInt(map['injection_depth'], fallback: 4),
+      injectionOrder: _readInt(map['injection_order'], fallback: 100),
       extra: _extractExtraPromptFields(map),
     );
   }
@@ -55,6 +60,7 @@ class PresetPrompt {
       'enabled': enabled,
       'injection_position': _encodeInjectionPosition(injectionPosition),
       'injection_depth': injectionDepth,
+      'injection_order': injectionOrder,
     };
   }
 
@@ -69,6 +75,7 @@ class PresetPrompt {
       enabled: enabled,
       injectionPosition: injectionPosition,
       injectionDepth: injectionDepth,
+      injectionOrder: injectionOrder,
       extra: extra,
     );
   }
@@ -86,6 +93,107 @@ class PresetPrompt {
     extra.remove('enabled');
     extra.remove('injection_position');
     extra.remove('injection_depth');
+    extra.remove('injection_order');
+    return extra;
+  }
+}
+
+class PresetPromptOrderEntry {
+  PresetPromptOrderEntry({
+    required this.identifier,
+    this.enabled = true,
+    Map<String, dynamic>? extra,
+  }) : extra = extra == null
+           ? <String, dynamic>{}
+           : Map<String, dynamic>.from(extra);
+
+  final String identifier;
+  bool enabled;
+  final Map<String, dynamic> extra;
+
+  factory PresetPromptOrderEntry.fromJson(Map<String, dynamic> json) {
+    final map = Map<String, dynamic>.from(json);
+    return PresetPromptOrderEntry(
+      identifier: map['identifier'] as String? ?? '',
+      enabled: map['enabled'] as bool? ?? true,
+      extra: _extractExtraPromptOrderEntryFields(map),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {...extra, 'identifier': identifier, 'enabled': enabled};
+  }
+
+  PresetPromptOrderEntry copy() {
+    return PresetPromptOrderEntry(
+      identifier: identifier,
+      enabled: enabled,
+      extra: extra,
+    );
+  }
+
+  static Map<String, dynamic> _extractExtraPromptOrderEntryFields(
+    Map<String, dynamic> map,
+  ) {
+    final extra = Map<String, dynamic>.from(map);
+    extra.remove('identifier');
+    extra.remove('enabled');
+    return extra;
+  }
+}
+
+class PresetPromptOrderGroup {
+  PresetPromptOrderGroup({
+    required this.characterId,
+    required List<PresetPromptOrderEntry> order,
+    Map<String, dynamic>? extra,
+  }) : order = order.map((item) => item.copy()).toList(),
+       extra = extra == null
+           ? <String, dynamic>{}
+           : Map<String, dynamic>.from(extra);
+
+  final String characterId;
+  List<PresetPromptOrderEntry> order;
+  final Map<String, dynamic> extra;
+
+  factory PresetPromptOrderGroup.fromJson(Map<String, dynamic> json) {
+    final map = Map<String, dynamic>.from(json);
+    return PresetPromptOrderGroup(
+      characterId: _stringifyValue(map['character_id']),
+      order: (map['order'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) => PresetPromptOrderEntry.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList(),
+      extra: _extractExtraPromptOrderGroupFields(map),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      ...extra,
+      'character_id': _jsonFriendlyValue(characterId),
+      'order': order.map((item) => item.toJson()).toList(),
+    };
+  }
+
+  PresetPromptOrderGroup copy() {
+    return PresetPromptOrderGroup(
+      characterId: characterId,
+      order: order,
+      extra: extra,
+    );
+  }
+
+  static Map<String, dynamic> _extractExtraPromptOrderGroupFields(
+    Map<String, dynamic> map,
+  ) {
+    final extra = Map<String, dynamic>.from(map);
+    extra.remove('character_id');
+    extra.remove('order');
     return extra;
   }
 }
@@ -107,8 +215,15 @@ class Preset {
     this.repetitionPenalty = 1.0,
     this.openaiMaxContext = 4095,
     this.openaiMaxTokens = 300,
+    List<PresetPromptOrderGroup>? promptOrderGroups,
+    this.activePromptOrderCharacterId,
     Map<String, dynamic>? extra,
-  }) : extra = extra == null ? <String, dynamic>{} : Map<String, dynamic>.from(extra);
+  }) : promptOrderGroups =
+           promptOrderGroups?.map((item) => item.copy()).toList() ??
+           <PresetPromptOrderGroup>[],
+       extra = extra == null
+           ? <String, dynamic>{}
+           : Map<String, dynamic>.from(extra);
 
   final String id;
   String name;
@@ -124,11 +239,29 @@ class Preset {
   int openaiMaxContext;
   int openaiMaxTokens;
   List<PresetPrompt> prompts;
+  List<PresetPromptOrderGroup> promptOrderGroups;
+  String? activePromptOrderCharacterId;
   DateTime updatedAt;
   final Map<String, dynamic> extra;
 
+  PresetPromptOrderGroup? get activePromptOrderGroup {
+    if (promptOrderGroups.isEmpty) {
+      return null;
+    }
+    final activeId = activePromptOrderCharacterId;
+    if (activeId != null) {
+      for (final group in promptOrderGroups) {
+        if (group.characterId == activeId) {
+          return group;
+        }
+      }
+    }
+    return promptOrderGroups.first;
+  }
+
   factory Preset.fromStorageJson(Map<String, dynamic> json) {
     final map = Map<String, dynamic>.from(json);
+    final promptOrderGroups = _parsePromptOrderGroups(map['promptOrderGroups']);
     return Preset(
       id: map['id'] as String? ?? '',
       name: map['name'] as String? ?? '未命名预设',
@@ -144,12 +277,18 @@ class Preset {
       openaiMaxContext: _readInt(map['openaiMaxContext'], fallback: 4095),
       openaiMaxTokens: _readInt(map['openaiMaxTokens'], fallback: 300),
       updatedAt:
-          DateTime.tryParse(map['updatedAt'] as String? ?? '') ?? DateTime.now(),
+          DateTime.tryParse(map['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
       prompts: (map['prompts'] as List<dynamic>? ?? const [])
           .map(
-            (item) => PresetPrompt.fromJson(Map<String, dynamic>.from(item as Map)),
+            (item) =>
+                PresetPrompt.fromJson(Map<String, dynamic>.from(item as Map)),
           )
           .toList(),
+      promptOrderGroups: promptOrderGroups,
+      activePromptOrderCharacterId: _stringifyNullableValue(
+        map['activePromptOrderCharacterId'],
+      ),
       extra: map['extra'] is Map
           ? Map<String, dynamic>.from(map['extra'] as Map)
           : <String, dynamic>{},
@@ -165,16 +304,27 @@ class Preset {
     final map = Map<String, dynamic>.from(json);
     final prompts = (map['prompts'] as List<dynamic>? ?? const [])
         .map(
-          (item) => PresetPrompt.fromJson(Map<String, dynamic>.from(item as Map)),
+          (item) =>
+              PresetPrompt.fromJson(Map<String, dynamic>.from(item as Map)),
         )
         .toList();
-    final orderedPrompts = _applyPromptOrder(prompts, map['prompt_order']);
+    final promptOrderGroups = _parsePromptOrderGroups(map['prompt_order']);
+    final activePromptOrderGroup = _selectPromptOrderGroup(
+      promptOrderGroups,
+      prompts,
+    );
+    final orderedPrompts = _applyPromptOrder(
+      prompts,
+      activePromptOrderGroup?.order ?? const [],
+    );
 
     return Preset(
       id: id,
       name: (map['name'] as String?)?.trim().isNotEmpty == true
           ? map['name'] as String
-          : (fallbackName?.trim().isNotEmpty == true ? fallbackName!.trim() : 'Default'),
+          : (fallbackName?.trim().isNotEmpty == true
+                ? fallbackName!.trim()
+                : 'Default'),
       isBuiltin: isBuiltin,
       temperature: (map['temperature'] as num? ?? 1.0).toDouble(),
       frequencyPenalty: (map['frequency_penalty'] as num? ?? 0.0).toDouble(),
@@ -187,12 +337,15 @@ class Preset {
       openaiMaxContext: _readInt(map['openai_max_context'], fallback: 4095),
       openaiMaxTokens: _readInt(map['openai_max_tokens'], fallback: 300),
       prompts: orderedPrompts,
+      promptOrderGroups: promptOrderGroups,
+      activePromptOrderCharacterId: activePromptOrderGroup?.characterId,
       updatedAt: DateTime.now(),
       extra: _extractExtraPresetFields(map),
     );
   }
 
   Map<String, dynamic> toStorageJson() {
+    final promptOrderGroupsSnapshot = _buildPromptOrderGroupsSnapshot();
     return {
       'id': id,
       'name': name,
@@ -209,11 +362,18 @@ class Preset {
       'openaiMaxTokens': openaiMaxTokens,
       'updatedAt': updatedAt.toIso8601String(),
       'prompts': prompts.map((item) => item.toJson()).toList(),
+      'promptOrderGroups': promptOrderGroupsSnapshot
+          .map((item) => item.toJson())
+          .toList(),
+      'activePromptOrderCharacterId': _resolveActivePromptOrderCharacterId(
+        promptOrderGroupsSnapshot,
+      ),
       'extra': extra,
     };
   }
 
   Map<String, dynamic> toSillyTavernJson() {
+    final promptOrderGroupsSnapshot = _buildPromptOrderGroupsSnapshot();
     final result = Map<String, dynamic>.from(extra);
     result['name'] = name;
     result['temperature'] = temperature;
@@ -227,19 +387,9 @@ class Preset {
     result['openai_max_context'] = openaiMaxContext;
     result['openai_max_tokens'] = openaiMaxTokens;
     result['prompts'] = prompts.map((item) => item.toJson()).toList();
-    result['prompt_order'] = [
-      {
-        'character_id': 100001,
-        'order': prompts
-            .map(
-              (item) => {
-                'identifier': item.identifier,
-                'enabled': item.enabled,
-              },
-            )
-            .toList(),
-      },
-    ];
+    result['prompt_order'] = promptOrderGroupsSnapshot
+        .map((item) => item.toJson())
+        .toList();
     return result;
   }
 
@@ -295,6 +445,8 @@ class Preset {
     int? openaiMaxContext,
     int? openaiMaxTokens,
     List<PresetPrompt>? prompts,
+    List<PresetPromptOrderGroup>? promptOrderGroups,
+    String? activePromptOrderCharacterId,
     DateTime? updatedAt,
     Map<String, dynamic>? extra,
   }) {
@@ -312,11 +464,57 @@ class Preset {
       repetitionPenalty: repetitionPenalty ?? this.repetitionPenalty,
       openaiMaxContext: openaiMaxContext ?? this.openaiMaxContext,
       openaiMaxTokens: openaiMaxTokens ?? this.openaiMaxTokens,
-      prompts: prompts?.map((item) => item.copy()).toList() ??
+      prompts:
+          prompts?.map((item) => item.copy()).toList() ??
           this.prompts.map((item) => item.copy()).toList(),
+      promptOrderGroups:
+          promptOrderGroups?.map((item) => item.copy()).toList() ??
+          this.promptOrderGroups.map((item) => item.copy()).toList(),
+      activePromptOrderCharacterId:
+          activePromptOrderCharacterId ?? this.activePromptOrderCharacterId,
       updatedAt: updatedAt ?? this.updatedAt,
       extra: extra ?? this.extra,
     );
+  }
+
+  List<PresetPromptOrderGroup> _buildPromptOrderGroupsSnapshot() {
+    final snapshot = promptOrderGroups.isEmpty
+        ? [
+            PresetPromptOrderGroup(
+              characterId:
+                  activePromptOrderCharacterId ?? defaultPromptOrderCharacterId,
+              order: const [],
+            ),
+          ]
+        : promptOrderGroups.map((item) => item.copy()).toList();
+    final activeId = _resolveActivePromptOrderCharacterId(snapshot);
+    final activeIndex = snapshot.indexWhere(
+      (item) => item.characterId == activeId,
+    );
+    final targetIndex = activeIndex == -1 ? 0 : activeIndex;
+    snapshot[targetIndex].order = prompts
+        .map(
+          (item) => PresetPromptOrderEntry(
+            identifier: item.identifier,
+            enabled: item.enabled,
+          ),
+        )
+        .toList();
+    return snapshot;
+  }
+
+  String _resolveActivePromptOrderCharacterId(
+    List<PresetPromptOrderGroup> groups,
+  ) {
+    if (groups.isEmpty) {
+      return activePromptOrderCharacterId ?? defaultPromptOrderCharacterId;
+    }
+    final activeId = activePromptOrderCharacterId;
+    if (activeId != null &&
+        groups.any((item) => item.characterId == activeId)) {
+      return activeId;
+    }
+    return groups.first.characterId;
   }
 
   static Map<String, dynamic> _extractExtraPresetFields(
@@ -344,7 +542,7 @@ class Preset {
 
   static List<PresetPrompt> _applyPromptOrder(
     List<PresetPrompt> prompts,
-    Object? promptOrderValue,
+    List<PresetPromptOrderEntry> promptOrderEntries,
   ) {
     if (prompts.isEmpty) {
       return [];
@@ -354,33 +552,103 @@ class Preset {
       for (final prompt in prompts) prompt.identifier: prompt,
     };
     final ordered = <PresetPrompt>[];
-    final orderItems = <Map<String, dynamic>>[];
-    if (promptOrderValue is List && promptOrderValue.isNotEmpty) {
-      final first = promptOrderValue.first;
-      if (first is Map && first['order'] is List) {
-        for (final item in first['order'] as List) {
-          if (item is Map) {
-            orderItems.add(Map<String, dynamic>.from(item));
-          }
-        }
-      }
-    }
-
-    for (final item in orderItems) {
-      final identifier = item['identifier'] as String?;
-      if (identifier == null) {
+    for (final item in promptOrderEntries) {
+      if (item.identifier.isEmpty) {
         continue;
       }
-      final prompt = promptById.remove(identifier);
+      final prompt = promptById.remove(item.identifier);
       if (prompt == null) {
         continue;
       }
-      prompt.enabled = item['enabled'] as bool? ?? prompt.enabled;
+      prompt.enabled = item.enabled;
       ordered.add(prompt);
     }
 
     ordered.addAll(promptById.values);
     return ordered;
+  }
+
+  static List<PresetPromptOrderGroup> _parsePromptOrderGroups(
+    Object? promptOrderValue,
+  ) {
+    if (promptOrderValue is! List) {
+      return const [];
+    }
+
+    return promptOrderValue
+        .whereType<Map>()
+        .map(
+          (item) =>
+              PresetPromptOrderGroup.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .where((item) => item.characterId.isNotEmpty || item.order.isNotEmpty)
+        .toList();
+  }
+
+  static PresetPromptOrderGroup? _selectPromptOrderGroup(
+    List<PresetPromptOrderGroup> groups,
+    List<PresetPrompt> prompts,
+  ) {
+    if (groups.isEmpty) {
+      return null;
+    }
+
+    final promptIds = prompts.map((item) => item.identifier).toSet();
+    var bestGroup = groups.first;
+    var bestScore = _scorePromptOrderGroup(bestGroup, promptIds);
+    for (final group in groups.skip(1)) {
+      final score = _scorePromptOrderGroup(group, promptIds);
+      if (_comparePromptOrderGroupScores(score, bestScore) > 0) {
+        bestGroup = group;
+        bestScore = score;
+      }
+    }
+    return bestGroup;
+  }
+
+  static List<int> _scorePromptOrderGroup(
+    PresetPromptOrderGroup group,
+    Set<String> promptIds,
+  ) {
+    var enabledCustomCount = 0;
+    var customCount = 0;
+    var enabledCount = 0;
+    var matchedCount = 0;
+
+    for (final item in group.order) {
+      if (!promptIds.contains(item.identifier)) {
+        continue;
+      }
+      matchedCount += 1;
+      if (item.enabled) {
+        enabledCount += 1;
+      }
+      if (!defaultPromptIdentifiers.contains(item.identifier)) {
+        customCount += 1;
+        if (item.enabled) {
+          enabledCustomCount += 1;
+        }
+      }
+    }
+
+    return [
+      enabledCustomCount,
+      customCount,
+      enabledCount,
+      matchedCount,
+      group.order.length,
+    ];
+  }
+
+  static int _comparePromptOrderGroupScores(List<int> left, List<int> right) {
+    final length = left.length < right.length ? left.length : right.length;
+    for (var i = 0; i < length; i += 1) {
+      final comparison = left[i].compareTo(right[i]);
+      if (comparison != 0) {
+        return comparison;
+      }
+    }
+    return left.length.compareTo(right.length);
   }
 }
 
@@ -403,7 +671,8 @@ class PresetSummary {
       name: json['name'] as String? ?? '未命名预设',
       isBuiltin: json['isBuiltin'] as bool? ?? false,
       updatedAt:
-          DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
+          DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
     );
   }
 
@@ -437,6 +706,8 @@ const List<String> defaultPromptIdentifiers = [
   'personaDescription',
 ];
 
+const String defaultPromptOrderCharacterId = '100000';
+
 int _readInt(Object? value, {int fallback = 0}) {
   if (value is int) {
     return value;
@@ -463,4 +734,20 @@ String _decodeInjectionPosition(Object? value) {
 
 int _encodeInjectionPosition(String value) {
   return value == PresetInjectionPosition.inChat ? 1 : 0;
+}
+
+String _stringifyValue(Object? value) {
+  return value?.toString() ?? '';
+}
+
+String? _stringifyNullableValue(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  final stringValue = value.toString();
+  return stringValue.isEmpty ? null : stringValue;
+}
+
+Object _jsonFriendlyValue(String value) {
+  return int.tryParse(value) ?? value;
 }

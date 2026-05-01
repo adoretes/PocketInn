@@ -92,6 +92,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
       enabled: true,
       injectionPosition: PresetInjectionPosition.relative,
       injectionDepth: 4,
+      injectionOrder: 100,
     );
     setState(() {
       _preset.prompts = [..._preset.prompts, prompt];
@@ -315,6 +316,7 @@ class _PromptCardState extends State<_PromptCard> {
   late final TextEditingController _nameController;
   late final TextEditingController _contentController;
   late final TextEditingController _depthController;
+  late final TextEditingController _orderController;
 
   @override
   void initState() {
@@ -323,6 +325,9 @@ class _PromptCardState extends State<_PromptCard> {
     _contentController = TextEditingController(text: widget.prompt.content);
     _depthController = TextEditingController(
       text: widget.prompt.injectionDepth.toString(),
+    );
+    _orderController = TextEditingController(
+      text: widget.prompt.injectionOrder.toString(),
     );
   }
 
@@ -338,6 +343,9 @@ class _PromptCardState extends State<_PromptCard> {
     if (oldWidget.prompt.injectionDepth != widget.prompt.injectionDepth) {
       _depthController.text = widget.prompt.injectionDepth.toString();
     }
+    if (oldWidget.prompt.injectionOrder != widget.prompt.injectionOrder) {
+      _orderController.text = widget.prompt.injectionOrder.toString();
+    }
   }
 
   @override
@@ -345,6 +353,7 @@ class _PromptCardState extends State<_PromptCard> {
     _nameController.dispose();
     _contentController.dispose();
     _depthController.dispose();
+    _orderController.dispose();
     super.dispose();
   }
 
@@ -528,6 +537,28 @@ class _PromptCardState extends State<_PromptCard> {
                           int.tryParse(value) ?? prompt.injectionDepth;
                     },
                   ),
+                  if (prompt.injectionPosition ==
+                      PresetInjectionPosition.inChat) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _orderController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(
+                        labelText: '注入顺序',
+                        helperText: '同深度时数值越小越靠前',
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        prompt.injectionOrder =
+                            int.tryParse(value) ?? prompt.injectionOrder;
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),

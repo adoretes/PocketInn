@@ -14,6 +14,7 @@ class PromptAssembler {
       normalizedCard['data'] as Map<String, dynamic>? ??
           const <String, dynamic>{},
     );
+    final macroState = _buildMacroState(context);
     final activatedEntries = _activateWorldBookEntries(
       worldBooks: context.selectedWorldBooks,
       chatMessages: context.chatMessages,
@@ -21,15 +22,14 @@ class PromptAssembler {
     );
     final worldInfoBefore = _joinWorldBookContent(
       activatedEntries.where((item) => item.entry.position == 0).toList(),
-      context,
     );
     final worldInfoAfter = _joinWorldBookContent(
       activatedEntries.where((item) => item.entry.position != 0).toList(),
-      context,
     );
     final unusedOverrides = _buildUnusedOverrides(cardData, context);
 
-    final rawSegments = <PromptSegment>[];
+    final resolvedEntries = <_ResolvedPromptEntry>[];
+    var sequence = 0;
     for (final prompt in context.preset.prompts) {
       if (!prompt.enabled) {
         continue;
@@ -39,6 +39,7 @@ class PromptAssembler {
         prompt: prompt,
         cardData: cardData,
         context: context,
+        macroState: macroState,
         worldInfoBefore: worldInfoBefore,
         worldInfoAfter: worldInfoAfter,
       );
@@ -46,25 +47,49 @@ class PromptAssembler {
         continue;
       }
 
-      rawSegments.add(
-        PromptSegment(
-          role: prompt.role.trim().isEmpty ? 'system' : prompt.role.trim(),
-          content: content.trim(),
-          source: _sourceLabel(prompt),
-          identifier: prompt.identifier,
+      resolvedEntries.add(
+        _ResolvedPromptEntry(
+          prompt: prompt,
+          sequence: sequence++,
+          segment: PromptSegment(
+            role: prompt.role.trim().isEmpty ? 'system' : prompt.role.trim(),
+            content: content.trim(),
+            source: _sourceLabel(prompt),
+            identifier: prompt.identifier,
+          ),
         ),
       );
     }
 
+    final inChatEntries = resolvedEntries
+        .where((item) => _isInChatPrompt(item.prompt))
+        .toList(growable: false);
+    final topLevelSegments = resolvedEntries
+        .where((item) => !_isInChatPrompt(item.prompt))
+        .map(
+          (item) => item.segment.identifier == 'chatHistory'
+              ? PromptSegment(
+                  role: item.segment.role,
+                  content: _buildMergedChatHistoryText(
+                    context: context,
+                    inChatEntries: inChatEntries,
+                  ),
+                  source: item.segment.source,
+                  identifier: item.segment.identifier,
+                )
+              : item.segment,
+        )
+        .toList(growable: false);
     final messages = _buildOpenAiMessages(
-      segments: rawSegments,
+      segments: topLevelSegments,
+      inChatEntries: inChatEntries,
       context: context,
     );
     return PromptAssemblyResult(
       messages: messages,
-      mergedText: _buildMergedText(_mergeAdjacentMessages(rawSegments)),
+      mergedText: _buildMergedText(_mergeAdjacentMessages(topLevelSegments)),
       activatedWorldBookEntries: activatedEntries,
-      segments: rawSegments,
+      segments: topLevelSegments,
       unusedCharacterOverrides: unusedOverrides,
     );
   }
@@ -145,12 +170,9 @@ class PromptAssembler {
     return false;
   }
 
-  static String _joinWorldBookContent(
-    List<ActivatedWorldBookEntry> entries,
-    PromptAssemblyContext context,
-  ) {
+  static String _joinWorldBookContent(List<ActivatedWorldBookEntry> entries) {
     return entries
-        .map((item) => _replaceVariables(item.entry.content, context))
+        .map((item) => item.entry.content)
         .where((item) => item.trim().isNotEmpty)
         .join('\n\n');
   }
@@ -199,38 +221,43 @@ class PromptAssembler {
     required PresetPrompt prompt,
     required Map<String, dynamic> cardData,
     required PromptAssemblyContext context,
+    required PromptMacroState macroState,
     required String worldInfoBefore,
     required String worldInfoAfter,
   }) {
-    final identifier = prompt.identifier;
-    switch (identifier) {
+    final rawContent = _resolveRawPromptContent(
+      prompt: prompt,
+      cardData: cardData,
+      context: context,
+      worldInfoBefore: worldInfoBefore,
+      worldInfoAfter: worldInfoAfter,
+    );
+    return _resolvePromptText(rawContent, macroState);
+  }
+
+  static String _resolveRawPromptContent({
+    required PresetPrompt prompt,
+    required Map<String, dynamic> cardData,
+    required PromptAssemblyContext context,
+    required String worldInfoBefore,
+    required String worldInfoAfter,
+  }) {
+    switch (prompt.identifier) {
       case 'personaDescription':
-        return _replaceVariables(context.userSettingPrompt, context);
+        return context.userSettingPrompt;
       case 'charDescription':
-        return _replaceVariables(
-          cardData['description'] as String? ?? '',
-          context,
-        );
+        return cardData['description'] as String? ?? '';
       case 'charPersonality':
-        return _replaceVariables(
-          cardData['personality'] as String? ?? '',
-          context,
-        );
+        return cardData['personality'] as String? ?? '';
       case 'scenario':
-        return _replaceVariables(
-          cardData['scenario'] as String? ?? '',
-          context,
-        );
+        return cardData['scenario'] as String? ?? '';
       case 'dialogueExamples':
         return _replaceExampleChat(
           cardData['mes_example'] as String? ?? '',
           context,
         );
       case 'chatHistory':
-        return _replaceVariables(
-          _formatChatHistory(context, context.preset),
-          context,
-        );
+        return _formatChatHistory(context, context.preset);
       case 'worldInfoBefore':
         return worldInfoBefore;
       case 'worldInfoAfter':
@@ -239,7 +266,7 @@ class PromptAssembler {
       case 'jailbreak':
       case 'post_history_instructions':
       default:
-        return _replaceVariables(prompt.content, context);
+        return prompt.content;
     }
   }
 
@@ -249,12 +276,8 @@ class PromptAssembler {
   ) {
     final lines = <String>[];
     final newChatPrompt = preset.extra['new_chat_prompt'] as String? ?? '';
-    final resolvedNewChatPrompt = _replaceVariables(
-      newChatPrompt,
-      context,
-    ).trim();
-    if (resolvedNewChatPrompt.isNotEmpty) {
-      lines.add(resolvedNewChatPrompt);
+    if (newChatPrompt.trim().isNotEmpty) {
+      lines.add(newChatPrompt.trim());
     }
     for (final message in context.chatMessages) {
       final role = message.isMe ? 'user' : 'assistant';
@@ -267,6 +290,27 @@ class PromptAssembler {
     return lines.join('\n');
   }
 
+  static String _buildMergedChatHistoryText({
+    required PromptAssemblyContext context,
+    required List<_ResolvedPromptEntry> inChatEntries,
+  }) {
+    final lines = <String>[];
+    final newChatPrompt = _resolveNewChatPrompt(context);
+    if (newChatPrompt.isNotEmpty) {
+      lines.add(newChatPrompt);
+    }
+
+    for (final message in _mergePromptMessages(
+      _buildExpandedChatHistoryMessages(
+        context: context,
+        inChatEntries: inChatEntries,
+      ),
+    )) {
+      lines.add('${message.role}: ${message.content}');
+    }
+    return lines.join('\n');
+  }
+
   static String _replaceExampleChat(
     String input,
     PromptAssemblyContext context,
@@ -274,14 +318,12 @@ class PromptAssembler {
     final exampleChatPrompt =
         context.preset.extra['new_example_chat_prompt'] as String? ??
         '[Example Chat]';
-    return _replaceVariables(
-      input.replaceAll('<START>', exampleChatPrompt),
-      context,
-    );
+    return input.replaceAll('<START>', exampleChatPrompt);
   }
 
   static List<PromptMessage> _buildOpenAiMessages({
     required List<PromptSegment> segments,
+    required List<_ResolvedPromptEntry> inChatEntries,
     required PromptAssemblyContext context,
   }) {
     final expanded = <PromptMessage>[];
@@ -297,12 +339,7 @@ class PromptAssembler {
         continue;
       }
 
-      final newChatPrompt =
-          context.preset.extra['new_chat_prompt'] as String? ?? '';
-      final resolvedNewChatPrompt = _replaceVariables(
-        newChatPrompt,
-        context,
-      ).trim();
+      final resolvedNewChatPrompt = _resolveNewChatPrompt(context);
       if (resolvedNewChatPrompt.isNotEmpty) {
         expanded.add(
           PromptMessage(
@@ -313,32 +350,137 @@ class PromptAssembler {
         );
       }
 
-      for (final chatMessage in context.chatMessages) {
-        expanded.add(
-          PromptMessage(
-            role: chatMessage.isMe ? 'user' : 'assistant',
-            content: _replaceVariables(chatMessage.text, context).trim(),
-            sources: [segment.source],
-          ),
-        );
-      }
-
-      final currentInput = _replaceVariables(
-        context.currentInput,
-        context,
-      ).trim();
-      if (currentInput.isNotEmpty) {
-        expanded.add(
-          PromptMessage(
-            role: 'user',
-            content: currentInput,
-            sources: [segment.source],
-          ),
-        );
-      }
+      expanded.addAll(
+        _buildExpandedChatHistoryMessages(
+          context: context,
+          inChatEntries: inChatEntries,
+        ),
+      );
     }
 
     return _mergePromptMessages(expanded);
+  }
+
+  static List<PromptMessage> _buildExpandedChatHistoryMessages({
+    required PromptAssemblyContext context,
+    required List<_ResolvedPromptEntry> inChatEntries,
+  }) {
+    const chatHistorySource = '虚拟聊天记录';
+    final baseMessages = <PromptMessage>[
+      for (final chatMessage in context.chatMessages)
+        PromptMessage(
+          role: chatMessage.isMe ? 'user' : 'assistant',
+          content: _replaceVariables(chatMessage.text, context).trim(),
+          sources: const [chatHistorySource],
+        ),
+    ];
+
+    final currentInput = _replaceVariables(
+      context.currentInput,
+      context,
+    ).trim();
+    if (currentInput.isNotEmpty) {
+      baseMessages.add(
+        PromptMessage(
+          role: 'user',
+          content: currentInput,
+          sources: const [chatHistorySource],
+        ),
+      );
+    }
+
+    final injectionsByIndex = _groupInChatMessages(
+      inChatEntries: inChatEntries,
+      historyLength: baseMessages.length,
+    );
+    final expanded = <PromptMessage>[];
+    for (var index = 0; index <= baseMessages.length; index++) {
+      final injections = injectionsByIndex[index];
+      if (injections != null) {
+        expanded.addAll(injections);
+      }
+      if (index < baseMessages.length) {
+        expanded.add(baseMessages[index]);
+      }
+    }
+    return expanded;
+  }
+
+  static Map<int, List<PromptMessage>> _groupInChatMessages({
+    required List<_ResolvedPromptEntry> inChatEntries,
+    required int historyLength,
+  }) {
+    final entriesByIndex = <int, List<_ResolvedPromptEntry>>{};
+    for (final entry in inChatEntries) {
+      final insertionIndex = _resolveInChatInsertionIndex(
+        historyLength: historyLength,
+        depth: entry.prompt.injectionDepth,
+      );
+      entriesByIndex.putIfAbsent(insertionIndex, () => []).add(entry);
+    }
+
+    final grouped = <int, List<PromptMessage>>{};
+    for (final item in entriesByIndex.entries) {
+      final sortedEntries = [...item.value]
+        ..sort((a, b) {
+          final roleCompare = _inChatRolePriority(
+            a.segment.role,
+          ).compareTo(_inChatRolePriority(b.segment.role));
+          if (roleCompare != 0) {
+            return roleCompare;
+          }
+
+          final orderCompare = a.prompt.injectionOrder.compareTo(
+            b.prompt.injectionOrder,
+          );
+          if (orderCompare != 0) {
+            return orderCompare;
+          }
+          return a.sequence.compareTo(b.sequence);
+        });
+
+      grouped[item.key] = [
+        for (final entry in sortedEntries)
+          PromptMessage(
+            role: entry.segment.role,
+            content: entry.segment.content,
+            sources: [entry.segment.source],
+          ),
+      ];
+    }
+    return grouped;
+  }
+
+  static int _resolveInChatInsertionIndex({
+    required int historyLength,
+    required int depth,
+  }) {
+    final normalizedDepth = depth < 0 ? 0 : depth;
+    final insertionIndex = historyLength - normalizedDepth;
+    if (insertionIndex < 0) {
+      return 0;
+    }
+    if (insertionIndex > historyLength) {
+      return historyLength;
+    }
+    return insertionIndex;
+  }
+
+  static int _inChatRolePriority(String role) {
+    switch (role.trim()) {
+      case 'user':
+        return 0;
+      case 'assistant':
+        return 1;
+      case 'system':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
+  static bool _isInChatPrompt(PresetPrompt prompt) {
+    return prompt.injectionPosition == PresetInjectionPosition.inChat;
   }
 
   static String _replaceVariables(String input, PromptAssemblyContext context) {
@@ -347,6 +489,10 @@ class PromptAssembler {
       characterName: context.characterName,
       userName: context.userName,
     );
+  }
+
+  static String _resolvePromptText(String input, PromptMacroState macroState) {
+    return ChatVariableService.resolveMacros(input, state: macroState);
   }
 
   static String _sourceLabel(PresetPrompt prompt) {
@@ -440,4 +586,54 @@ class PromptAssembler {
         .map((message) => '[${message.role}]\n${message.content}')
         .join('\n\n');
   }
+
+  static String _resolveNewChatPrompt(PromptAssemblyContext context) {
+    final newChatPrompt =
+        context.preset.extra['new_chat_prompt'] as String? ?? '';
+    return _replaceVariables(newChatPrompt, context).trim();
+  }
+
+  static PromptMacroState _buildMacroState(PromptAssemblyContext context) {
+    return PromptMacroState(
+      characterName: context.characterName,
+      userName: context.userName,
+      currentInput: context.currentInput,
+      lastUserMessage: _lastUserMessage(context),
+      lastCharMessage: _lastCharacterMessage(context),
+    );
+  }
+
+  static String _lastUserMessage(PromptAssemblyContext context) {
+    final currentInput = context.currentInput.trim();
+    if (currentInput.isNotEmpty) {
+      return currentInput;
+    }
+    for (final message in context.chatMessages.reversed) {
+      if (message.isMe) {
+        return message.text;
+      }
+    }
+    return '';
+  }
+
+  static String _lastCharacterMessage(PromptAssemblyContext context) {
+    for (final message in context.chatMessages.reversed) {
+      if (!message.isMe) {
+        return message.text;
+      }
+    }
+    return '';
+  }
+}
+
+class _ResolvedPromptEntry {
+  const _ResolvedPromptEntry({
+    required this.prompt,
+    required this.segment,
+    required this.sequence,
+  });
+
+  final PresetPrompt prompt;
+  final PromptSegment segment;
+  final int sequence;
 }
