@@ -65,9 +65,9 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.5',
-                  date: '2026-05-01',
-                  changes: ['优化预设功能', '增加自定义字体'],
+                  version: 'v1.0.6',
+                  date: '2026-05-04',
+                  changes: ['优化深色模式', '增加基础html标签支持', '修复已知bug'],
                 ),
               ],
             ),

@@ -61,11 +61,11 @@ const List<Color> customThemePalette = <Color>[
 ];
 
 enum AppQuoteStyle {
-  curlyDouble('中文双引号', '“', '”'),
-  corner('角引号', '「', '」'),
+  curlyDouble('中文引号', '“', '”'),
+  corner('直角引号', '「', '」'),
   doubleCorner('双角引号', '『', '』'),
   bookTitle('书名号', '《', '》'),
-  asciiDouble('英文双引号', '"', '"');
+  asciiDouble('英文引号', '"', '"');
 
   const AppQuoteStyle(this.label, this.leading, this.trailing);
 

@@ -14,7 +14,7 @@ class ExpandedTextEditorField extends StatelessWidget {
     this.onChanged,
     this.enabled = true,
     this.autofocus = false,
-    this.contentMaxLines = 16,
+    this.contentMaxLines = 24,
   });
 
   final TextEditingController controller;
@@ -58,7 +58,7 @@ class ExpandedTextEditorField extends StatelessWidget {
                     controller: dialogController,
                     autofocus: true,
                     maxLines: contentMaxLines,
-                    minLines: 8,
+                    minLines: 12,
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
                     style: style,
@@ -127,19 +127,13 @@ class ExpandedTextEditorField extends StatelessWidget {
         Positioned(
           right: 6,
           bottom: 6,
-          child: Material(
-            color: Theme.of(
-              context,
-            ).colorScheme.surface.withValues(alpha: 0.82),
-            shape: const CircleBorder(),
-            child: IconButton(
-              onPressed: () => _openExpandedEditor(context),
-              icon: const Icon(Icons.open_in_full, size: 16),
-              tooltip: '展开编辑',
-              visualDensity: VisualDensity.compact,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              padding: EdgeInsets.zero,
-            ),
+          child: IconButton(
+            onPressed: enabled ? () => _openExpandedEditor(context) : null,
+            icon: const Icon(Icons.open_in_full, size: 16),
+            tooltip: '展开编辑',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
           ),
         ),
       ],

@@ -174,12 +174,14 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 18, color: Colors.grey.shade600),
+            Icon(icon, size: 18, color: colorScheme.onSurfaceVariant),
             const SizedBox(width: 8),
           ],
           Text(
@@ -187,7 +189,7 @@ class _SectionTitle extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Colors.grey.shade700,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -203,11 +205,13 @@ class _FieldHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Text(
         text,
-        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -426,6 +430,8 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+
         return AlertDialog(
           titlePadding: EdgeInsets.zero,
           contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
@@ -433,7 +439,9 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
           title: Container(
             padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+              border: Border(
+                bottom: BorderSide(color: colorScheme.outlineVariant),
+              ),
             ),
             child: Row(
               children: [
@@ -451,7 +459,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                       '启用',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey.shade600,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -531,8 +539,8 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                         // content - 多行文本框
                         ExpandedTextEditorField(
                           controller: contentController,
-                          maxLines: 5,
-                          minLines: 4,
+                          maxLines: 8,
+                          minLines: 6,
                           dialogTitle: '编辑世界书条目内容',
                           textAlignVertical: TextAlignVertical.top,
                           style: const TextStyle(
@@ -872,15 +880,18 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trailingWidget = trailing ?? const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: colorScheme.shadow.withValues(
+              alpha: colorScheme.brightness == Brightness.dark ? 0.18 : 0.05,
+            ),
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -894,9 +905,10 @@ class _SectionCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const Spacer(),
@@ -926,10 +938,13 @@ class _WorldBookEntryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final color = colorScheme.primary;
 
     return Material(
-      color: color.withValues(alpha: 0.08),
+      color: color.withValues(
+        alpha: colorScheme.brightness == Brightness.dark ? 0.16 : 0.08,
+      ),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -956,14 +971,14 @@ class _WorldBookEntryTile extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.blue.shade100,
+                              color: colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
                               '常驻',
                               style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.blue.shade700,
+                                color: colorScheme.onPrimaryContainer,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -973,9 +988,10 @@ class _WorldBookEntryTile extends StatelessWidget {
                             entry.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
+                              color: colorScheme.onSurface,
                             ),
                           ),
                         ),
@@ -988,7 +1004,7 @@ class _WorldBookEntryTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         height: 1.45,
-                        color: Colors.grey.shade700,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1023,15 +1039,17 @@ class _EntryActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Tooltip(
       message: tooltip,
       child: Ink(
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: colorScheme.outlineVariant),
         ),
         child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 18)),
       ),

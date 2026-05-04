@@ -55,14 +55,14 @@ class _PresetPageState extends State<PresetPage> {
 
       await _refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导入预设：${preset.name}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已导入预设：${preset.name}')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('导入失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('导入失败：$e')));
     }
   }
 
@@ -87,16 +87,16 @@ class _PresetPageState extends State<PresetPage> {
     final path = await PresetService.instance.exportToFile(preset);
     if (path == null || !mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('导出成功：$path')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('导出成功：$path')));
   }
 
   Future<void> _onDelete(PresetSummary summary) async {
     if (summary.isBuiltin) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('默认预设不可删除')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('默认预设不可删除')));
       return;
     }
 
@@ -126,9 +126,9 @@ class _PresetPageState extends State<PresetPage> {
     await _refresh();
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已删除预设：${summary.name}')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已删除预设：${summary.name}')));
   }
 
   @override
@@ -213,10 +213,14 @@ class _PresetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final accent = preset.isBuiltin ? Colors.orange : Colors.blue;
+    final accentForeground = colorScheme.brightness == Brightness.dark
+        ? accent.shade300
+        : accent.shade600;
 
     return Material(
-      color: Colors.white,
+      color: colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -224,18 +228,26 @@ class _PresetCard extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: colorScheme.outlineVariant),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                accent.withValues(alpha: 0.08),
-                Colors.white,
+                accent.withValues(
+                  alpha: colorScheme.brightness == Brightness.dark
+                      ? 0.18
+                      : 0.08,
+                ),
+                colorScheme.surfaceContainerLow,
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
+                color: colorScheme.shadow.withValues(
+                  alpha: colorScheme.brightness == Brightness.dark
+                      ? 0.18
+                      : 0.05,
+                ),
                 blurRadius: 14,
                 offset: const Offset(0, 8),
               ),
@@ -249,13 +261,17 @@ class _PresetCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
+                    color: accent.withValues(
+                      alpha: colorScheme.brightness == Brightness.dark
+                          ? 0.22
+                          : 0.12,
+                    ),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   alignment: Alignment.center,
                   child: Icon(
                     preset.isBuiltin ? Icons.star_outline : Icons.tune_outlined,
-                    color: accent.shade600,
+                    color: accentForeground,
                     size: 22,
                   ),
                 ),
@@ -268,19 +284,22 @@ class _PresetCard extends StatelessWidget {
                         preset.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        preset.isBuiltin ? '内置默认预设' : '上次更新：${_formatTime(preset.updatedAt)}',
+                        preset.isBuiltin
+                            ? '内置默认预设'
+                            : '上次更新：${_formatTime(preset.updatedAt)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -337,15 +356,17 @@ class _PresetActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Tooltip(
       message: tooltip,
       child: Ink(
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.88),
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.88),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: colorScheme.outlineVariant),
         ),
         child: IconButton(
           onPressed: enabled ? onPressed : null,

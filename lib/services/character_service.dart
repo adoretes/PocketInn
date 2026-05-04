@@ -320,7 +320,10 @@ class CharacterService {
     if (extension == 'json') {
       cardJson = decodeCharacterCardJson(utf8.decode(bytes));
     } else if (extension == 'png') {
-      cardJson = PngCharacterCardCodec.decodeCard(bytes);
+      final embeddedCardJson = PngCharacterCardCodec.decodeCard(bytes);
+      if (embeddedCardJson != null) {
+        cardJson = tryNormalizeCharacterCardJson(embeddedCardJson);
+      }
       originalImageBytes = bytes;
     }
 

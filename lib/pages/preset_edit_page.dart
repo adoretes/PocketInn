@@ -139,8 +139,10 @@ class _PresetEditPageState extends State<PresetEditPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -160,8 +162,10 @@ class _PresetEditPageState extends State<PresetEditPage> {
   }
 
   Widget _buildBasicParams() {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
-      color: Colors.white,
+      color: colorScheme.surfaceContainerLow,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,15 +364,19 @@ class _PromptCardState extends State<_PromptCard> {
   @override
   Widget build(BuildContext context) {
     final prompt = widget.prompt;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: colorScheme.shadow.withValues(
+              alpha: colorScheme.brightness == Brightness.dark ? 0.18 : 0.05,
+            ),
             blurRadius: 4,
             spreadRadius: 1,
           ),
@@ -389,7 +397,9 @@ class _PromptCardState extends State<_PromptCard> {
                       padding: const EdgeInsets.all(8),
                       child: Icon(
                         Icons.drag_handle,
-                        color: Colors.grey[400],
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.65,
+                        ),
                         size: 24,
                       ),
                     ),
@@ -400,7 +410,11 @@ class _PromptCardState extends State<_PromptCard> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: prompt.marker ? Colors.grey[500] : null,
+                        color: prompt.marker
+                            ? colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.72,
+                              )
+                            : colorScheme.onSurface,
                       ),
                     ),
                   ),
@@ -453,7 +467,7 @@ class _PromptCardState extends State<_PromptCard> {
                   const SizedBox(height: 12),
                   ExpandedTextEditorField(
                     controller: _contentController,
-                    maxLines: 5,
+                    maxLines: 8,
                     dialogTitle: '编辑预设条目内容',
                     decoration: const InputDecoration(
                       labelText: '内容',

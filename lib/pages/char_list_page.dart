@@ -185,8 +185,9 @@ class _CharListPageState extends State<CharListPage> {
     if (!mounted) {
       return;
     }
-    await Navigator.of(context).push(
+    await Navigator.of(context).pushAndRemoveUntil<void>(
       MaterialPageRoute(builder: (context) => ChatPage(sessionId: session.id)),
+      (_) => false,
     );
   }
 

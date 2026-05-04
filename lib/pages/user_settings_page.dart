@@ -57,6 +57,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
     await showDialog<void>(
       context: context,
       builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -123,7 +124,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                                     borderRadius: BorderRadius.circular(8),
                                     border: selectedColor == color
                                         ? Border.all(
-                                            color: Colors.black,
+                                            color: colorScheme.onSurface,
                                             width: 2,
                                           )
                                         : null,
@@ -183,6 +184,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
     await showDialog<void>(
       context: context,
       builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -249,7 +251,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                                     borderRadius: BorderRadius.circular(8),
                                     border: selectedColor == color
                                         ? Border.all(
-                                            color: Colors.black,
+                                            color: colorScheme.onSurface,
                                             width: 2,
                                           )
                                         : null,
@@ -310,10 +312,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                       }
                     }
                   },
-                  child: Text(
-                    '删除',
-                    style: TextStyle(color: Colors.red.shade700),
-                  ),
+                  child: Text('删除', style: TextStyle(color: colorScheme.error)),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -349,6 +348,8 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -388,14 +389,16 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                     Icon(
                       Icons.person_outline,
                       size: 64,
-                      color: Colors.grey.shade400,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.55,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       '暂无用户设定',
                       style: TextStyle(
                         fontSize: 16,
-                        color: Colors.grey.shade600,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -464,8 +467,10 @@ class _UserSettingGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Material(
-      color: Colors.white,
+      color: colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onSelect,
@@ -476,17 +481,24 @@ class _UserSettingGridCard extends StatelessWidget {
             border: Border.all(
               color: isSelected
                   ? setting.color.withValues(alpha: 0.8)
-                  : Colors.grey.shade200,
+                  : colorScheme.outlineVariant,
               width: isSelected ? 2 : 1,
             ),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [setting.color.withValues(alpha: 0.12), Colors.white],
+              colors: [
+                setting.color.withValues(alpha: 0.16),
+                colorScheme.surfaceContainerLow,
+              ],
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
+                color: colorScheme.shadow.withValues(
+                  alpha: colorScheme.brightness == Brightness.dark
+                      ? 0.16
+                      : 0.04,
+                ),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
@@ -506,9 +518,10 @@ class _UserSettingGridCard extends StatelessWidget {
                         setting.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -517,7 +530,7 @@ class _UserSettingGridCard extends StatelessWidget {
                       icon: Icon(
                         Icons.edit_outlined,
                         size: 18,
-                        color: Colors.grey.shade700,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                       tooltip: '编辑',
                       visualDensity: VisualDensity.compact,
@@ -533,7 +546,7 @@ class _UserSettingGridCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       height: 1.4,
-                      color: Colors.grey.shade700,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),

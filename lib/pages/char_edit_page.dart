@@ -346,6 +346,9 @@ class _RoleEditPageState extends State<RoleEditPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final surface = colorScheme.surface;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -444,7 +447,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
         ],
       ),
       body: Container(
-        color: Colors.white,
+        color: surface,
         child: Stack(
           children: [
             Positioned.fill(
@@ -452,15 +455,15 @@ class _RoleEditPageState extends State<RoleEditPage> {
                 fit: StackFit.expand,
                 children: [
                   _buildBackgroundImage(),
-                  const DecoratedBox(
+                  DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0x00FFFFFF),
-                          Color(0xFFFFFFFF),
-                          Color(0xFFFFFFFF),
+                          surface.withValues(alpha: 0),
+                          surface.withValues(alpha: 0.94),
+                          surface,
                         ],
                         stops: [0.0, 0.65, 0.85],
                       ),
@@ -474,9 +477,14 @@ class _RoleEditPageState extends State<RoleEditPage> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Card(
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: colorScheme.surfaceContainerLow.withValues(
+                    alpha: colorScheme.brightness == Brightness.dark
+                        ? 0.94
+                        : 0.9,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: colorScheme.outlineVariant),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -484,7 +492,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
                       children: [
                         ExpandedTextEditorField(
                           controller: descriptionController,
-                          maxLines: 5,
+                          maxLines: 8,
                           dialogTitle: '编辑角色设定',
                           decoration: InputDecoration(
                             labelText: '角色设定',
@@ -508,7 +516,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
                         const SizedBox(height: 16),
                         ExpandedTextEditorField(
                           controller: scenarioController,
-                          maxLines: 3,
+                          maxLines: 5,
                           dialogTitle: '编辑当前场景',
                           decoration: const InputDecoration(
                             labelText: '当前场景',
@@ -518,7 +526,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
                         const SizedBox(height: 16),
                         ExpandedTextEditorField(
                           controller: firstMesController,
-                          maxLines: 10,
+                          maxLines: 12,
                           dialogTitle: '编辑初见开场',
                           decoration: InputDecoration(
                             labelText: '初见开场',
@@ -537,7 +545,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                           ).copyWith(dividerColor: Colors.transparent),
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
+                              color: colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.58),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: ExpansionTile(
@@ -584,9 +593,9 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                     const SizedBox(width: 8),
                                     Text(
                                       '${_currentGreetingIndex + 1} / ${_greetingControllers.length}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 13,
-                                        color: Colors.grey,
+                                        color: colorScheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ],
@@ -774,7 +783,9 @@ class _RoleEditPageState extends State<RoleEditPage> {
         : _initialBackgroundImage;
 
     if (resolvedPath.isEmpty || imageProvider == null) {
-      return Container(color: Colors.grey.shade200);
+      return Container(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      );
     }
 
     return Image(
@@ -782,7 +793,9 @@ class _RoleEditPageState extends State<RoleEditPage> {
       fit: BoxFit.cover,
       gaplessPlayback: true,
       filterQuality: FilterQuality.low,
-      errorBuilder: (_, _, _) => Container(color: Colors.grey.shade200),
+      errorBuilder: (_, _, _) => Container(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
     );
   }
 

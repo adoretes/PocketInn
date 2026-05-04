@@ -8,6 +8,7 @@ import '../data/app_settings.dart';
 
 const String _quoteTokenTag = 'pinn_quote';
 const String _bracketTokenTag = 'pinn_bracket';
+const String _underlineTag = 'u';
 const String _quoteTokenPattern = r'%%PINN_Q:([-_A-Za-z0-9=]+)%%';
 const String _bracketTokenPattern = r'%%PINN_B:([-_A-Za-z0-9=]+)%%';
 
@@ -82,6 +83,16 @@ String formatChatMarkdownText(String input) {
 
 List<md.InlineSyntax> buildChatMarkdownInlineSyntaxes() {
   return <md.InlineSyntax>[
+    _SimpleHtmlBreakSyntax(),
+    _SimpleHtmlInlineSyntax(htmlTagPattern: 'b|strong', markdownTag: 'strong'),
+    _SimpleHtmlInlineSyntax(htmlTagPattern: 'i|em', markdownTag: 'em'),
+    _SimpleHtmlInlineSyntax(htmlTagPattern: 'u', markdownTag: _underlineTag),
+    _SimpleHtmlInlineSyntax(htmlTagPattern: 's|strike|del', markdownTag: 'del'),
+    _SimpleHtmlInlineSyntax(
+      htmlTagPattern: 'code',
+      markdownTag: 'code',
+      parseChildren: false,
+    ),
     _InlineTokenSyntax(_quoteTokenPattern, _quoteTokenTag),
     _InlineTokenSyntax(_bracketTokenPattern, _bracketTokenTag),
   ];
@@ -93,6 +104,7 @@ Map<String, MarkdownElementBuilder> buildChatMarkdownBuilders({
   required Color textColor,
 }) {
   return <String, MarkdownElementBuilder>{
+    _underlineTag: _UnderlineBuilder(),
     _quoteTokenTag: _QuoteTokenBuilder(
       chatTextTheme: chatTextTheme,
       colorScheme: colorScheme,
@@ -129,7 +141,7 @@ MarkdownStyleSheet buildChatMarkdownStyleSheet({
       baseStyle: baseTextStyle,
       config: chatTextTheme.boldTextStyle,
     ),
-    del: baseTextStyle.copyWith(decoration: TextDecoration.none),
+    del: baseTextStyle.copyWith(decoration: TextDecoration.lineThrough),
     code: TextStyle(
       fontSize: 14,
       height: 1.45,
@@ -196,7 +208,7 @@ TextStyle buildDecoratedChatTextStyle({
 }
 
 String _transformStyledSegments(String input) {
-  var output = input;
+  var output = _transformSimpleHtmlBlocks(input);
 
   for (final pattern in _quotePatterns) {
     output = output.replaceAllMapped(pattern, (match) {
@@ -219,6 +231,17 @@ String _transformStyledSegments(String input) {
   }
 
   return output;
+}
+
+String _transformSimpleHtmlBlocks(String input) {
+  if (!input.contains('<')) {
+    return input;
+  }
+
+  return input
+      .replaceAll(RegExp(r'<(?:p|div)(?:\s+[^>]*)?>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'</(?:p|div)\s*>', caseSensitive: false), '\n\n')
+      .replaceAll(RegExp(r'<hr\s*/?>', caseSensitive: false), '\n\n---\n\n');
 }
 
 String _buildInlineToken(String tag, String content) {
@@ -269,6 +292,61 @@ class _InlineTokenSyntax extends md.InlineSyntax {
       md.Element.text(tag, utf8.decode(base64Url.decode(encoded))),
     );
     return true;
+  }
+}
+
+class _SimpleHtmlBreakSyntax extends md.InlineSyntax {
+  _SimpleHtmlBreakSyntax()
+    : super(r'<br\s*/?>', caseSensitive: false, startCharacter: _lessThanCode);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    parser.addNode(md.Element.empty('br'));
+    return true;
+  }
+}
+
+class _SimpleHtmlInlineSyntax extends md.InlineSyntax {
+  _SimpleHtmlInlineSyntax({
+    required String htmlTagPattern,
+    required this.markdownTag,
+    this.parseChildren = true,
+  }) : super(
+         '<($htmlTagPattern)(?:\\s+[^>]*)?>([\\s\\S]*?)</\\1\\s*>',
+         caseSensitive: false,
+         startCharacter: _lessThanCode,
+       );
+
+  final String markdownTag;
+  final bool parseChildren;
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final content = match.group(2) ?? '';
+    final children = parseChildren
+        ? parser.document.parseInline(content)
+        : <md.Node>[md.Text(content)];
+
+    parser.addNode(md.Element(markdownTag, children));
+    return true;
+  }
+}
+
+const int _lessThanCode = 60;
+
+class _UnderlineBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final style = (parentStyle ?? preferredStyle ?? const TextStyle()).copyWith(
+      decoration: TextDecoration.underline,
+    );
+
+    return Text.rich(TextSpan(text: element.textContent, style: style));
   }
 }
 

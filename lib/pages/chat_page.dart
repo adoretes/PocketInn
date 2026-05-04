@@ -1045,15 +1045,17 @@ class _ChatPageState extends State<ChatPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
-                ExpandedTextEditorField(
-                  controller: controller,
-                  autofocus: true,
-                  maxLines: 10,
-                  minLines: 3,
-                  dialogTitle: message.isMe ? '编辑用户消息' : '编辑角色消息',
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: '输入消息内容',
+                Flexible(
+                  child: ExpandedTextEditorField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLines: 12,
+                    minLines: 5,
+                    dialogTitle: message.isMe ? '编辑用户消息' : '编辑角色消息',
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: '输入消息内容',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),

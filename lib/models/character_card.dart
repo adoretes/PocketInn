@@ -150,8 +150,8 @@ class CharacterCardRecord {
 
 Map<String, dynamic> normalizeToV2Card(Map<String, dynamic> source) {
   final sourceRoot = Map<String, dynamic>.from(source);
-  final rawData = _asStringMap(sourceRoot['data']) ??
-      Map<String, dynamic>.from(sourceRoot);
+  final rawData =
+      _asStringMap(sourceRoot['data']) ?? Map<String, dynamic>.from(sourceRoot);
 
   final alternateGreetings =
       (rawData['alternate_greetings'] as List<dynamic>? ?? const [])
@@ -179,7 +179,7 @@ Map<String, dynamic> normalizeToV2Card(Map<String, dynamic> source) {
       'tags': tags,
       'character_book':
           _asStringMap(rawData['character_book']) ??
-              <String, dynamic>{'entries': {}, 'extensions': {}},
+          <String, dynamic>{'entries': {}, 'extensions': {}},
       'extensions': _asStringMap(rawData['extensions']) ?? <String, dynamic>{},
     },
   };
@@ -187,10 +187,58 @@ Map<String, dynamic> normalizeToV2Card(Map<String, dynamic> source) {
 
 Map<String, dynamic>? decodeCharacterCardJson(String content) {
   final decoded = jsonDecode(content);
-  if (decoded is! Map<String, dynamic>) {
+  if (decoded is Map<String, dynamic>) {
+    return tryNormalizeCharacterCardJson(decoded);
+  }
+  if (decoded is Map) {
+    return tryNormalizeCharacterCardJson(Map<String, dynamic>.from(decoded));
+  }
+  return null;
+}
+
+Map<String, dynamic>? tryNormalizeCharacterCardJson(
+  Map<String, dynamic> source,
+) {
+  if (!looksLikeCharacterCardJson(source)) {
     return null;
   }
-  return normalizeToV2Card(decoded);
+  return normalizeToV2Card(source);
+}
+
+bool looksLikeCharacterCardJson(Map<String, dynamic> source) {
+  final spec = source['spec'];
+  if (spec is String && spec.trim().toLowerCase().startsWith('chara_card_')) {
+    return source['data'] is Map;
+  }
+
+  final prompts = source['prompts'];
+  final hasPresetSignature =
+      prompts is List &&
+      (source.containsKey('prompt_order') ||
+          source.containsKey('temperature') ||
+          source.containsKey('openai_max_context') ||
+          source.containsKey('openai_max_tokens') ||
+          source.containsKey('top_p') ||
+          source.containsKey('top_k'));
+  if (hasPresetSignature) {
+    return false;
+  }
+
+  final rawData = _asStringMap(source['data']) ?? source;
+  const characterFields = {
+    'description',
+    'personality',
+    'scenario',
+    'first_mes',
+    'mes_example',
+    'creator_notes',
+    'system_prompt',
+    'post_history_instructions',
+    'alternate_greetings',
+    'character_book',
+  };
+
+  return characterFields.any(rawData.containsKey);
 }
 
 Map<String, dynamic>? _asStringMap(Object? value) {
