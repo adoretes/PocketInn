@@ -623,23 +623,24 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
                           const SizedBox(height: 16),
 
                         // depth - 数字输入框
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _NumberInputField(
-                              value: depth,
-                              label: '扫描深度',
-                              minValue: 0,
-                              maxValue: 20,
-                              width: double.infinity,
-                              onChanged: (value) {
-                                depth = value;
-                              },
-                            ),
-                            const _FieldHint('在当前消息之前多少条消息内扫描关键词'),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
+                        if (!constant)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _NumberInputField(
+                                value: depth,
+                                label: '扫描深度',
+                                minValue: 0,
+                                maxValue: 20,
+                                width: double.infinity,
+                                onChanged: (value) {
+                                  depth = value;
+                                },
+                              ),
+                              const _FieldHint('在当前消息之前多少条消息内扫描关键词'),
+                            ],
+                          ),
+                        if (!constant) const SizedBox(height: 24),
 
                         // ========== 注入控制区域 ==========
                         const _SectionTitle(title: '注入控制', icon: Icons.tune),
