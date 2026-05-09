@@ -226,8 +226,7 @@ class PresetService {
         allowedExtensions: ['json'],
       );
     } else {
-      final appDir = await getApplicationDocumentsDirectory();
-      outputPath = '${appDir.path}/$defaultName';
+      outputPath = await _buildMobileExportPath(defaultName);
     }
 
     if (outputPath == null) {
@@ -324,6 +323,18 @@ class PresetService {
     return filename.toLowerCase().endsWith('.json')
         ? filename.substring(0, filename.length - 5)
         : filename;
+  }
+
+  Future<String> _buildMobileExportPath(String defaultName) async {
+    if (Platform.isAndroid) {
+      final downloadsDir = Directory('/storage/emulated/0/Download');
+      if (await downloadsDir.exists()) {
+        return '${downloadsDir.path}/$defaultName';
+      }
+    }
+
+    final appDir = await getApplicationDocumentsDirectory();
+    return '${appDir.path}/$defaultName';
   }
 
   void _checkInitialized() {

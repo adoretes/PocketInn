@@ -688,6 +688,13 @@ class CharacterService {
       );
     }
 
+    if (Platform.isAndroid) {
+      final downloadsDir = Directory('/storage/emulated/0/Download');
+      if (await downloadsDir.exists()) {
+        return '${downloadsDir.path}/$defaultName';
+      }
+    }
+
     final appDir = await getApplicationDocumentsDirectory();
     return '${appDir.path}/$defaultName';
   }
