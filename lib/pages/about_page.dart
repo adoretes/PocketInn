@@ -73,6 +73,7 @@ class _AboutPageState extends State<AboutPage> {
                     '为 Android 平台添加导出路径支持',
                     '优化预设与角色导出保存逻辑',
                     '根据扫描方式动态显示扫描深度设置',
+                    '修复已知bug',
                   ],
                 ),
                 const SizedBox(height: 16),

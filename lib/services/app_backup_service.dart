@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
@@ -21,18 +22,31 @@ class AppBackupService {
   static const String _databaseRoot = 'database';
 
   Future<String?> exportBackup() async {
-    final outputPath = await FilePicker.platform.saveFile(
-      dialogTitle: '导出备份',
-      fileName: 'pocketinn-backup-${_dateStamp()}.zip',
-      type: FileType.custom,
-      allowedExtensions: ['zip'],
-    );
-    if (outputPath == null || outputPath.isEmpty) {
-      return null;
+    final defaultName = 'pocketinn-backup-${_dateStamp()}.zip';
+    final backupBytes = await _buildBackupArchiveBytes();
+
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: '导出备份',
+        fileName: defaultName,
+        type: FileType.custom,
+        allowedExtensions: ['zip'],
+      );
+      if (outputPath == null || outputPath.isEmpty) {
+        return null;
+      }
+
+      await File(outputPath).writeAsBytes(backupBytes, flush: true);
+      return outputPath;
     }
 
-    await _writeBackupArchive(outputPath);
-    return outputPath;
+    return FilePicker.platform.saveFile(
+      dialogTitle: '导出备份',
+      fileName: defaultName,
+      type: FileType.custom,
+      allowedExtensions: ['zip'],
+      bytes: backupBytes,
+    );
   }
 
   Future<bool> restoreBackupFromFile() async {
@@ -107,43 +121,41 @@ class AppBackupService {
     await AppDataService.instance.reloadAppState();
   }
 
-  Future<void> _writeBackupArchive(String outputPath) async {
-    final encoder = ZipFileEncoder();
-    encoder.create(outputPath);
+  Future<Uint8List> _buildBackupArchiveBytes() async {
+    final archive = Archive();
+    final manifestBytes = utf8.encode(
+      const JsonEncoder.withIndent('  ').convert({
+        'formatVersion': _formatVersion,
+        'createdAt': DateTime.now().toIso8601String(),
+        'format': 'zip',
+      }),
+    );
+    archive.add(
+      ArchiveFile(_manifestPath, manifestBytes.length, manifestBytes),
+    );
 
-    try {
-      final manifestBytes = utf8.encode(
-        const JsonEncoder.withIndent('  ').convert({
-          'formatVersion': _formatVersion,
-          'createdAt': DateTime.now().toIso8601String(),
-          'format': 'zip',
-        }),
-      );
-      encoder.addArchiveFile(
-        ArchiveFile(_manifestPath, manifestBytes.length, manifestBytes),
-      );
+    final preferencesBytes = utf8.encode(
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert(StorageService.instance.exportPreferences()),
+    );
+    archive.add(
+      ArchiveFile(_preferencesPath, preferencesBytes.length, preferencesBytes),
+    );
 
-      final preferencesBytes = utf8.encode(
-        const JsonEncoder.withIndent('  ').convert(
-          StorageService.instance.exportPreferences(),
-        ),
-      );
-      encoder.addArchiveFile(
-        ArchiveFile(_preferencesPath, preferencesBytes.length, preferencesBytes),
-      );
-
-      await _addDataFilesToArchive(encoder);
-      await _addDatabaseFilesToArchive(encoder);
-    } finally {
-      encoder.close();
-    }
+    await _addDataFilesToArchive(archive);
+    await _addDatabaseFilesToArchive(archive);
+    return ZipEncoder().encodeBytes(archive);
   }
 
-  Future<void> _addDataFilesToArchive(ZipFileEncoder encoder) async {
+  Future<void> _addDataFilesToArchive(Archive archive) async {
     final dataDir = StorageService.instance.dataDir;
     final root = Directory(dataDir);
     if (await root.exists()) {
-      await for (final entity in root.list(recursive: true, followLinks: false)) {
+      await for (final entity in root.list(
+        recursive: true,
+        followLinks: false,
+      )) {
         if (entity is! File) {
           continue;
         }
@@ -151,18 +163,14 @@ class AppBackupService {
           p.relative(entity.path, from: dataDir).replaceAll('\\', '/'),
         );
         final bytes = await entity.readAsBytes();
-        encoder.addArchiveFile(
-          ArchiveFile(
-            '$_dataRoot/$relativePath',
-            bytes.length,
-            bytes,
-          ),
+        archive.add(
+          ArchiveFile('$_dataRoot/$relativePath', bytes.length, bytes),
         );
       }
     }
   }
 
-  Future<void> _addDatabaseFilesToArchive(ZipFileEncoder encoder) async {
+  Future<void> _addDatabaseFilesToArchive(Archive archive) async {
     final dbPath = ChatDatabaseService.instance.databasePath;
     if (dbPath != null && dbPath.isNotEmpty) {
       for (final path in [dbPath, '$dbPath-wal', '$dbPath-shm']) {
@@ -171,7 +179,7 @@ class AppBackupService {
           continue;
         }
         final bytes = await dbFile.readAsBytes();
-        encoder.addArchiveFile(
+        archive.add(
           ArchiveFile(
             '$_databaseRoot/${p.basename(path)}',
             bytes.length,
