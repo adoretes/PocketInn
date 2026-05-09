@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../models/preset.dart';
 import 'storage_service.dart';
@@ -216,6 +215,7 @@ class PresetService {
     _checkInitialized();
 
     final defaultName = '${preset.name}.json';
+    final content = preset.exportJsonString();
     String? outputPath;
 
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -225,15 +225,21 @@ class PresetService {
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
+      if (outputPath == null) {
+        return null;
+      }
+
+      await File(outputPath).writeAsString(content);
     } else {
-      outputPath = await _buildMobileExportPath(defaultName);
+      outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: '导出预设',
+        fileName: defaultName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
     }
 
-    if (outputPath == null) {
-      return null;
-    }
-
-    await File(outputPath).writeAsString(preset.exportJsonString());
     return outputPath;
   }
 
@@ -323,18 +329,6 @@ class PresetService {
     return filename.toLowerCase().endsWith('.json')
         ? filename.substring(0, filename.length - 5)
         : filename;
-  }
-
-  Future<String> _buildMobileExportPath(String defaultName) async {
-    if (Platform.isAndroid) {
-      final downloadsDir = Directory('/storage/emulated/0/Download');
-      if (await downloadsDir.exists()) {
-        return '${downloadsDir.path}/$defaultName';
-      }
-    }
-
-    final appDir = await getApplicationDocumentsDirectory();
-    return '${appDir.path}/$defaultName';
   }
 
   void _checkInitialized() {

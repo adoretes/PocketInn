@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../models/world_book.dart';
 import 'storage_service.dart';
@@ -288,6 +288,9 @@ class WorldBookService {
     _checkInitialized();
     
     final defaultName = '${book.name}.json';
+    final content = const JsonEncoder.withIndent(
+      '    ',
+    ).convert(book.toSillyTavernJson());
     
     String? outputPath;
     
@@ -305,30 +308,17 @@ class WorldBookService {
       }
       
       outputPath = result;
+      final file = File(outputPath);
+      await file.writeAsString(content);
     } else {
-      // 移动端：保存到下载目录
-      if (Platform.isAndroid) {
-        final downloadsDir = Directory('/storage/emulated/0/Download');
-        if (await downloadsDir.exists()) {
-          outputPath = '${downloadsDir.path}/$defaultName';
-        } else {
-          // 使用应用目录
-          final appDir = await getApplicationDocumentsDirectory();
-          outputPath = '${appDir.path}/$defaultName';
-        }
-      } else if (Platform.isIOS) {
-        final appDir = await getApplicationDocumentsDirectory();
-        outputPath = '${appDir.path}/$defaultName';
-      } else {
-        final appDir = await getApplicationDocumentsDirectory();
-        outputPath = '${appDir.path}/$defaultName';
-      }
+      outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: '导出世界书',
+        fileName: defaultName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
     }
-    
-    // 写入文件
-    final file = File(outputPath);
-    final content = const JsonEncoder.withIndent('    ').convert(book.toSillyTavernJson());
-    await file.writeAsString(content);
     
     return outputPath;
   }

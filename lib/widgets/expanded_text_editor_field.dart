@@ -33,67 +33,18 @@ class ExpandedTextEditorField extends StatelessWidget {
   Future<void> _openExpandedEditor(BuildContext context) async {
     if (!enabled) return;
 
-    final dialogController = TextEditingController(text: controller.text);
     final result = await showDialog<String>(
       context: context,
-      builder: (context) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 24,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  dialogTitle ?? decoration.labelText ?? '编辑内容',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: TextField(
-                    controller: dialogController,
-                    autofocus: true,
-                    maxLines: contentMaxLines,
-                    minLines: 12,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
-                    style: style,
-                    decoration: InputDecoration(
-                      hintText: decoration.hintText,
-                      alignLabelWithHint: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('取消'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: () =>
-                          Navigator.of(context).pop(dialogController.text),
-                      child: const Text('完成'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      useSafeArea: false,
+      builder: (context) => _ExpandedTextEditorDialog(
+        initialText: controller.text,
+        title: dialogTitle ?? decoration.labelText ?? '编辑内容',
+        hintText: decoration.hintText,
+        style: style,
+      ),
     );
 
-    dialogController.dispose();
-
+    if (!context.mounted) return;
     if (result == null || result == controller.text) {
       return;
     }
@@ -137,6 +88,78 @@ class ExpandedTextEditorField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ExpandedTextEditorDialog extends StatefulWidget {
+  const _ExpandedTextEditorDialog({
+    required this.initialText,
+    required this.title,
+    this.hintText,
+    this.style,
+  });
+
+  final String initialText;
+  final String title;
+  final String? hintText;
+  final TextStyle? style;
+
+  @override
+  State<_ExpandedTextEditorDialog> createState() =>
+      _ExpandedTextEditorDialogState();
+}
+
+class _ExpandedTextEditorDialogState extends State<_ExpandedTextEditorDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: CloseButton(
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: Text(widget.title),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(_controller.text),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: TextField(
+            controller: _controller,
+            autofocus: true,
+            maxLines: null,
+            expands: true,
+            textAlignVertical: TextAlignVertical.top,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            style: widget.style,
+            decoration: InputDecoration(
+              hintText: widget.hintText,
+              alignLabelWithHint: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

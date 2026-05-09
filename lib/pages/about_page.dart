@@ -65,6 +65,18 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.0.7',
+                  date: '2026-05-09',
+                  changes: [
+                    '优化扩展文本编辑器对话框体验',
+                    '优化自定义主题颜色选择器布局并补充调色板颜色',
+                    '为 Android 平台添加导出路径支持',
+                    '优化预设与角色导出保存逻辑',
+                    '根据扫描方式动态显示扫描深度设置',
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _UpdateLogItem(
                   version: 'v1.0.6',
                   date: '2026-05-04',
                   changes: ['优化深色模式', '增加基础html标签支持', '修复已知bug'],

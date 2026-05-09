@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
-import 'package:path_provider/path_provider.dart';
 
 import '../models/character_card.dart';
 import '../models/world_book.dart';
@@ -371,8 +370,13 @@ class CharacterService {
 
     final characterBook = await _buildCharacterBookForExport(record);
     final content = record.exportJsonString(characterBook: characterBook);
-    await File(outputPath).writeAsString(content);
-    return outputPath;
+    return _saveExportBytes(
+      outputPath: outputPath,
+      defaultName: '${record.name}.json',
+      allowedExtensions: const ['json'],
+      title: '导出角色卡 JSON',
+      bytes: Uint8List.fromList(utf8.encode(content)),
+    );
   }
 
   Future<String?> exportToPngFile(CharacterCardRecord record) async {
@@ -389,8 +393,14 @@ class CharacterService {
     final characterBook = await _buildCharacterBookForExport(record);
     final cardJson = record.exportJsonString(characterBook: characterBook);
     final pngBytes = PngCharacterCardCodec.embedCard(imageBytes, cardJson);
-    await File(outputPath).writeAsBytes(pngBytes);
-    return outputPath;
+    return _saveExportBytes(
+      outputPath: outputPath,
+      defaultName: '${record.name}.png',
+      allowedExtensions: const ['png'],
+      title: '导出角色卡 PNG',
+      bytes: pngBytes,
+      type: FileType.image,
+    );
   }
 
   Future<void> updateCard({
@@ -688,15 +698,29 @@ class CharacterService {
       );
     }
 
-    if (Platform.isAndroid) {
-      final downloadsDir = Directory('/storage/emulated/0/Download');
-      if (await downloadsDir.exists()) {
-        return '${downloadsDir.path}/$defaultName';
-      }
+    return defaultName;
+  }
+
+  Future<String?> _saveExportBytes({
+    required String outputPath,
+    required String defaultName,
+    required List<String> allowedExtensions,
+    required String title,
+    required Uint8List bytes,
+    FileType type = FileType.custom,
+  }) async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      await File(outputPath).writeAsBytes(bytes);
+      return outputPath;
     }
 
-    final appDir = await getApplicationDocumentsDirectory();
-    return '${appDir.path}/$defaultName';
+    return FilePicker.platform.saveFile(
+      dialogTitle: title,
+      fileName: defaultName,
+      type: type,
+      allowedExtensions: allowedExtensions,
+      bytes: bytes,
+    );
   }
 
   Future<String> _storeOriginalImage(String id, Uint8List imageBytes) async {

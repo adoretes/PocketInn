@@ -31,11 +31,129 @@ enum _MessageEditAction { save, saveAndSend }
 
 enum _ChatTitleDialogAction { save, reset }
 
+class _MessageEditDialogResult {
+  const _MessageEditDialogResult({required this.action, required this.text});
+
+  final _MessageEditAction action;
+  final String text;
+}
+
 class _ChatTitleDialogResult {
   const _ChatTitleDialogResult({required this.action, required this.title});
 
   final _ChatTitleDialogAction action;
   final String title;
+}
+
+class _MessageEditDialog extends StatefulWidget {
+  const _MessageEditDialog({
+    required this.initialText,
+    required this.title,
+    required this.canSaveAndSend,
+  });
+
+  final String initialText;
+  final String title;
+  final bool canSaveAndSend;
+
+  @override
+  State<_MessageEditDialog> createState() => _MessageEditDialogState();
+}
+
+class _MessageEditDialogState extends State<_MessageEditDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _closeWith(_MessageEditAction action) {
+    Navigator.of(
+      context,
+    ).pop(_MessageEditDialogResult(action: action, text: _controller.text));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardInset = mediaQuery.viewInsets.bottom;
+    final availableHeight = mediaQuery.size.height - keyboardInset - 48;
+    final dialogMaxHeight = availableHeight
+        .clamp(240.0, mediaQuery.size.height)
+        .toDouble();
+    final keyboardVisible = keyboardInset > 0;
+    final actionButtons = <Widget>[
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('取消'),
+      ),
+      TextButton(
+        onPressed: () => _closeWith(_MessageEditAction.save),
+        child: const Text('保存'),
+      ),
+      if (widget.canSaveAndSend)
+        FilledButton(
+          onPressed: () => _closeWith(_MessageEditAction.saveAndSend),
+          child: const Text('保存并发送'),
+        ),
+    ];
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 560, maxHeight: dialogMaxHeight),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                ExpandedTextEditorField(
+                  controller: _controller,
+                  autofocus: true,
+                  maxLines: keyboardVisible ? 5 : 10,
+                  minLines: keyboardVisible ? 3 : 5,
+                  dialogTitle: widget.title,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: '输入消息内容',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < actionButtons.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        actionButtons[i],
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// 聊天页面
@@ -1004,86 +1122,28 @@ class _ChatPageState extends State<ChatPage> {
     final message = index >= 0 && index < _messages.length
         ? _messages[index]
         : null;
-    if (session == null || message?.id == null || _isSending) {
+    if (session == null ||
+        message == null ||
+        message.id == null ||
+        _isSending) {
       return;
     }
+    final editingMessage = message;
 
-    final controller = TextEditingController(text: message!.text);
-    final action = await showDialog<_MessageEditAction>(
+    final result = await showDialog<_MessageEditDialogResult>(
       context: context,
-      builder: (context) {
-        final actionButtons = <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(_MessageEditAction.save),
-            child: const Text('保存'),
-          ),
-          if (message.isMe && character != null)
-            FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(_MessageEditAction.saveAndSend),
-              child: const Text('保存并发送'),
-            ),
-        ];
-
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 24,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  message.isMe ? '编辑用户消息' : '编辑角色消息',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: ExpandedTextEditorField(
-                    controller: controller,
-                    autofocus: true,
-                    maxLines: 12,
-                    minLines: 5,
-                    dialogTitle: message.isMe ? '编辑用户消息' : '编辑角色消息',
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: '输入消息内容',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < actionButtons.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 8),
-                        actionButtons[i],
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (context) => _MessageEditDialog(
+        initialText: editingMessage.text,
+        title: editingMessage.isMe ? '编辑用户消息' : '编辑角色消息',
+        canSaveAndSend: editingMessage.isMe && character != null,
+      ),
     );
-    var normalizedText = controller.text.trim();
-    controller.dispose();
 
-    if (action == null) {
+    if (result == null) {
       return;
     }
+    final action = result.action;
+    var normalizedText = result.text.trim();
     if (normalizedText.isEmpty) {
       if (!mounted) {
         return;
@@ -1094,16 +1154,16 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
-    if (message.isMe) {
+    if (editingMessage.isMe) {
       normalizedText = _replaceChatVariables(normalizedText).trim();
     }
 
     try {
-      if (message.isMe) {
+      if (editingMessage.isMe) {
         final editedNode = await ChatDatabaseService.instance
             .branchMessageFromEdit(
               sessionId: session.id,
-              messageId: message.id!,
+              messageId: editingMessage.id!,
               text: normalizedText,
             );
 
@@ -1130,10 +1190,10 @@ class _ChatPageState extends State<ChatPage> {
 
       await ChatDatabaseService.instance.updateMessage(
         sessionId: session.id,
-        messageId: message.id!,
+        messageId: editingMessage.id!,
         text: normalizedText,
-        thinkingChain: message.thinkingChain,
-        clearThinkingChain: message.thinkingChain == null,
+        thinkingChain: editingMessage.thinkingChain,
+        clearThinkingChain: editingMessage.thinkingChain == null,
       );
 
       if (action == _MessageEditAction.saveAndSend) {
