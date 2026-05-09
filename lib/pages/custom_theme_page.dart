@@ -17,6 +17,41 @@ Color _paletteColorAt(int index) {
   return customThemePalette[_safePaletteIndex(index)];
 }
 
+const List<int> _orderedPaletteIndices = <int>[
+  0,
+  13,
+  14,
+  4,
+  11,
+  9,
+  12,
+  8,
+  22,
+  3,
+  20,
+  21,
+  10,
+  23,
+  24,
+  5,
+  16,
+  26,
+  6,
+  17,
+  15,
+  1,
+  18,
+  19,
+  7,
+  25,
+  27,
+  2,
+  28,
+  29,
+  30,
+  31,
+];
+
 class CustomThemePage extends StatelessWidget {
   const CustomThemePage({super.key});
 
@@ -158,7 +193,7 @@ class _ThemePreviewCard extends StatelessWidget {
             children: [
               _PreviewChip(
                 label:
-                    '${chatTextTheme.quoteStyle.leading}引号${chatTextTheme.quoteStyle.trailing}',
+                    '${chatTextTheme.quoteStyle.leading}${chatTextTheme.quoteStyle.trailing}',
                 color: colorScheme.secondary,
               ),
               _PreviewChip(
@@ -315,9 +350,10 @@ class _QuoteStyleDropdownTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 120, maxWidth: 150),
+              constraints: const BoxConstraints(minWidth: 50, maxWidth: 60),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<AppQuoteStyle>(
+                  alignment: AlignmentDirectional.center,
                   value: value,
                   isExpanded: true,
                   borderRadius: BorderRadius.circular(16),
@@ -327,19 +363,17 @@ class _QuoteStyleDropdownTile extends StatelessWidget {
                   items: AppQuoteStyle.selectableValues.map((style) {
                     return DropdownMenuItem<AppQuoteStyle>(
                       value: style,
-                      child: Row(
-                        children: [
-                          Text(
-                            '${style.leading}${style.trailing}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          '${style.leading}${style.trailing}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.onSurfaceVariant,
                           ),
-                          const SizedBox(width: 10),
-                          Text(style.label),
-                        ],
+                        ),
                       ),
                     );
                   }).toList(),
@@ -663,15 +697,6 @@ class _PalettePickerSheet extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              '共 ${customThemePalette.length} 种颜色，点击后立即应用',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
             const SizedBox(height: 18),
             _ColorPaletteWrap(
               selectedIndex: selectedIndex,
@@ -702,11 +727,18 @@ class _ColorPaletteWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final paletteIndices = _orderedPaletteIndices
+        .where((index) => index >= 0 && index < customThemePalette.length)
+        .toList(growable: false);
 
-    return Wrap(
-      spacing: 14,
-      runSpacing: 14,
-      children: List<Widget>.generate(customThemePalette.length, (index) {
+    return GridView.count(
+      crossAxisCount: 8,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      children: List<Widget>.generate(paletteIndices.length, (displayIndex) {
+        final index = paletteIndices[displayIndex];
         final color = _paletteColorAt(index);
         final selected = selectedIndex == index;
         final iconColor =

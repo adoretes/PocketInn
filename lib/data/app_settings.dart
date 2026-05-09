@@ -58,6 +58,10 @@ const List<Color> customThemePalette = <Color>[
   Color(0xFF1B4965),
   Color(0xFF2A9D8F),
   Color(0xFF264653),
+  Color(0xFFFFFFFF),
+  Color(0xFFF3F4F6),
+  Color(0xFF1F2937),
+  Color(0xFF000000),
 ];
 
 enum AppQuoteStyle {
