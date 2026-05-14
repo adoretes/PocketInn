@@ -16,7 +16,10 @@ import 'settings_page.dart';
 import 'user_settings_page.dart';
 
 class ChatSidebarPage extends StatefulWidget {
-  const ChatSidebarPage({super.key});
+  const ChatSidebarPage({super.key, this.activeSessionId, this.onChatSelected});
+
+  final String? activeSessionId;
+  final ValueChanged<ChatSessionSummary>? onChatSelected;
 
   @override
   State<ChatSidebarPage> createState() => _ChatSidebarPageState();
@@ -24,10 +27,13 @@ class ChatSidebarPage extends StatefulWidget {
 
 class _ChatSidebarPageState extends State<ChatSidebarPage> {
   String? _selectedCharacterId;
+  late Future<_SidebarData> _sidebarDataFuture;
+  _SidebarData? _lastSidebarData;
 
   @override
   void initState() {
     super.initState();
+    _sidebarDataFuture = _loadSidebarData();
     ChatDatabaseService.instance.changeNotifier.addListener(
       _handleDatabaseChanged,
     );
@@ -45,7 +51,9 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
     if (!mounted) {
       return;
     }
-    setState(() {});
+    setState(() {
+      _sidebarDataFuture = _loadSidebarData();
+    });
   }
 
   Future<_SidebarData> _loadSidebarData() async {
@@ -136,6 +144,13 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
   Future<void> _onChatItemTap(ChatSessionSummary item) async {
     final navigator = Navigator.of(context);
     navigator.pop();
+
+    final onChatSelected = widget.onChatSelected;
+    if (onChatSelected != null) {
+      onChatSelected(item);
+      return;
+    }
+
     await navigator.pushReplacement(
       MaterialPageRoute(builder: (context) => ChatPage(sessionId: item.id)),
     );
@@ -250,14 +265,21 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: FutureBuilder<_SidebarData>(
-        future: _loadSidebarData(),
+        future: _sidebarDataFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
+          final loadedData = snapshot.data;
+          if (loadedData != null) {
+            _lastSidebarData = loadedData;
+          }
+
+          if (snapshot.connectionState != ConnectionState.done &&
+              _lastSidebarData == null) {
             return const Center(child: CircularProgressIndicator());
           }
 
           final data =
-              snapshot.data ??
+              loadedData ??
+              _lastSidebarData ??
               const _SidebarData(
                 roles: [_RoleFilter(id: null, name: '全部角色', avatarText: '全')],
                 chats: [],
@@ -377,6 +399,8 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                         itemCount: filteredChats.length,
                         itemBuilder: (context, index) {
                           final item = filteredChats[index];
+                          final isActive =
+                              item.summary.id == widget.activeSessionId;
                           return Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
@@ -406,11 +430,17 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                                   ],
                                 ),
                                 child: Material(
-                                  color: Colors.transparent,
+                                  color: isActive
+                                      ? Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer
+                                            .withValues(alpha: 0.55)
+                                      : Colors.transparent,
                                   child: ListTile(
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14),
                                     ),
+                                    selected: isActive,
                                     leading: _RoleAvatar(
                                       imagePath: item.imagePath,
                                       fallbackText: item.avatarText,

@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -169,7 +169,9 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _textController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _scrollController = ScrollController(
+    keepScrollOffset: false,
+  );
   ChatSession? _activeSession;
   ResolvedChatCharacter? _activeCharacter;
   List<ChatMessage> _messages = [];
@@ -181,6 +183,7 @@ class _ChatPageState extends State<ChatPage> {
   String? _selectedPresetId;
   String? _selectedUserSettingId;
   bool _isLoading = true;
+  bool _isSwitchingSession = false;
   bool _isSending = false;
   bool _useStreaming = true;
   bool _isCheckingApiStatus = false;
@@ -191,7 +194,8 @@ class _ChatPageState extends State<ChatPage> {
   String? _regeneratingUserMessageId;
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
-  bool _scrollToBottomScheduled = false;
+  int _sessionLoadGeneration = 0;
+  int _scrollToLatestRequestId = 0;
 
   @override
   void initState() {
@@ -201,6 +205,9 @@ class _ChatPageState extends State<ChatPage> {
       _handleChatDatabaseChanged,
     );
     _textController.addListener(() {
+      if (_inputText == _textController.text) {
+        return;
+      }
       setState(() {
         _inputText = _textController.text;
       });
@@ -240,8 +247,9 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _loadSession({String? preferredSessionId}) async {
+    final loadGeneration = ++_sessionLoadGeneration;
     final summaries = await ChatDatabaseService.instance.loadSessionSummaries();
-    if (!mounted) {
+    if (!mounted || loadGeneration != _sessionLoadGeneration) {
       return;
     }
 
@@ -254,6 +262,7 @@ class _ChatPageState extends State<ChatPage> {
         _selectedPresetId = null;
         _selectedWorldBookIds.clear();
         _isLoading = false;
+        _isSwitchingSession = false;
       });
       return;
     }
@@ -265,14 +274,21 @@ class _ChatPageState extends State<ChatPage> {
     final bundle = await ChatDatabaseService.instance.loadSessionBundle(
       targetSummary.id,
     );
-    if (!mounted || bundle == null) {
+    if (!mounted || loadGeneration != _sessionLoadGeneration) {
+      return;
+    }
+    if (bundle == null) {
+      setState(() {
+        _isLoading = false;
+        _isSwitchingSession = false;
+      });
       return;
     }
 
     final resolvedCharacter = await ChatCharacterResolver.instance.resolveById(
       bundle.session.characterId,
     );
-    if (!mounted) {
+    if (!mounted || loadGeneration != _sessionLoadGeneration) {
       return;
     }
 
@@ -286,8 +302,16 @@ class _ChatPageState extends State<ChatPage> {
         ..clear()
         ..addAll(bundle.session.selectedWorldBookIds);
       _isLoading = false;
+      if (_isSwitchingSession) {
+        _inputText = '';
+        _resetPendingMessages();
+      }
+      _isSwitchingSession = false;
     });
-    _scheduleScrollToBottom();
+    if (_textController.text.isNotEmpty) {
+      _textController.clear();
+    }
+    _scheduleScrollToLatest();
   }
 
   Future<void> _persistSessionConfig() async {
@@ -380,17 +404,16 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
-  void _scheduleScrollToBottom({bool animated = false}) {
-    if (_scrollToBottomScheduled) {
-      return;
-    }
-    _scrollToBottomScheduled = true;
+  void _scheduleScrollToLatest({bool animated = false}) {
+    final requestId = ++_scrollToLatestRequestId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottomScheduled = false;
-      if (!mounted || !_scrollController.hasClients) {
+      if (!mounted ||
+          requestId != _scrollToLatestRequestId ||
+          !_scrollController.hasClients) {
         return;
       }
-      final targetOffset = _scrollController.position.maxScrollExtent;
+
+      final targetOffset = _scrollController.position.minScrollExtent;
       if (animated) {
         _scrollController.animateTo(
           targetOffset,
@@ -409,7 +432,7 @@ class _ChatPageState extends State<ChatPage> {
 
   void _handleChatDatabaseChanged() {
     final sessionId = _activeSession?.id ?? widget.sessionId;
-    if (sessionId == null || _isLoading || _isSending) {
+    if (sessionId == null || _isLoading || _isSwitchingSession || _isSending) {
       return;
     }
     _loadSession(preferredSessionId: sessionId);
@@ -417,6 +440,22 @@ class _ChatPageState extends State<ChatPage> {
 
   void _onChatListPressed() {
     _scaffoldKey.currentState?.openDrawer();
+  }
+
+  Future<void> _selectSessionFromSidebar(ChatSessionSummary summary) async {
+    final currentSessionId = _activeSession?.id;
+    if (summary.id == currentSessionId) {
+      return;
+    }
+    if (_isSending) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('回复生成中，稍后再切换聊天')));
+      return;
+    }
+
+    _isSwitchingSession = true;
+    await _loadSession(preferredSessionId: summary.id);
   }
 
   Future<void> _refreshEnabledApiStatus() async {
@@ -1051,7 +1090,11 @@ class _ChatPageState extends State<ChatPage> {
     final session = _activeSession;
     final character = _activeCharacter;
     final text = _replaceChatVariables(_inputText.trim()).trim();
-    if (text.isEmpty || session == null || character == null || _isSending) {
+    if (text.isEmpty ||
+        session == null ||
+        character == null ||
+        _isSwitchingSession ||
+        _isSending) {
       return;
     }
 
@@ -1063,7 +1106,7 @@ class _ChatPageState extends State<ChatPage> {
       _streamingAssistantText = '';
       _streamingThinkingChain = '';
     });
-    _scheduleScrollToBottom(animated: true);
+    _scheduleScrollToLatest(animated: true);
 
     _textController.clear();
 
@@ -1090,7 +1133,7 @@ class _ChatPageState extends State<ChatPage> {
               _streamingThinkingChain += progress.thinkingDelta;
             }
           });
-          _scheduleScrollToBottom();
+          _scheduleScrollToLatest();
         },
       );
     } on ChatCompletionCancelledException {
@@ -1114,7 +1157,7 @@ class _ChatPageState extends State<ChatPage> {
           }
         });
       }
-      _scheduleScrollToBottom();
+      _scheduleScrollToLatest();
     }
   }
 
@@ -1173,7 +1216,8 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     try {
-      if (editingMessage.isMe) {
+      if (editingMessage.isMe &&
+          action == _MessageEditAction.saveAndSend) {
         final editedNode = await ChatDatabaseService.instance
             .branchMessageFromEdit(
               sessionId: session.id,
@@ -1181,24 +1225,17 @@ class _ChatPageState extends State<ChatPage> {
               text: normalizedText,
             );
 
-        if (action == _MessageEditAction.saveAndSend) {
-          await _regenerateFromUserMessage(
-            userMessageIndex: index,
-            userMessageOverride: ChatMessage(
-              id: editedNode.id,
-              sessionId: editedNode.sessionId,
-              parentId: editedNode.parentId,
-              text: editedNode.text,
-              isMe: true,
-            ),
-            historyBeforeOverride: _messages
-                .take(index)
-                .toList(growable: false),
-          );
-          return;
-        }
-
-        await _loadSession(preferredSessionId: session.id);
+        await _regenerateFromUserMessage(
+          userMessageIndex: index,
+          userMessageOverride: ChatMessage(
+            id: editedNode.id,
+            sessionId: editedNode.sessionId,
+            parentId: editedNode.parentId,
+            text: editedNode.text,
+            isMe: true,
+          ),
+          historyBeforeOverride: _messages.take(index).toList(growable: false),
+        );
         return;
       }
 
@@ -1206,8 +1243,11 @@ class _ChatPageState extends State<ChatPage> {
         sessionId: session.id,
         messageId: editingMessage.id!,
         text: normalizedText,
-        thinkingChain: editingMessage.thinkingChain,
-        clearThinkingChain: editingMessage.thinkingChain == null,
+        thinkingChain: editingMessage.isMe
+            ? null
+            : editingMessage.thinkingChain,
+        clearThinkingChain:
+            editingMessage.isMe || editingMessage.thinkingChain == null,
       );
 
       if (action == _MessageEditAction.saveAndSend) {
@@ -1336,7 +1376,7 @@ class _ChatPageState extends State<ChatPage> {
       _streamingAssistantText = '';
       _streamingThinkingChain = '';
     });
-    _scheduleScrollToBottom(animated: true);
+    _scheduleScrollToLatest(animated: true);
 
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
@@ -1363,7 +1403,7 @@ class _ChatPageState extends State<ChatPage> {
               _streamingThinkingChain += progress.thinkingDelta;
             }
           });
-          _scheduleScrollToBottom();
+          _scheduleScrollToLatest();
         },
       );
     } on ChatCompletionCancelledException {
@@ -1387,7 +1427,7 @@ class _ChatPageState extends State<ChatPage> {
           }
         });
       }
-      _scheduleScrollToBottom();
+      _scheduleScrollToLatest();
     }
   }
 
@@ -1415,7 +1455,10 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     final visibleMessages = _visibleMessages;
     final isSendEnabled =
-        !_isSending && _inputText.trim().isNotEmpty && _activeSession != null;
+        !_isSwitchingSession &&
+        !_isSending &&
+        _inputText.trim().isNotEmpty &&
+        _activeSession != null;
     final session = _activeSession;
     final character = _activeCharacter;
     final theme = Theme.of(context);
@@ -1434,7 +1477,14 @@ class _ChatPageState extends State<ChatPage> {
       extendBodyBehindAppBar: true,
       drawerEnableOpenDragGesture: true,
       drawerEdgeDragWidth: drawerEdgeDragWidth,
-      drawer: const Drawer(child: SafeArea(child: ChatSidebarPage())),
+      drawer: Drawer(
+        child: SafeArea(
+          child: ChatSidebarPage(
+            activeSessionId: session?.id,
+            onChatSelected: _selectSessionFromSidebar,
+          ),
+        ),
+      ),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -1509,7 +1559,9 @@ class _ChatPageState extends State<ChatPage> {
                       child: visibleMessages.isEmpty
                           ? const Center(child: Text('这段聊天还没有消息'))
                           : ListView.builder(
+                              key: ValueKey(session.id),
                               controller: _scrollController,
+                              reverse: true,
                               padding: const EdgeInsets.fromLTRB(
                                 16,
                                 12,
@@ -1518,9 +1570,11 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                               itemCount: visibleMessages.length,
                               itemBuilder: (context, index) {
-                                final msg = visibleMessages[index];
+                                final messageIndex =
+                                    visibleMessages.length - 1 - index;
+                                final msg = visibleMessages[messageIndex];
                                 final isLastMessage =
-                                    index == visibleMessages.length - 1;
+                                    messageIndex == visibleMessages.length - 1;
                                 final isLastUserMessageWithoutReply =
                                     isLastMessage && msg.isMe;
                                 final isLastCharacterMessage =
@@ -1545,19 +1599,21 @@ class _ChatPageState extends State<ChatPage> {
                                     isBusyRegenerating:
                                         isRegeneratingUserMessage,
                                     onCopy: () => _onCopyMessage(msg),
-                                    onEdit: () => _onEditMessage(index),
-                                    onDelete: () => _onDeleteMessage(index),
+                                    onEdit: () => _onEditMessage(messageIndex),
+                                    onDelete: () =>
+                                        _onDeleteMessage(messageIndex),
                                     onGenerate:
                                         isLastUserMessageWithoutReply &&
                                             showActions &&
                                             !isRegeneratingUserMessage
                                         ? () => _regenerateFromUserMessage(
-                                            userMessageIndex: index,
+                                            userMessageIndex: messageIndex,
                                           )
                                         : null,
                                     onRegenerate:
                                         isLastCharacterMessage && showActions
-                                        ? () => _onRegenerateMessage(index)
+                                        ? () =>
+                                              _onRegenerateMessage(messageIndex)
                                         : null,
                                     onSelectPreviousVariant: msg.hasMultiple
                                         ? () => _onSwitchMessageVariant(msg, -1)
