@@ -186,6 +186,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _isCheckingApiStatus = false;
   String? _apiStatusConfigId;
   ApiConnectionTestResult? _apiStatusResult;
+  ChatCompletionCancelToken? _activeCompletionCancelToken;
   ChatMessage? _pendingUserMessage;
   String? _regeneratingUserMessageId;
   String _streamingAssistantText = '';
@@ -369,6 +370,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    _activeCompletionCancelToken?.cancel();
     apiConfigsNotifier.removeListener(_handleApiConfigsChanged);
     ChatDatabaseService.instance.changeNotifier.removeListener(
       _handleChatDatabaseChanged,
@@ -1053,6 +1055,8 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
+    final cancellationToken = ChatCompletionCancelToken();
+    _activeCompletionCancelToken = cancellationToken;
     setState(() {
       _isSending = true;
       _pendingUserMessage = ChatMessage(text: text, isMe: true);
@@ -1073,6 +1077,7 @@ class _ChatPageState extends State<ChatPage> {
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
         useStreaming: _useStreaming,
+        cancellationToken: cancellationToken,
         onStreamProgress: (progress) {
           if (!mounted) {
             return;
@@ -1088,6 +1093,8 @@ class _ChatPageState extends State<ChatPage> {
           _scheduleScrollToBottom();
         },
       );
+    } on ChatCompletionCancelledException {
+      // 用户主动终止，不弹错误提示。
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1102,10 +1109,17 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) {
         setState(() {
           _isSending = false;
+          if (identical(_activeCompletionCancelToken, cancellationToken)) {
+            _activeCompletionCancelToken = null;
+          }
         });
       }
       _scheduleScrollToBottom();
     }
+  }
+
+  void _onStopGeneratingPressed() {
+    _activeCompletionCancelToken?.cancel();
   }
 
   // 消息操作方法
@@ -1324,6 +1338,8 @@ class _ChatPageState extends State<ChatPage> {
     });
     _scheduleScrollToBottom(animated: true);
 
+    final cancellationToken = ChatCompletionCancelToken();
+    _activeCompletionCancelToken = cancellationToken;
     try {
       await ChatService.instance.regenerateAssistantResponse(
         session: session,
@@ -1334,6 +1350,7 @@ class _ChatPageState extends State<ChatPage> {
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
         useStreaming: _useStreaming,
+        cancellationToken: cancellationToken,
         onStreamProgress: (progress) {
           if (!mounted) {
             return;
@@ -1349,6 +1366,8 @@ class _ChatPageState extends State<ChatPage> {
           _scheduleScrollToBottom();
         },
       );
+    } on ChatCompletionCancelledException {
+      // 用户主动终止，不弹错误提示。
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1363,6 +1382,9 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) {
         setState(() {
           _isSending = false;
+          if (identical(_activeCompletionCancelToken, cancellationToken)) {
+            _activeCompletionCancelToken = null;
+          }
         });
       }
       _scheduleScrollToBottom();
@@ -1581,6 +1603,16 @@ class _ChatPageState extends State<ChatPage> {
         : colorScheme.onSurfaceVariant;
     // 是否启用毛玻璃效果（有背景且设置开启）
     final useGlassEffect = hasBackground && settings.inputGlassEffect;
+    final sendButtonBackgroundColor = _isSending
+        ? colorScheme.errorContainer
+        : isSendEnabled
+        ? colorScheme.primary
+        : colorScheme.surfaceContainerHighest;
+    final sendButtonForegroundColor = _isSending
+        ? colorScheme.onErrorContainer
+        : isSendEnabled
+        ? colorScheme.onPrimary
+        : colorScheme.onSurfaceVariant;
 
     // 输入框内容
     Widget inputContent = Column(
@@ -1700,30 +1732,26 @@ class _ChatPageState extends State<ChatPage> {
               ),
               const Spacer(),
               IconButton(
-                onPressed: isSendEnabled ? _onSendPressed : null,
-                color: _isSending || isSendEnabled
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-                icon: _isSending
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            isSendEnabled
-                                ? colorScheme.primary
-                                : colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      )
-                    : const Icon(Icons.send, size: 24),
+                onPressed: _isSending
+                    ? _onStopGeneratingPressed
+                    : (isSendEnabled ? _onSendPressed : null),
+                icon: Icon(
+                  _isSending ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                  size: 15
+                ),
                 style: IconButton.styleFrom(
-                  minimumSize: const Size(44, 44),
+                  minimumSize: const Size(30, 30),
+                  fixedSize: const Size(30, 30),
+                  backgroundColor: sendButtonBackgroundColor,
+                  disabledBackgroundColor: sendButtonBackgroundColor,
+                  foregroundColor: sendButtonForegroundColor,
+                  disabledForegroundColor: sendButtonForegroundColor.withValues(
+                    alpha: 0.62,
+                  ),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   padding: EdgeInsets.zero,
                 ),
-                tooltip: _isSending ? '发送中' : '发送',
+                tooltip: _isSending ? '终止生成' : '发送',
               ),
             ],
           ),

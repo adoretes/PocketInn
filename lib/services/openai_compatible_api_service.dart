@@ -24,6 +24,47 @@ class ChatCompletionProgress {
   final bool done;
 }
 
+class ChatCompletionCancelToken {
+  HttpClient? _client;
+  bool _isCancelled = false;
+
+  bool get isCancelled => _isCancelled;
+
+  void cancel() {
+    if (_isCancelled) {
+      return;
+    }
+    _isCancelled = true;
+    _client?.close(force: true);
+  }
+
+  void throwIfCancelled() {
+    if (_isCancelled) {
+      throw const ChatCompletionCancelledException();
+    }
+  }
+
+  void _attach(HttpClient client) {
+    _client = client;
+    if (_isCancelled) {
+      client.close(force: true);
+    }
+  }
+
+  void _detach(HttpClient client) {
+    if (identical(_client, client)) {
+      _client = null;
+    }
+  }
+}
+
+class ChatCompletionCancelledException implements Exception {
+  const ChatCompletionCancelledException();
+
+  @override
+  String toString() => '请求已终止';
+}
+
 class ApiConnectionTestResult {
   const ApiConnectionTestResult({
     required this.success,
@@ -132,11 +173,13 @@ class OpenAICompatibleApiService {
     ApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    ChatCompletionCancelToken? cancellationToken,
   }) async {
     _validateConfig(config);
     if (config.model.trim().isEmpty) {
       throw const FormatException('Model 不能为空');
     }
+    cancellationToken?.throwIfCancelled();
 
     final endpoint = _buildUri(config.baseUrl, 'chat/completions');
     final requestBody = config.buildRequestBody(
@@ -151,7 +194,10 @@ class OpenAICompatibleApiService {
         endpoint,
         headers: _buildHeaders(config),
         body: requestBody,
+        cancellationToken: cancellationToken,
       );
+    } on ChatCompletionCancelledException {
+      rethrow;
     } on Object catch (error) {
       await ApiRequestLogService.instance.append(
         configName: config.name,
@@ -233,13 +279,16 @@ class OpenAICompatibleApiService {
     ApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    ChatCompletionCancelToken? cancellationToken,
   }) async* {
     _validateConfig(config);
     if (config.model.trim().isEmpty) {
       throw const FormatException('Model 不能为空');
     }
+    cancellationToken?.throwIfCancelled();
 
     final client = HttpClient();
+    cancellationToken?._attach(client);
     final stopwatch = Stopwatch()..start();
     final responseTextBuffer = StringBuffer();
     final reasoningBuffer = StringBuffer();
@@ -252,11 +301,13 @@ class OpenAICompatibleApiService {
     int? statusCode;
     var failureLogged = false;
     try {
+      cancellationToken?.throwIfCancelled();
       final request = await client.openUrl('POST', endpoint).timeout(_timeout);
       _buildHeaders(config).forEach(request.headers.set);
       request.headers.set('Content-Type', 'application/json; charset=utf-8');
       request.add(utf8.encode(jsonEncode(sanitizedBody)));
 
+      cancellationToken?.throwIfCancelled();
       final response = await request.close().timeout(_timeout);
       statusCode = response.statusCode;
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -285,6 +336,7 @@ class OpenAICompatibleApiService {
           .transform(const LineSplitter());
       final dataLines = <String>[];
       await for (final line in lineStream) {
+        cancellationToken?.throwIfCancelled();
         final trimmedLine = line.trimRight();
         if (trimmedLine.isEmpty) {
           final eventPayload = dataLines.join('\n').trim();
@@ -355,7 +407,12 @@ class OpenAICompatibleApiService {
         ),
       );
       yield const ChatCompletionProgress(done: true);
+    } on ChatCompletionCancelledException {
+      rethrow;
     } on Object catch (error) {
+      if (cancellationToken?.isCancelled == true) {
+        throw const ChatCompletionCancelledException();
+      }
       if (!failureLogged) {
         await ApiRequestLogService.instance.append(
           configName: config.name,
@@ -375,6 +432,7 @@ class OpenAICompatibleApiService {
       }
       rethrow;
     } finally {
+      cancellationToken?._detach(client);
       client.close();
     }
   }
@@ -445,9 +503,12 @@ class OpenAICompatibleApiService {
     Uri uri, {
     required Map<String, String> headers,
     Map<String, dynamic>? body,
+    ChatCompletionCancelToken? cancellationToken,
   }) async {
     final client = HttpClient();
+    cancellationToken?._attach(client);
     try {
+      cancellationToken?.throwIfCancelled();
       final request = await client.openUrl(method, uri).timeout(_timeout);
       headers.forEach(request.headers.set);
       if (body != null) {
@@ -455,13 +516,22 @@ class OpenAICompatibleApiService {
         request.headers.set('Content-Type', 'application/json; charset=utf-8');
         request.add(utf8.encode(jsonEncode(sanitizedBody)));
       }
+      cancellationToken?.throwIfCancelled();
       final response = await request.close().timeout(_timeout);
       final responseBody = await response.transform(utf8.decoder).join();
       return _HttpTextResponse(
         statusCode: response.statusCode,
         body: responseBody,
       );
+    } on ChatCompletionCancelledException {
+      rethrow;
+    } on Object {
+      if (cancellationToken?.isCancelled == true) {
+        throw const ChatCompletionCancelledException();
+      }
+      rethrow;
     } finally {
+      cancellationToken?._detach(client);
       client.close();
     }
   }

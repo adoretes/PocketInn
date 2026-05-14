@@ -43,6 +43,7 @@ class ChatService {
     String? selectedUserSettingId,
     Set<String> selectedWorldBookIds = const <String>{},
     bool useStreaming = false,
+    ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
     final normalizedInput = input.trim();
@@ -82,6 +83,7 @@ class ChatService {
         currentInput: normalizedInput,
       ),
     );
+    cancellationToken?.throwIfCancelled();
 
     final userNode = await ChatDatabaseService.instance.appendUserMessage(
       sessionId: session.id,
@@ -95,6 +97,7 @@ class ChatService {
         promptAssembly: promptAssembly,
         preset: preset,
         useStreaming: useStreaming,
+        cancellationToken: cancellationToken,
         onStreamProgress: onStreamProgress,
       );
 
@@ -120,6 +123,8 @@ class ChatService {
       rethrow;
     } on StateError catch (_) {
       rethrow;
+    } on ChatCompletionCancelledException catch (_) {
+      rethrow;
     } catch (error) {
       throw StateError('发送聊天请求失败: $error');
     }
@@ -134,6 +139,7 @@ class ChatService {
     String? selectedUserSettingId,
     Set<String> selectedWorldBookIds = const <String>{},
     bool useStreaming = false,
+    ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
     if (userMessage.id == null) {
@@ -175,6 +181,7 @@ class ChatService {
         currentInput: userMessage.text,
       ),
     );
+    cancellationToken?.throwIfCancelled();
 
     try {
       final completion = await _createCompletion(
@@ -182,6 +189,7 @@ class ChatService {
         promptAssembly: promptAssembly,
         preset: preset,
         useStreaming: useStreaming,
+        cancellationToken: cancellationToken,
         onStreamProgress: onStreamProgress,
       );
 
@@ -214,6 +222,8 @@ class ChatService {
     } on FormatException catch (_) {
       rethrow;
     } on StateError catch (_) {
+      rethrow;
+    } on ChatCompletionCancelledException catch (_) {
       rethrow;
     } catch (error) {
       throw StateError('重新生成聊天回复失败: $error');
@@ -272,6 +282,7 @@ class ChatService {
     required PromptAssemblyResult promptAssembly,
     required Preset preset,
     required bool useStreaming,
+    ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
     final requestMessages = [
@@ -284,24 +295,38 @@ class ChatService {
         config,
         messages: requestMessages,
         defaults: _buildCompletionDefaults(preset, useStreaming: false),
+        cancellationToken: cancellationToken,
       );
     }
 
     final textBuffer = StringBuffer();
     final thinkingBuffer = StringBuffer();
-    await for (final progress
-        in OpenAICompatibleApiService.instance.createStreamingChatCompletion(
-          config,
-          messages: requestMessages,
-          defaults: _buildCompletionDefaults(preset, useStreaming: true),
-        )) {
-      if (progress.textDelta.isNotEmpty) {
-        textBuffer.write(progress.textDelta);
+    try {
+      await for (final progress
+          in OpenAICompatibleApiService.instance.createStreamingChatCompletion(
+            config,
+            messages: requestMessages,
+            defaults: _buildCompletionDefaults(preset, useStreaming: true),
+            cancellationToken: cancellationToken,
+          )) {
+        if (progress.textDelta.isNotEmpty) {
+          textBuffer.write(progress.textDelta);
+        }
+        if (progress.thinkingDelta.isNotEmpty) {
+          thinkingBuffer.write(progress.thinkingDelta);
+        }
+        onStreamProgress?.call(progress);
       }
-      if (progress.thinkingDelta.isNotEmpty) {
-        thinkingBuffer.write(progress.thinkingDelta);
+    } on ChatCompletionCancelledException {
+      final partialText = textBuffer.toString().trim();
+      if (partialText.isEmpty) {
+        rethrow;
       }
-      onStreamProgress?.call(progress);
+      final partialThinking = thinkingBuffer.toString().trim();
+      return ChatCompletionResult(
+        text: partialText,
+        thinkingChain: partialThinking.isEmpty ? null : partialThinking,
+      );
     }
 
     final text = textBuffer.toString().trim();
