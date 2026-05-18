@@ -169,6 +169,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _textController = TextEditingController();
+  final FocusNode _inputFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
@@ -380,6 +381,12 @@ class _ChatPageState extends State<ChatPage> {
     _streamingThinkingChain = '';
   }
 
+  void _dismissInputKeyboard() {
+    _inputFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+  }
+
   String _resolvedUserName() {
     return _currentUserSetting()?.name ?? '默认用户';
   }
@@ -400,6 +407,7 @@ class _ChatPageState extends State<ChatPage> {
       _handleChatDatabaseChanged,
     );
     _textController.dispose();
+    _inputFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -439,10 +447,12 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onChatListPressed() {
+    _dismissInputKeyboard();
     _scaffoldKey.currentState?.openDrawer();
   }
 
   Future<void> _selectSessionFromSidebar(ChatSessionSummary summary) async {
+    _dismissInputKeyboard();
     final currentSessionId = _activeSession?.id;
     if (summary.id == currentSessionId) {
       return;
@@ -1476,6 +1486,11 @@ class _ChatPageState extends State<ChatPage> {
       extendBodyBehindAppBar: true,
       drawerEnableOpenDragGesture: true,
       drawerEdgeDragWidth: drawerEdgeDragWidth,
+      onDrawerChanged: (isOpened) {
+        if (isOpened) {
+          _dismissInputKeyboard();
+        }
+      },
       drawer: Drawer(
         child: SafeArea(
           child: ChatSidebarPage(
@@ -1676,7 +1691,9 @@ class _ChatPageState extends State<ChatPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
           child: TextField(
+            key: ValueKey(_activeSession?.id),
             controller: _textController,
+            focusNode: _inputFocusNode,
             maxLines: 5,
             minLines: 1,
             keyboardType: TextInputType.multiline,
