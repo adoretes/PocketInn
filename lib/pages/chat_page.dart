@@ -1461,9 +1461,9 @@ class _ChatPageState extends State<ChatPage> {
     final session = _activeSession;
     final character = _activeCharacter;
     final theme = Theme.of(context);
-    final drawerEdgeDragWidth = (MediaQuery.sizeOf(context).width * 0.18).clamp(
-      72.0,
-      120.0,
+    final drawerEdgeDragWidth = (MediaQuery.sizeOf(context).width * 0.45).clamp(
+      128.0,
+      320.0,
     );
     final topContentPadding =
         MediaQuery.paddingOf(context).top + kToolbarHeight;

@@ -48,3 +48,4 @@ app.*.map.json
 temp/
 
 AGENTS.md
+.codex/
