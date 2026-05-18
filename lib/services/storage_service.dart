@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 基础储存服务
-/// 
+///
 /// 提供统一的储存接口，封装 SharedPreferences 和文件操作
 class StorageService {
   StorageService._();
@@ -18,16 +18,16 @@ class StorageService {
   bool _initialized = false;
 
   /// 初始化储存服务
-  /// 
+  ///
   /// 必须在使用前调用此方法
   Future<void> initialize() async {
     if (_initialized) return;
 
     _prefs = await SharedPreferences.getInstance();
-    
+
     final appDir = await getApplicationDocumentsDirectory();
     _dataDir = '${appDir.path}/pocket_inn_data';
-    
+
     // 确保数据目录存在
     final dir = Directory(_dataDir);
     if (!await dir.exists()) {
@@ -142,27 +142,27 @@ class StorageService {
   // ==================== JSON 文件操作 ====================
 
   /// 读取 JSON 文件
-  /// 
+  ///
   /// [filename] 文件名（不含路径）
   /// 返回文件内容字符串，如果文件不存在则返回 null
   Future<String?> readJsonFile(String filename) async {
     _checkInitialized();
-    
+
     final file = File('$_dataDir/$filename');
     if (!await file.exists()) {
       return null;
     }
-    
+
     return await file.readAsString();
   }
 
   /// 写入 JSON 文件
-  /// 
+  ///
   /// [filename] 文件名（不含路径）
   /// [content] 文件内容字符串
   Future<void> writeJsonFile(String filename, String content) async {
     _checkInitialized();
-    
+
     final file = File('$_dataDir/$filename');
     await file.writeAsString(content);
   }
@@ -171,7 +171,7 @@ class StorageService {
   Future<Map<String, dynamic>?> readJsonMap(String filename) async {
     final content = await readJsonFile(filename);
     if (content == null) return null;
-    
+
     try {
       final decoded = jsonDecode(content);
       if (decoded is Map<String, dynamic>) {
@@ -192,7 +192,7 @@ class StorageService {
   /// 删除 JSON 文件
   Future<void> deleteJsonFile(String filename) async {
     _checkInitialized();
-    
+
     final file = File('$_dataDir/$filename');
     if (await file.exists()) {
       await file.delete();
@@ -202,7 +202,7 @@ class StorageService {
   /// 检查 JSON 文件是否存在
   Future<bool> jsonFileExists(String filename) async {
     _checkInitialized();
-    
+
     final file = File('$_dataDir/$filename');
     return await file.exists();
   }

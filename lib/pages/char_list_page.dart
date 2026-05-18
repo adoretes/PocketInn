@@ -543,6 +543,7 @@ class _CharacterEditorLoader extends StatelessWidget {
             id: record.id,
             cardJson: payload.cardJson,
             imageSourcePath: payload.imageSourcePath,
+            removeImage: payload.removeImage,
             selectedWorldBookId: payload.selectedWorldBookId,
           ),
         );

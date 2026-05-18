@@ -61,13 +61,17 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
       }
     }
 
-    final characterOptions = await ChatCharacterResolver.instance.loadAllOptions();
+    final characterOptions = await ChatCharacterResolver.instance
+        .loadAllOptions();
     final worldBooks = await _loadWorldBooks();
     final userSettings = userSettingsNotifier.value;
-    final sessionSummaries = await ChatDatabaseService.instance.loadSessionSummaries();
+    final sessionSummaries = await ChatDatabaseService.instance
+        .loadSessionSummaries();
     final sessions = <_PreviewSession>[];
     for (final summary in sessionSummaries) {
-      final bundle = await ChatDatabaseService.instance.loadSessionBundle(summary.id);
+      final bundle = await ChatDatabaseService.instance.loadSessionBundle(
+        summary.id,
+      );
       if (bundle == null) {
         continue;
       }
@@ -137,7 +141,9 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
   }
 
   ResolvedChatCharacter _resolveCharacter(_PreviewData data) {
-    final targetId = _selectedCharacterId ?? _resolveSession(data).bundle.session.characterId;
+    final targetId =
+        _selectedCharacterId ??
+        _resolveSession(data).bundle.session.characterId;
     for (final item in data.characters) {
       if (item.id == targetId) {
         return item;
@@ -158,7 +164,9 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
   }
 
   Preset _resolvePreset(_PreviewData data) {
-    final targetId = _selectedPresetId ?? _resolveSession(data).bundle.session.selectedPresetId;
+    final targetId =
+        _selectedPresetId ??
+        _resolveSession(data).bundle.session.selectedPresetId;
     if (targetId != null) {
       for (final item in data.presets) {
         if (item.id == targetId) {
@@ -171,7 +179,8 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
 
   UserSetting _resolveUserSetting(_PreviewData data) {
     final targetId =
-        _selectedUserSettingId ?? _resolveSession(data).bundle.session.selectedUserSettingId;
+        _selectedUserSettingId ??
+        _resolveSession(data).bundle.session.selectedUserSettingId;
     if (targetId != null) {
       for (final item in data.userSettings) {
         if (item.id == targetId) {
@@ -189,9 +198,7 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Prompt 预览'),
-      ),
+      appBar: AppBar(title: const Text('Prompt 预览')),
       body: FutureBuilder<_PreviewData>(
         future: _previewDataFuture,
         builder: (context, snapshot) {
@@ -243,13 +250,18 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
                           ? const Text('无')
                           : Column(
                               children: [
-                                for (final entry in result.activatedWorldBookEntries)
+                                for (final entry
+                                    in result.activatedWorldBookEntries)
                                   ListTile(
                                     dense: true,
                                     contentPadding: EdgeInsets.zero,
-                                    title: Text('${entry.bookName} / ${entry.entry.title}'),
+                                    title: Text(
+                                      '${entry.bookName} / ${entry.entry.title}',
+                                    ),
                                     subtitle: Text(
-                                      entry.triggeredByConstant ? 'constant' : '关键词触发',
+                                      entry.triggeredByConstant
+                                          ? 'constant'
+                                          : '关键词触发',
                                     ),
                                   ),
                               ],
@@ -262,12 +274,15 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
                           ? const Text('无')
                           : Column(
                               children: [
-                                for (final item in result.unusedCharacterOverrides)
+                                for (final item
+                                    in result.unusedCharacterOverrides)
                                   ListTile(
                                     dense: true,
                                     contentPadding: EdgeInsets.zero,
                                     title: Text(item.field),
-                                    subtitle: Text('${item.reason}\n\n${item.content}'),
+                                    subtitle: Text(
+                                      '${item.reason}\n\n${item.content}',
+                                    ),
                                   ),
                               ],
                             ),
@@ -345,10 +360,8 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
             ),
             items: data.characters
                 .map(
-                  (item) => DropdownMenuItem(
-                    value: item.id,
-                    child: Text(item.name),
-                  ),
+                  (item) =>
+                      DropdownMenuItem(value: item.id, child: Text(item.name)),
                 )
                 .toList(),
             onChanged: (value) {
@@ -369,10 +382,8 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
             ),
             items: data.userSettings
                 .map(
-                  (item) => DropdownMenuItem(
-                    value: item.id,
-                    child: Text(item.name),
-                  ),
+                  (item) =>
+                      DropdownMenuItem(value: item.id, child: Text(item.name)),
                 )
                 .toList(),
             onChanged: (value) {
@@ -393,10 +404,8 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
             ),
             items: data.presets
                 .map(
-                  (item) => DropdownMenuItem(
-                    value: item.id,
-                    child: Text(item.name),
-                  ),
+                  (item) =>
+                      DropdownMenuItem(value: item.id, child: Text(item.name)),
                 )
                 .toList(),
             onChanged: (value) {
@@ -411,10 +420,7 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              '世界书',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
+            child: Text('世界书', style: Theme.of(context).textTheme.titleSmall),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -444,11 +450,7 @@ class _PromptPreviewPageState extends State<PromptPreviewPage> {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.child,
-    this.trailing,
-  });
+  const _SectionCard({required this.title, required this.child, this.trailing});
 
   final String title;
   final Widget child;
@@ -483,9 +485,7 @@ class _SectionCard extends StatelessWidget {
 }
 
 class _MessagePreviewCard extends StatelessWidget {
-  const _MessagePreviewCard({
-    required this.message,
-  });
+  const _MessagePreviewCard({required this.message});
 
   final PromptMessage message;
 
@@ -546,10 +546,7 @@ class _PreviewData {
 }
 
 class _PreviewSession {
-  const _PreviewSession({
-    required this.summary,
-    required this.bundle,
-  });
+  const _PreviewSession({required this.summary, required this.bundle});
 
   final ChatSessionSummary summary;
   final ChatSessionBundle bundle;

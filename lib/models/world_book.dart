@@ -56,7 +56,8 @@ class WorldBookEntry {
     return WorldBookEntry(
       id: json['id'] as String? ?? '',
       key: (json['key'] as List<dynamic>?)?.cast<String>() ?? [],
-      keysecondary: (json['keysecondary'] as List<dynamic>?)?.cast<String>() ?? [],
+      keysecondary:
+          (json['keysecondary'] as List<dynamic>?)?.cast<String>() ?? [],
       content: json['content'] as String? ?? '',
       comment: json['comment'] as String? ?? '',
       constant: json['constant'] as bool? ?? false,
@@ -78,7 +79,8 @@ class WorldBookEntry {
     return WorldBookEntry(
       id: id,
       key: (json['key'] as List<dynamic>?)?.cast<String>() ?? [],
-      keysecondary: (json['keysecondary'] as List<dynamic>?)?.cast<String>() ?? [],
+      keysecondary:
+          (json['keysecondary'] as List<dynamic>?)?.cast<String>() ?? [],
       content: json['content'] as String? ?? '',
       comment: json['comment'] as String? ?? '',
       constant: json['constant'] as bool? ?? false,
@@ -99,21 +101,46 @@ class WorldBookEntry {
   static Map<String, dynamic> _parseExtensions(Map<String, dynamic> json) {
     final extensions = <String, dynamic>{};
     final knownKeys = {
-      'uid', 'key', 'keysecondary', 'comment', 'content', 'constant',
-      'selective', 'selectiveLogic', 'order', 'position', 'disable',
-      'depth', 'sticky', 'cooldown', 'delay', 'displayIndex', 'addMemo',
-      'group', 'groupOverride', 'groupWeight', 'probability', 'useProbability',
-      'role', 'vectorized', 'excludeRecursion', 'preventRecursion',
-      'delayUntilRecursion', 'scanDepth', 'caseSensitive', 'matchWholeWords',
-      'useGroupScoring', 'automationId',
+      'uid',
+      'key',
+      'keysecondary',
+      'comment',
+      'content',
+      'constant',
+      'selective',
+      'selectiveLogic',
+      'order',
+      'position',
+      'disable',
+      'depth',
+      'sticky',
+      'cooldown',
+      'delay',
+      'displayIndex',
+      'addMemo',
+      'group',
+      'groupOverride',
+      'groupWeight',
+      'probability',
+      'useProbability',
+      'role',
+      'vectorized',
+      'excludeRecursion',
+      'preventRecursion',
+      'delayUntilRecursion',
+      'scanDepth',
+      'caseSensitive',
+      'matchWholeWords',
+      'useGroupScoring',
+      'automationId',
     };
-    
+
     json.forEach((key, value) {
       if (!knownKeys.contains(key)) {
         extensions[key] = value;
       }
     });
-    
+
     return extensions;
   }
 
@@ -174,14 +201,14 @@ class WorldBookEntry {
       'useGroupScoring': null,
       'automationId': '',
     };
-    
+
     // 添加扩展字段
     extensions.forEach((key, value) {
       if (!result.containsKey(key)) {
         result[key] = value;
       }
     });
-    
+
     return result;
   }
 
@@ -262,7 +289,8 @@ class WorldBook {
       name: json['name'] as String? ?? '',
       description: json['description'] as String? ?? '',
       colorValue: json['colorValue'] as int? ?? 0xFF4B6CB7,
-      entries: (json['entries'] as List<dynamic>?)
+      entries:
+          (json['entries'] as List<dynamic>?)
               ?.map((e) => WorldBookEntry.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -273,7 +301,11 @@ class WorldBook {
   }
 
   /// 从 SillyTavern 格式创建
-  factory WorldBook.fromSillyTavernJson(String jsonContent, {String? name, int? colorValue}) {
+  factory WorldBook.fromSillyTavernJson(
+    String jsonContent, {
+    String? name,
+    int? colorValue,
+  }) {
     final data = jsonDecode(jsonContent) as Map<String, dynamic>;
 
     final entriesData = data['entries'] as Map<String, dynamic>?;
@@ -319,10 +351,8 @@ class WorldBook {
     for (var i = 0; i < entries.length; i++) {
       entriesMap[i.toString()] = entries[i].toSillyTavernJson(i);
     }
-    
-    return {
-      'entries': entriesMap,
-    };
+
+    return {'entries': entriesMap};
   }
 
   /// 转换为索引信息
@@ -347,7 +377,8 @@ class WorldBook {
     List<WorldBookEntry>? entries,
     DateTime? updatedAt,
   }) {
-    final resolvedColorValue = colorValue ?? (color != null ? color.toARGB32() : this.colorValue);
+    final resolvedColorValue =
+        colorValue ?? (color != null ? color.toARGB32() : this.colorValue);
     return WorldBook(
       id: id ?? this.id,
       name: name ?? this.name,

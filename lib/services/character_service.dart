@@ -407,6 +407,7 @@ class CharacterService {
     required String id,
     required Map<String, dynamic> cardJson,
     String? imageSourcePath,
+    bool removeImage = false,
     String? selectedWorldBookId,
   }) async {
     _checkInitialized();
@@ -423,6 +424,7 @@ class CharacterService {
     final imageData = await _prepareImageAssets(
       id: id,
       imageSourcePath: imageSourcePath,
+      removeImage: removeImage,
       currentOriginalImagePath: existing.originalImagePath,
       currentThumbnailPath: existing.thumbnailPath,
       currentCardColorValue: existing.cardColorValue,
@@ -747,10 +749,24 @@ class CharacterService {
   Future<_PreparedImageAssets> _prepareImageAssets({
     required String id,
     required String? imageSourcePath,
+    bool removeImage = false,
     required String currentOriginalImagePath,
     required String currentThumbnailPath,
     int? currentCardColorValue,
   }) async {
+    if (removeImage) {
+      if (currentOriginalImagePath.isNotEmpty) {
+        await _deleteIfExists(File(currentOriginalImagePath));
+      }
+      if (currentThumbnailPath.isNotEmpty) {
+        await _deleteIfExists(File(currentThumbnailPath));
+      }
+      return const _PreparedImageAssets(
+        originalImagePath: '',
+        thumbnailPath: '',
+      );
+    }
+
     if (imageSourcePath == null || imageSourcePath.trim().isEmpty) {
       return _PreparedImageAssets(
         originalImagePath: currentOriginalImagePath,

@@ -32,7 +32,9 @@ class ApiConfigService {
 
     final items = data['items'] as List<dynamic>? ?? const [];
     return items
-        .map((item) => ApiConfig.fromJson(Map<String, dynamic>.from(item as Map)))
+        .map(
+          (item) => ApiConfig.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
         .toList();
   }
 

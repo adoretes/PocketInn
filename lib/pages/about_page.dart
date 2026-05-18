@@ -67,10 +67,7 @@ class _AboutPageState extends State<AboutPage> {
                 _UpdateLogItem(
                   version: 'v1.0.8',
                   date: '2026-05-14',
-                  changes: [
-                    '优化聊天页',
-                    '增加终止生成功能',
-                  ],
+                  changes: ['优化聊天页', '增加终止生成功能'],
                 ),
               ],
             ),

@@ -57,8 +57,12 @@ class ChatCharacterResolver {
       name: record.name.isNotEmpty ? record.name : '未命名角色',
       description: record.description,
       cardJson: record.cardJson,
-      imagePath: record.originalImagePath.isNotEmpty ? record.originalImagePath : null,
-      thumbnailPath: record.thumbnailPath.isNotEmpty ? record.thumbnailPath : null,
+      imagePath: record.originalImagePath.isNotEmpty
+          ? record.originalImagePath
+          : null,
+      thumbnailPath: record.thumbnailPath.isNotEmpty
+          ? record.thumbnailPath
+          : null,
       sourceLabel: '真实角色',
     );
   }

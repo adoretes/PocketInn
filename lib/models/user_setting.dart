@@ -32,12 +32,7 @@ class UserSetting {
 
   /// 转换为 JSON
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'prompt': prompt,
-      'colorValue': colorValue,
-    };
+    return {'id': id, 'name': name, 'prompt': prompt, 'colorValue': colorValue};
   }
 
   /// 复制并修改
@@ -48,7 +43,8 @@ class UserSetting {
     int? colorValue,
     Color? color,
   }) {
-    final resolvedColorValue = colorValue ?? (color != null ? color.toARGB32() : this.colorValue);
+    final resolvedColorValue =
+        colorValue ?? (color != null ? color.toARGB32() : this.colorValue);
     return UserSetting(
       id: id ?? this.id,
       name: name ?? this.name,

@@ -1216,8 +1216,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     try {
-      if (editingMessage.isMe &&
-          action == _MessageEditAction.saveAndSend) {
+      if (editingMessage.isMe && action == _MessageEditAction.saveAndSend) {
         final editedNode = await ChatDatabaseService.instance
             .branchMessageFromEdit(
               sessionId: session.id,
@@ -1793,7 +1792,7 @@ class _ChatPageState extends State<ChatPage> {
                     : (isSendEnabled ? _onSendPressed : null),
                 icon: Icon(
                   _isSending ? Icons.stop_rounded : Icons.arrow_upward_rounded,
-                  size: 15
+                  size: 15,
                 ),
                 style: IconButton.styleFrom(
                   minimumSize: const Size(30, 30),

@@ -193,8 +193,7 @@ class AppThemeConfig {
   }) {
     return AppThemeConfig(
       themeColorIndex: themeColorIndex ?? this.themeColorIndex,
-      useWenKaiScreenFont:
-          useWenKaiScreenFont ?? this.useWenKaiScreenFont,
+      useWenKaiScreenFont: useWenKaiScreenFont ?? this.useWenKaiScreenFont,
       chatTextTheme: chatTextTheme ?? this.chatTextTheme,
     );
   }

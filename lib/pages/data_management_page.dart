@@ -151,9 +151,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('确认清除数据'),
-        content: const Text(
-          '这会清除本地聊天记录、角色、世界书、预设、API 配置、应用设置和请求日志，且无法撤销。',
-        ),
+        content: const Text('这会清除本地聊天记录、角色、世界书、预设、API 配置、应用设置和请求日志，且无法撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

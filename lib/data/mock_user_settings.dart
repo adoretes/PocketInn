@@ -33,8 +33,8 @@ Future<void> initializeUserSettings() async {
   final selectedId = await UserSettingsService.instance.getSelectedId();
 
   userSettingsNotifier.value = settings;
-  selectedUserSettingIdNotifier.value = selectedId ?? 
-      (settings.isNotEmpty ? settings.first.id : null);
+  selectedUserSettingIdNotifier.value =
+      selectedId ?? (settings.isNotEmpty ? settings.first.id : null);
 }
 
 /// 更新用户设定列表
@@ -43,14 +43,15 @@ Future<void> updateUserSettings({
   String? selectedId,
 }) async {
   final nextSettings = List<UserSetting>.unmodifiable(settings);
-  final nextSelectedId = selectedId ?? 
-      (nextSettings.isNotEmpty ? nextSettings.first.id : null);
+  final nextSelectedId =
+      selectedId ?? (nextSettings.isNotEmpty ? nextSettings.first.id : null);
 
   // 检查选中的ID是否有效
-  final hasSelected = nextSelectedId != null && 
+  final hasSelected =
+      nextSelectedId != null &&
       nextSettings.any((item) => item.id == nextSelectedId);
-  final validSelectedId = hasSelected 
-      ? nextSelectedId 
+  final validSelectedId = hasSelected
+      ? nextSelectedId
       : (nextSettings.isNotEmpty ? nextSettings.first.id : null);
 
   userSettingsNotifier.value = nextSettings;
@@ -67,7 +68,7 @@ Future<void> updateUserSettings({
 Future<void> addUserSetting(UserSetting setting) async {
   final settings = List<UserSetting>.from(userSettingsNotifier.value);
   settings.add(setting);
-  
+
   userSettingsNotifier.value = List<UserSetting>.unmodifiable(settings);
   await UserSettingsService.instance.add(setting);
 }
@@ -76,7 +77,7 @@ Future<void> addUserSetting(UserSetting setting) async {
 Future<void> updateUserSetting(UserSetting setting) async {
   final settings = List<UserSetting>.from(userSettingsNotifier.value);
   final index = settings.indexWhere((s) => s.id == setting.id);
-  
+
   if (index != -1) {
     settings[index] = setting;
     userSettingsNotifier.value = List<UserSetting>.unmodifiable(settings);
@@ -88,17 +89,17 @@ Future<void> updateUserSetting(UserSetting setting) async {
 Future<void> deleteUserSetting(String id) async {
   final settings = List<UserSetting>.from(userSettingsNotifier.value);
   settings.removeWhere((s) => s.id == id);
-  
+
   // 如果删除的是当前选中的设定，更新选中ID
   final selectedId = selectedUserSettingIdNotifier.value;
   String? newSelectedId = selectedId;
   if (selectedId == id && settings.isNotEmpty) {
     newSelectedId = settings.first.id;
   }
-  
+
   userSettingsNotifier.value = List<UserSetting>.unmodifiable(settings);
   selectedUserSettingIdNotifier.value = newSelectedId;
-  
+
   await UserSettingsService.instance.delete(id);
 }
 

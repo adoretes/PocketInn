@@ -176,11 +176,9 @@ class AppSettingsService {
   }
 
   Map<AppThemePreset, AppThemeConfig> _decodeThemeConfigs(
-    Map<String, dynamic> data,
-    {
+    Map<String, dynamic> data, {
     required bool? legacyUseWenKaiScreenFont,
-    }
-  ) {
+  }) {
     final themeConfigs = <AppThemePreset, AppThemeConfig>{};
 
     for (final preset in AppThemePreset.values) {

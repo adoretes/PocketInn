@@ -54,22 +54,22 @@ class _WorldBookPageState extends State<WorldBookPage> {
     try {
       final book = await WorldBookService.instance.importFromFile();
       if (book != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已导入：${book.name}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已导入：${book.name}')));
         await _loadWorldBooks();
       }
     } on ImportException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导入失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导入失败: $e')));
       }
     }
   }
@@ -120,9 +120,9 @@ class _WorldBookPageState extends State<WorldBookPage> {
         await _loadWorldBooks();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('创建失败: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('创建失败: $e')));
         }
       }
     }
@@ -132,15 +132,15 @@ class _WorldBookPageState extends State<WorldBookPage> {
     try {
       final path = await WorldBookService.instance.exportToFile(worldBook);
       if (path != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已导出到: $path')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已导出到: $path')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导出失败: $e')));
       }
     }
   }
@@ -159,9 +159,7 @@ class _WorldBookPageState extends State<WorldBookPage> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red,
-              ),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('删除'),
             ),
           ],
@@ -174,15 +172,15 @@ class _WorldBookPageState extends State<WorldBookPage> {
         await WorldBookService.instance.delete(worldBook.id);
         await _loadWorldBooks();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已删除：${worldBook.name}')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('已删除：${worldBook.name}')));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('删除失败: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
         }
       }
     }
@@ -236,10 +234,7 @@ class _WorldBookPageState extends State<WorldBookPage> {
           children: [
             Text('加载失败: $_error'),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _loadWorldBooks,
-              child: const Text('重试'),
-            ),
+            FilledButton(onPressed: _loadWorldBooks, child: const Text('重试')),
           ],
         ),
       );
@@ -258,18 +253,12 @@ class _WorldBookPageState extends State<WorldBookPage> {
             const SizedBox(height: 16),
             Text(
               '暂无世界书',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 8),
             Text(
               '点击右上角「+」创建或「↓」导入',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade500,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
             ),
           ],
         ),
@@ -327,10 +316,7 @@ class _WorldBookCard extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                accent.withValues(alpha: 0.12),
-                colorScheme.surface,
-              ],
+              colors: [accent.withValues(alpha: 0.12), colorScheme.surface],
             ),
           ),
           child: Padding(
@@ -437,10 +423,7 @@ class _ListActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: colorScheme.outlineVariant),
         ),
-        child: IconButton(
-          onPressed: onPressed,
-          icon: Icon(icon, size: 18),
-        ),
+        child: IconButton(onPressed: onPressed, icon: Icon(icon, size: 18)),
       ),
     );
   }

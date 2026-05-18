@@ -48,6 +48,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
   final TextEditingController _newTagController = TextEditingController();
   bool _showValidationError = false;
   String? _pendingImagePath;
+  bool _removeImage = false;
   late final ImageProvider? _initialBackgroundImage;
   List<WorldBook> _worldBooks = [];
   String? _selectedWorldBookId;
@@ -185,6 +186,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
         RoleEditSavePayload(
           cardJson: updatedCard,
           imageSourcePath: _pendingImagePath,
+          removeImage: _removeImage,
           selectedWorldBookId: _selectedWorldBookId,
         ),
       );
@@ -278,6 +280,14 @@ class _RoleEditPageState extends State<RoleEditPage> {
     }
     setState(() {
       _pendingImagePath = path;
+      _removeImage = false;
+    });
+  }
+
+  void _removePortrait() {
+    setState(() {
+      _pendingImagePath = null;
+      _removeImage = widget.imagePath.isNotEmpty;
     });
   }
 
@@ -348,6 +358,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final surface = colorScheme.surface;
+    final hasPortrait = _hasPortrait;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -400,6 +411,11 @@ class _RoleEditPageState extends State<RoleEditPage> {
         actions: [
           TextButton.icon(
             onPressed: _pickImage,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              minimumSize: const Size(0, 40),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             icon: const Icon(
               Icons.image_outlined,
               color: Colors.white,
@@ -427,8 +443,33 @@ class _RoleEditPageState extends State<RoleEditPage> {
               ),
             ),
           ),
+          if (hasPortrait)
+            IconButton(
+              tooltip: '移除立绘',
+              onPressed: _removePortrait,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+              icon: const Icon(
+                Icons.delete_outline,
+                color: Colors.white,
+                size: 18,
+                shadows: [
+                  Shadow(
+                    color: Colors.black45,
+                    offset: Offset(0, 1),
+                    blurRadius: 1,
+                  ),
+                ],
+              ),
+            ),
           TextButton(
             onPressed: _onSave,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 40),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             child: const Text(
               '保存',
               style: TextStyle(
@@ -777,8 +818,10 @@ class _RoleEditPageState extends State<RoleEditPage> {
   }
 
   Widget _buildBackgroundImage() {
-    final resolvedPath = _pendingImagePath ?? widget.imagePath;
-    final imageProvider = _pendingImagePath != null
+    final resolvedPath = _currentImagePath;
+    final imageProvider = _removeImage
+        ? null
+        : _pendingImagePath != null
         ? _imageProviderForPath(_pendingImagePath!)
         : _initialBackgroundImage;
 
@@ -799,6 +842,15 @@ class _RoleEditPageState extends State<RoleEditPage> {
     );
   }
 
+  String get _currentImagePath {
+    if (_removeImage) {
+      return '';
+    }
+    return _pendingImagePath ?? widget.imagePath;
+  }
+
+  bool get _hasPortrait => _currentImagePath.isNotEmpty;
+
   String get _selectedWorldBookLabel {
     if (_selectedWorldBookId == null) {
       return '未关联';
@@ -815,10 +867,12 @@ class RoleEditSavePayload {
   const RoleEditSavePayload({
     required this.cardJson,
     this.imageSourcePath,
+    this.removeImage = false,
     this.selectedWorldBookId,
   });
 
   final Map<String, dynamic> cardJson;
   final String? imageSourcePath;
+  final bool removeImage;
   final String? selectedWorldBookId;
 }

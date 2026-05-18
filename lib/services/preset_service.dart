@@ -47,7 +47,10 @@ class PresetService {
     if (preset == null) {
       final fallback = await loadDefaultPreset();
       if (fallback != null) {
-        await StorageService.instance.setString(_selectedPresetKey, fallback.id);
+        await StorageService.instance.setString(
+          _selectedPresetKey,
+          fallback.id,
+        );
       } else {
         await StorageService.instance.remove(_selectedPresetKey);
       }
@@ -72,7 +75,10 @@ class PresetService {
 
     final items = data['presets'] as List<dynamic>? ?? const [];
     return items
-        .map((item) => PresetSummary.fromJson(Map<String, dynamic>.from(item as Map)))
+        .map(
+          (item) =>
+              PresetSummary.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
         .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
@@ -157,7 +163,9 @@ class PresetService {
     );
 
     final file = File('$_presetsPath/${normalized.id}.json');
-    final content = const JsonEncoder.withIndent('  ').convert(normalized.toStorageJson());
+    final content = const JsonEncoder.withIndent(
+      '  ',
+    ).convert(normalized.toStorageJson());
     await file.writeAsString(content);
 
     final summaries = await loadAllSummaries();
@@ -204,7 +212,10 @@ class PresetService {
     if (selectedPresetId == id) {
       final fallback = await loadDefaultPreset();
       if (fallback != null && fallback.id != id) {
-        await StorageService.instance.setString(_selectedPresetKey, fallback.id);
+        await StorageService.instance.setString(
+          _selectedPresetKey,
+          fallback.id,
+        );
       } else {
         await StorageService.instance.remove(_selectedPresetKey);
       }
@@ -299,10 +310,7 @@ class PresetService {
       id: generateId(),
       fallbackName: fallbackName,
       isBuiltin: false,
-    ).copyWith(
-      isBuiltin: false,
-      updatedAt: DateTime.now(),
-    );
+    ).copyWith(isBuiltin: false, updatedAt: DateTime.now());
 
     await save(imported);
     return imported;
@@ -352,7 +360,10 @@ class PresetService {
       if (selected == null || selected.isEmpty) {
         final defaultPreset = await loadDefaultPreset();
         if (defaultPreset != null) {
-          await StorageService.instance.setString(_selectedPresetKey, defaultPreset.id);
+          await StorageService.instance.setString(
+            _selectedPresetKey,
+            defaultPreset.id,
+          );
         }
       }
       return;
@@ -371,7 +382,10 @@ class PresetService {
       isBuiltin: true,
     ).copyWith(updatedAt: DateTime.now());
     await save(builtinPreset);
-    await StorageService.instance.setString(_selectedPresetKey, builtinPreset.id);
+    await StorageService.instance.setString(
+      _selectedPresetKey,
+      builtinPreset.id,
+    );
   }
 }
 

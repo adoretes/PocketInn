@@ -167,9 +167,8 @@ class ApiRequestLogService {
         logsNotifier.value = decoded
             .whereType<Map>()
             .map(
-              (item) => ApiRequestLogEntry.fromJson(
-                Map<String, dynamic>.from(item),
-              ),
+              (item) =>
+                  ApiRequestLogEntry.fromJson(Map<String, dynamic>.from(item)),
             )
             .toList(growable: false);
       } else {

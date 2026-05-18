@@ -130,9 +130,7 @@ class _ExpandedTextEditorDialogState extends State<_ExpandedTextEditorDialog> {
     return Dialog.fullscreen(
       child: Scaffold(
         appBar: AppBar(
-          leading: CloseButton(
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+          leading: CloseButton(onPressed: () => Navigator.of(context).pop()),
           title: Text(widget.title),
           actions: [
             TextButton(
