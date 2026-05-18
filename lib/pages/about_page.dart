@@ -65,9 +65,9 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.8',
-                  date: '2026-05-14',
-                  changes: ['优化聊天页', '增加终止生成功能'],
+                  version: 'v1.0.9',
+                  date: '2026-05-18',
+                  changes: ['优化聊天页面交互体验', '增加删除角色立绘资源的功能'],
                 ),
               ],
             ),
