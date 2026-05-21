@@ -196,7 +196,6 @@ class _ChatPageState extends State<ChatPage> {
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
   int _sessionLoadGeneration = 0;
-  int _scrollToLatestRequestId = 0;
 
   @override
   void initState() {
@@ -312,7 +311,6 @@ class _ChatPageState extends State<ChatPage> {
     if (_textController.text.isNotEmpty) {
       _textController.clear();
     }
-    _scheduleScrollToLatest();
   }
 
   Future<void> _persistSessionConfig() async {
@@ -410,28 +408,6 @@ class _ChatPageState extends State<ChatPage> {
     _inputFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  void _scheduleScrollToLatest({bool animated = false}) {
-    final requestId = ++_scrollToLatestRequestId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          requestId != _scrollToLatestRequestId ||
-          !_scrollController.hasClients) {
-        return;
-      }
-
-      final targetOffset = _scrollController.position.minScrollExtent;
-      if (animated) {
-        _scrollController.animateTo(
-          targetOffset,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-        );
-      } else {
-        _scrollController.jumpTo(targetOffset);
-      }
-    });
   }
 
   void _handleApiConfigsChanged() {
@@ -1116,7 +1092,6 @@ class _ChatPageState extends State<ChatPage> {
       _streamingAssistantText = '';
       _streamingThinkingChain = '';
     });
-    _scheduleScrollToLatest(animated: true);
 
     _textController.clear();
 
@@ -1143,7 +1118,6 @@ class _ChatPageState extends State<ChatPage> {
               _streamingThinkingChain += progress.thinkingDelta;
             }
           });
-          _scheduleScrollToLatest();
         },
       );
     } on ChatCompletionCancelledException {
@@ -1167,7 +1141,6 @@ class _ChatPageState extends State<ChatPage> {
           }
         });
       }
-      _scheduleScrollToLatest();
     }
   }
 
@@ -1385,7 +1358,6 @@ class _ChatPageState extends State<ChatPage> {
       _streamingAssistantText = '';
       _streamingThinkingChain = '';
     });
-    _scheduleScrollToLatest(animated: true);
 
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
@@ -1412,7 +1384,6 @@ class _ChatPageState extends State<ChatPage> {
               _streamingThinkingChain += progress.thinkingDelta;
             }
           });
-          _scheduleScrollToLatest();
         },
       );
     } on ChatCompletionCancelledException {
@@ -1436,7 +1407,6 @@ class _ChatPageState extends State<ChatPage> {
           }
         });
       }
-      _scheduleScrollToLatest();
     }
   }
 
