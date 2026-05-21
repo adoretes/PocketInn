@@ -290,7 +290,13 @@ class CharacterService {
     await _saveSummaries(summaries);
   }
 
-  Future<CharacterCardRecord?> importFromFile() async {
+  Future<CharacterImportResult?> importFromFile({
+    Future<CharacterImportConflictChoice> Function(
+      String importedName,
+      CharacterSummary existing,
+    )?
+    onSameNameConflict,
+  }) async {
     _checkInitialized();
 
     final result = await FilePicker.platform.pickFiles(
@@ -330,6 +336,25 @@ class CharacterService {
       throw const CharacterImportException('无法解析角色卡文件');
     }
 
+    final importedName = _characterNameFromCard(cardJson);
+    if (importedName.isNotEmpty && onSameNameConflict != null) {
+      final existing = await _findSameNameCharacter(importedName);
+      if (existing != null) {
+        final choice = await onSameNameConflict(importedName, existing);
+        if (choice == CharacterImportConflictChoice.cancel) {
+          return null;
+        }
+        if (choice == CharacterImportConflictChoice.merge) {
+          final merged = await _mergeImportedCard(
+            existing: existing,
+            cardJson: cardJson,
+            imageSourcePath: originalImageBytes == null ? null : sourcePath,
+          );
+          return CharacterImportResult(record: merged, merged: true);
+        }
+      }
+    }
+
     final prepared = await _prepareCardForStorage(
       cardJson,
       existingWorldBookId: null,
@@ -355,7 +380,7 @@ class CharacterService {
     );
 
     await save(record);
-    return record;
+    return CharacterImportResult(record: record);
   }
 
   Future<String?> exportToJsonFile(CharacterCardRecord record) async {
@@ -442,6 +467,68 @@ class CharacterService {
         clearCardColorValue: imageData.clearCardColorValue,
       ),
     );
+  }
+
+  Future<CharacterSummary?> _findSameNameCharacter(String name) async {
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      return null;
+    }
+
+    final summaries = await loadAllSummaries();
+    for (final summary in summaries) {
+      if (summary.name.trim() == normalizedName) {
+        return summary;
+      }
+    }
+    return null;
+  }
+
+  String _characterNameFromCard(Map<String, dynamic> cardJson) {
+    final normalized = normalizeToV2Card(cardJson);
+    final data = normalized['data'];
+    if (data is Map) {
+      return (data['name'] as String? ?? '').trim();
+    }
+    return '';
+  }
+
+  Future<CharacterCardRecord> _mergeImportedCard({
+    required CharacterSummary existing,
+    required Map<String, dynamic> cardJson,
+    required String? imageSourcePath,
+  }) async {
+    final current = await loadById(existing.id);
+    if (current == null) {
+      throw StateError('角色不存在: ${existing.id}');
+    }
+
+    final prepared = await _prepareCardForStorage(
+      cardJson,
+      existingWorldBookId: current.worldBookId,
+    );
+    final imageData = await _prepareImageAssets(
+      id: current.id,
+      imageSourcePath: imageSourcePath,
+      currentOriginalImagePath: current.originalImagePath,
+      currentThumbnailPath: current.thumbnailPath,
+      currentCardColorValue: current.cardColorValue,
+    );
+
+    final merged = current.copyWith(
+      cardJson: prepared.cardJson,
+      originalImagePath: imageData.originalImagePath,
+      thumbnailPath: imageData.thumbnailPath,
+      worldBookId: prepared.worldBookId,
+      clearWorldBookId: prepared.worldBookId == null,
+      characterBookExtensions: prepared.characterBookExtensions,
+      cardColorValue: imageData.cardColorValue,
+      clearCardColorValue: imageData.clearCardColorValue,
+    );
+    await save(merged);
+
+    final stored = await loadById(current.id);
+    return stored ?? merged;
   }
 
   Future<void> _saveSummaries(List<CharacterSummary> summaries) async {
@@ -860,6 +947,15 @@ class CharacterImportException implements Exception {
   @override
   String toString() => 'CharacterImportException: $message';
 }
+
+class CharacterImportResult {
+  const CharacterImportResult({required this.record, this.merged = false});
+
+  final CharacterCardRecord record;
+  final bool merged;
+}
+
+enum CharacterImportConflictChoice { createNew, merge, cancel }
 
 class _PreparedCharacterCard {
   const _PreparedCharacterCard({

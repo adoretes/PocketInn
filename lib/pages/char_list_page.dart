@@ -40,19 +40,67 @@ class _CharListPageState extends State<CharListPage> {
 
   Future<void> _onImport() async {
     try {
-      final result = await CharacterService.instance.importFromFile();
+      final result = await CharacterService.instance.importFromFile(
+        onSameNameConflict: _chooseSameNameImportAction,
+      );
       if (result == null || !mounted) return;
       await _refresh();
       if (!mounted) return;
+      final message = result.merged
+          ? '已合并到已有角色：${result.record.name}'
+          : '已导入角色：${result.record.name}';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('已导入角色：${result.name}')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('导入失败：$e')));
     }
+  }
+
+  Future<CharacterImportConflictChoice> _chooseSameNameImportAction(
+    String importedName,
+    CharacterSummary existing,
+  ) async {
+    if (!mounted) {
+      return CharacterImportConflictChoice.cancel;
+    }
+
+    final choice = await showDialog<CharacterImportConflictChoice>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('发现同名角色'),
+          content: Text(
+            '已存在角色「${existing.name}」。是否将「$importedName」合并到已有角色？'
+            '\n\n选择合并会更新已有角色，并保留它的聊天记录。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, CharacterImportConflictChoice.cancel),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(
+                context,
+                CharacterImportConflictChoice.createNew,
+              ),
+              child: const Text('新建副本'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, CharacterImportConflictChoice.merge),
+              child: const Text('合并'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return choice ?? CharacterImportConflictChoice.cancel;
   }
 
   Future<void> _onCreate() async {
