@@ -36,6 +36,7 @@ class ChatMarkdownBody extends StatelessWidget {
     final chatTextTheme = resolveActiveChatTextTheme(settings);
 
     return MarkdownBody(
+      key: ValueKey<String>(_buildChatMarkdownThemeKey(settings)),
       data: formatChatMarkdownText(text),
       selectable: selectable,
       inlineSyntaxes: buildChatMarkdownInlineSyntaxes(),
@@ -159,6 +160,30 @@ MarkdownStyleSheet buildChatMarkdownStyleSheet({
       ),
     ),
   );
+}
+
+String _buildChatMarkdownThemeKey(AppSettings settings) {
+  final themeConfig = resolveThemeConfig(settings);
+  final chatTextTheme = themeConfig.chatTextTheme;
+
+  return <String>[
+    settings.themePreset.name,
+    themeConfig.useWenKaiScreenFont ? 'wenkai' : 'system',
+    chatTextTheme.quoteStyle.name,
+    chatTextTheme.enableMessageTextShadow ? 'shadow' : 'plain',
+    _buildTextStyleConfigKey(chatTextTheme.quotedTextStyle),
+    _buildTextStyleConfigKey(chatTextTheme.bracketTextStyle),
+    _buildTextStyleConfigKey(chatTextTheme.italicTextStyle),
+    _buildTextStyleConfigKey(chatTextTheme.boldTextStyle),
+  ].join('|');
+}
+
+String _buildTextStyleConfigKey(ChatTextStyleConfig config) {
+  return <String>[
+    config.paletteIndex.toString(),
+    config.fontStyleMode.name,
+    config.opacity.toStringAsFixed(3),
+  ].join(':');
 }
 
 TextStyle buildBaseMessageTextStyle({
