@@ -234,6 +234,9 @@ class AppSettingsService {
       enableMessageTextShadow:
           _asBool(data['enableMessageTextShadow']) ??
           fallback.enableMessageTextShadow,
+      bodyTextColorPaletteIndex: _normalizeNullablePaletteIndex(
+        _asInt(data['bodyTextColorPaletteIndex']),
+      ),
       quotedTextStyle: _decodeTextStyleConfig(
         _asMap(data['quotedTextStyle']),
         fallback: fallback.quotedTextStyle,
@@ -338,6 +341,7 @@ class AppSettingsService {
       ),
       enableMessageTextShadow:
           enableMessageTextShadow ?? fallback.enableMessageTextShadow,
+      bodyTextColorPaletteIndex: fallback.bodyTextColorPaletteIndex,
       quotedTextStyle: _loadTextStyleConfig(
         colorIndex: quotedTextColorIndex,
         fontStyleIndex: quotedTextFontStyle,
@@ -392,6 +396,7 @@ class AppSettingsService {
     return <String, dynamic>{
       'quoteStyle': settings.quoteStyle.index,
       'enableMessageTextShadow': settings.enableMessageTextShadow,
+      'bodyTextColorPaletteIndex': settings.bodyTextColorPaletteIndex,
       'quotedTextStyle': _encodeTextStyleConfig(settings.quotedTextStyle),
       'bracketTextStyle': _encodeTextStyleConfig(settings.bracketTextStyle),
       'italicTextStyle': _encodeTextStyleConfig(settings.italicTextStyle),
@@ -472,6 +477,13 @@ class AppSettingsService {
   int _normalizePaletteIndex(int? index, int fallback) {
     if (index == null || index < 0 || index >= customThemePalette.length) {
       return fallback;
+    }
+    return index;
+  }
+
+  int? _normalizeNullablePaletteIndex(int? index) {
+    if (index == null || index < 0 || index >= customThemePalette.length) {
+      return null;
     }
     return index;
   }

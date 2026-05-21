@@ -17,6 +17,10 @@ Color _paletteColorAt(int index) {
   return customThemePalette[_safePaletteIndex(index)];
 }
 
+int _defaultBodyTextColorPaletteIndex(Brightness brightness) {
+  return brightness == Brightness.dark ? 29 : 30;
+}
+
 const List<int> _orderedPaletteIndices = <int>[
   0,
   13,
@@ -111,9 +115,17 @@ class CustomThemePage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               _SectionCard(
-                title: '文本强调样式',
+                title: '文本样式',
                 child: Column(
                   children: [
+                    _BodyTextColorConfigTile(
+                      settings: settings,
+                      value: chatTextTheme.bodyTextColorPaletteIndex,
+                      onChanged: (value) => updateChatTextThemeSettings(
+                        bodyTextColorPaletteIndex: value,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     _TextStyleConfigTile(
                       settings: settings,
                       title: '引号内容',
@@ -236,6 +248,7 @@ class _ThemePreviewCard extends StatelessWidget {
                       alpha: 0.12,
                     ),
                     codeBlockColor: colorScheme.primary.withValues(alpha: 0.08),
+                    applyBodyTextColor: false,
                     selectable: false,
                   ),
                 ),
@@ -441,6 +454,100 @@ class _ThemeColorPaletteTile extends StatelessWidget {
               selectedIndex: selectedIndex,
               onChanged: onChanged,
               swatchSize: 28,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BodyTextColorConfigTile extends StatelessWidget {
+  const _BodyTextColorConfigTile({
+    required this.settings,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final AppSettings settings;
+  final int? value;
+  final ValueChanged<int?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final chatTextTheme = resolveActiveChatTextTheme(settings);
+    final customEnabled = value != null;
+    final selectedIndex =
+        value ?? _defaultBodyTextColorPaletteIndex(colorScheme.brightness);
+    final effectiveTextColor = customEnabled
+        ? _paletteColorAt(selectedIndex)
+        : colorScheme.onSurface;
+    final previewStyle = buildBaseMessageTextStyle(
+      textColor: effectiveTextColor,
+      brightness: colorScheme.brightness,
+      enableShadow: chatTextTheme.enableMessageTextShadow,
+    );
+
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '正文颜色',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        customEnabled ? '使用自定义正文颜色' : '跟随当前主题正文色',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: customEnabled,
+                  onChanged: (enabled) {
+                    onChanged(enabled ? selectedIndex : null);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: Text('示例正文', style: previewStyle)),
+                if (customEnabled) ...[
+                  const SizedBox(width: 12),
+                  _PalettePickerButton(
+                    selectedIndex: selectedIndex,
+                    onChanged: onChanged,
+                    swatchSize: 22,
+                  ),
+                ],
+              ],
             ),
           ],
         ),

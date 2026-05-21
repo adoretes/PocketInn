@@ -125,6 +125,7 @@ class ChatTextThemeSettings {
   const ChatTextThemeSettings({
     this.quoteStyle = AppQuoteStyle.curlyDouble,
     this.enableMessageTextShadow = false,
+    this.bodyTextColorPaletteIndex,
     this.quotedTextStyle = const ChatTextStyleConfig(
       paletteIndex: 0,
       fontStyleMode: ChatTextFontStyleMode.bold,
@@ -149,6 +150,7 @@ class ChatTextThemeSettings {
 
   final AppQuoteStyle quoteStyle;
   final bool enableMessageTextShadow;
+  final int? bodyTextColorPaletteIndex;
   final ChatTextStyleConfig quotedTextStyle;
   final ChatTextStyleConfig bracketTextStyle;
   final ChatTextStyleConfig italicTextStyle;
@@ -157,6 +159,7 @@ class ChatTextThemeSettings {
   ChatTextThemeSettings copyWith({
     AppQuoteStyle? quoteStyle,
     bool? enableMessageTextShadow,
+    Object? bodyTextColorPaletteIndex = _unset,
     ChatTextStyleConfig? quotedTextStyle,
     ChatTextStyleConfig? bracketTextStyle,
     ChatTextStyleConfig? italicTextStyle,
@@ -166,6 +169,9 @@ class ChatTextThemeSettings {
       quoteStyle: quoteStyle ?? this.quoteStyle,
       enableMessageTextShadow:
           enableMessageTextShadow ?? this.enableMessageTextShadow,
+      bodyTextColorPaletteIndex: bodyTextColorPaletteIndex == _unset
+          ? this.bodyTextColorPaletteIndex
+          : bodyTextColorPaletteIndex as int?,
       quotedTextStyle: quotedTextStyle ?? this.quotedTextStyle,
       bracketTextStyle: bracketTextStyle ?? this.bracketTextStyle,
       italicTextStyle: italicTextStyle ?? this.italicTextStyle,
@@ -173,6 +179,8 @@ class ChatTextThemeSettings {
     );
   }
 }
+
+const Object _unset = Object();
 
 @immutable
 class AppThemeConfig {
@@ -421,6 +429,7 @@ void updateThemeConfig({
   bool? useWenKaiScreenFont,
   AppQuoteStyle? quoteStyle,
   bool? enableMessageTextShadow,
+  Object? bodyTextColorPaletteIndex = _unset,
   ChatTextStyleConfig? quotedTextStyle,
   ChatTextStyleConfig? bracketTextStyle,
   ChatTextStyleConfig? italicTextStyle,
@@ -439,6 +448,7 @@ void updateThemeConfig({
     chatTextTheme: currentConfig.chatTextTheme.copyWith(
       quoteStyle: quoteStyle,
       enableMessageTextShadow: enableMessageTextShadow,
+      bodyTextColorPaletteIndex: bodyTextColorPaletteIndex,
       quotedTextStyle: quotedTextStyle,
       bracketTextStyle: bracketTextStyle,
       italicTextStyle: italicTextStyle,
@@ -456,6 +466,7 @@ void updateThemeConfig({
 void updateChatTextThemeSettings({
   AppQuoteStyle? quoteStyle,
   bool? enableMessageTextShadow,
+  Object? bodyTextColorPaletteIndex = _unset,
   ChatTextStyleConfig? quotedTextStyle,
   ChatTextStyleConfig? bracketTextStyle,
   ChatTextStyleConfig? italicTextStyle,
@@ -464,6 +475,7 @@ void updateChatTextThemeSettings({
   updateThemeConfig(
     quoteStyle: quoteStyle,
     enableMessageTextShadow: enableMessageTextShadow,
+    bodyTextColorPaletteIndex: bodyTextColorPaletteIndex,
     quotedTextStyle: quotedTextStyle,
     bracketTextStyle: bracketTextStyle,
     italicTextStyle: italicTextStyle,

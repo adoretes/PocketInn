@@ -20,6 +20,7 @@ class ChatMarkdownBody extends StatelessWidget {
     required this.textColor,
     required this.inlineCodeColor,
     required this.codeBlockColor,
+    this.applyBodyTextColor = true,
     this.selectable = true,
   });
 
@@ -28,12 +29,16 @@ class ChatMarkdownBody extends StatelessWidget {
   final Color textColor;
   final Color inlineCodeColor;
   final Color codeBlockColor;
+  final bool applyBodyTextColor;
   final bool selectable;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final chatTextTheme = resolveActiveChatTextTheme(settings);
+    final effectiveTextColor = applyBodyTextColor
+        ? resolveBodyMessageTextColor(chatTextTheme, fallback: textColor)
+        : textColor;
 
     return MarkdownBody(
       key: ValueKey<String>(_buildChatMarkdownThemeKey(settings)),
@@ -43,12 +48,12 @@ class ChatMarkdownBody extends StatelessWidget {
       builders: buildChatMarkdownBuilders(
         chatTextTheme: chatTextTheme,
         colorScheme: colorScheme,
-        textColor: textColor,
+        textColor: effectiveTextColor,
       ),
       styleSheet: buildChatMarkdownStyleSheet(
         chatTextTheme: chatTextTheme,
         colorScheme: colorScheme,
-        textColor: textColor,
+        textColor: effectiveTextColor,
         inlineCodeColor: inlineCodeColor,
         codeBlockColor: codeBlockColor,
       ),
@@ -171,6 +176,7 @@ String _buildChatMarkdownThemeKey(AppSettings settings) {
     themeConfig.useWenKaiScreenFont ? 'wenkai' : 'system',
     chatTextTheme.quoteStyle.name,
     chatTextTheme.enableMessageTextShadow ? 'shadow' : 'plain',
+    chatTextTheme.bodyTextColorPaletteIndex?.toString() ?? 'body-auto',
     _buildTextStyleConfigKey(chatTextTheme.quotedTextStyle),
     _buildTextStyleConfigKey(chatTextTheme.bracketTextStyle),
     _buildTextStyleConfigKey(chatTextTheme.italicTextStyle),
@@ -197,6 +203,19 @@ TextStyle buildBaseMessageTextStyle({
     color: textColor,
     shadows: enableShadow ? _buildMessageTextShadows(brightness) : null,
   );
+}
+
+Color resolveBodyMessageTextColor(
+  ChatTextThemeSettings chatTextTheme, {
+  required Color fallback,
+}) {
+  final paletteIndex = chatTextTheme.bodyTextColorPaletteIndex;
+  if (paletteIndex == null ||
+      paletteIndex < 0 ||
+      paletteIndex >= customThemePalette.length) {
+    return fallback;
+  }
+  return customThemePalette[paletteIndex];
 }
 
 TextStyle buildDecoratedChatTextStyle({

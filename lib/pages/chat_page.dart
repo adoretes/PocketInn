@@ -2201,6 +2201,7 @@ class _MessageBubble extends StatelessWidget {
                     textColor: textColor,
                     inlineCodeColor: inlineCodeColor,
                     codeBlockColor: codeBlockColor,
+                    applyBodyTextColor: false,
                   ),
                 ),
               ),
