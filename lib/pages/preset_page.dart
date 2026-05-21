@@ -92,6 +92,18 @@ class _PresetPageState extends State<PresetPage> {
     ).showSnackBar(SnackBar(content: Text('导出成功：$path')));
   }
 
+  Future<void> _onDuplicate(PresetSummary summary) async {
+    final preset = await PresetService.instance.duplicate(summary.id);
+    if (preset == null || !mounted) return;
+
+    await _refresh();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已复制预设：${preset.name}')));
+  }
+
   Future<void> _onDelete(PresetSummary summary) async {
     if (summary.isBuiltin) {
       ScaffoldMessenger.of(
@@ -186,6 +198,7 @@ class _PresetPageState extends State<PresetPage> {
                     preset: preset,
                     onTap: () => _onPresetTap(preset),
                     onExport: () => _onExport(preset),
+                    onDuplicate: () => _onDuplicate(preset),
                     onDelete: () => _onDelete(preset),
                   ),
                 );
@@ -203,12 +216,14 @@ class _PresetCard extends StatelessWidget {
     required this.preset,
     required this.onTap,
     required this.onExport,
+    required this.onDuplicate,
     required this.onDelete,
   });
 
   final PresetSummary preset;
   final VoidCallback onTap;
   final VoidCallback onExport;
+  final VoidCallback onDuplicate;
   final VoidCallback onDelete;
 
   @override
@@ -313,6 +328,12 @@ class _PresetCard extends StatelessWidget {
                       icon: Icons.file_upload_outlined,
                       tooltip: '导出',
                       onPressed: onExport,
+                    ),
+                    const SizedBox(width: 8),
+                    _PresetActionButton(
+                      icon: Icons.copy_outlined,
+                      tooltip: '复制',
+                      onPressed: onDuplicate,
                     ),
                     const SizedBox(width: 8),
                     _PresetActionButton(

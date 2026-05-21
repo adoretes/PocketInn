@@ -189,6 +189,26 @@ class PresetService {
     }
   }
 
+  Future<Preset?> duplicate(String id) async {
+    _checkInitialized();
+
+    final source = await loadById(id);
+    if (source == null) {
+      return null;
+    }
+
+    final summaries = await loadAllSummaries();
+    final duplicate = source.copyWith(
+      id: generateId(),
+      name: _buildDuplicateName(source.name, summaries),
+      isBuiltin: false,
+      updatedAt: DateTime.now(),
+    );
+
+    await save(duplicate);
+    return duplicate;
+  }
+
   Future<void> delete(String id) async {
     _checkInitialized();
 
@@ -337,6 +357,23 @@ class PresetService {
     return filename.toLowerCase().endsWith('.json')
         ? filename.substring(0, filename.length - 5)
         : filename;
+  }
+
+  String _buildDuplicateName(String sourceName, List<PresetSummary> summaries) {
+    final normalizedSourceName = sourceName.trim().isEmpty
+        ? '未命名预设'
+        : sourceName.trim();
+    final existingNames = summaries.map((item) => item.name).toSet();
+    final baseName = '$normalizedSourceName 副本';
+    if (!existingNames.contains(baseName)) {
+      return baseName;
+    }
+
+    var index = 2;
+    while (existingNames.contains('$baseName $index')) {
+      index += 1;
+    }
+    return '$baseName $index';
   }
 
   void _checkInitialized() {
