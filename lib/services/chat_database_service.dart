@@ -150,6 +150,7 @@ class ChatDatabaseService {
     List<String> selectedWorldBookIds = const [],
     String? selectedPresetId,
     List<String> openingAssistantMessages = const [],
+    int activeOpeningMessageIndex = 0,
   }) async {
     final sessionId = _generateId('session');
     final now = DateTime.now();
@@ -161,6 +162,9 @@ class ChatDatabaseService {
       for (var i = 0; i < normalizedOpeningMessages.length; i++)
         _generateId('message'),
     ];
+    final activeOpeningIndex = openingMessageIds.isEmpty
+        ? -1
+        : activeOpeningMessageIndex.clamp(0, openingMessageIds.length - 1);
     final session = ChatSession(
       id: sessionId,
       title: title?.trim().isNotEmpty == true ? title!.trim() : '新聊天',
@@ -168,11 +172,11 @@ class ChatDatabaseService {
       selectedUserSettingId: selectedUserSettingId,
       selectedWorldBookIds: List<String>.from(selectedWorldBookIds),
       selectedPresetId: selectedPresetId,
-      currentLeafMessageId: openingMessageIds.isNotEmpty
-          ? openingMessageIds.first
+      currentLeafMessageId: activeOpeningIndex >= 0
+          ? openingMessageIds[activeOpeningIndex]
           : null,
-      lastMessagePreview: normalizedOpeningMessages.isNotEmpty
-          ? normalizedOpeningMessages.first
+      lastMessagePreview: activeOpeningIndex >= 0
+          ? normalizedOpeningMessages[activeOpeningIndex]
           : '',
       createdAt: now,
       updatedAt: now,
@@ -197,12 +201,12 @@ class ChatDatabaseService {
         );
         await tx.insert('chat_messages', _nodeToMap(openingNode));
       }
-      if (openingMessageIds.isNotEmpty) {
+      if (activeOpeningIndex >= 0) {
         await _setActiveChild(
           tx,
           sessionId: session.id,
           parentMessageId: null,
-          childMessageId: openingMessageIds.first,
+          childMessageId: openingMessageIds[activeOpeningIndex],
         );
       }
     });

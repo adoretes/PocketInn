@@ -45,6 +45,7 @@ class ChatService {
     bool useStreaming = false,
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
+    Future<ChatSession> Function()? persistSession,
   }) async {
     final normalizedInput = input.trim();
     if (normalizedInput.isEmpty) {
@@ -85,9 +86,13 @@ class ChatService {
     );
     cancellationToken?.throwIfCancelled();
 
+    final activeSession = persistSession == null
+        ? session
+        : await persistSession();
+
     final userNode = await ChatDatabaseService.instance.appendUserMessage(
-      sessionId: session.id,
-      parentMessageId: session.currentLeafMessageId,
+      sessionId: activeSession.id,
+      parentMessageId: activeSession.currentLeafMessageId,
       text: normalizedInput,
     );
 
@@ -103,7 +108,7 @@ class ChatService {
 
       final assistantNode = await ChatDatabaseService.instance
           .appendAssistantMessage(
-            sessionId: session.id,
+            sessionId: activeSession.id,
             parentMessageId: userNode.id,
             text: completion.text,
             thinkingChain: completion.thinkingChain,

@@ -159,8 +159,32 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
 /// 聊天页面
 class ChatPage extends StatefulWidget {
   final String? sessionId;
+  final String? draftCharacterId;
+  final String? draftTitle;
+  final String? draftSelectedUserSettingId;
+  final String? draftSelectedPresetId;
+  final List<String> draftOpeningAssistantMessages;
 
-  const ChatPage({super.key, this.sessionId});
+  const ChatPage({super.key, this.sessionId})
+    : draftCharacterId = null,
+      draftTitle = null,
+      draftSelectedUserSettingId = null,
+      draftSelectedPresetId = null,
+      draftOpeningAssistantMessages = const [];
+
+  const ChatPage.draft({
+    super.key,
+    required String characterId,
+    required String title,
+    String? selectedUserSettingId,
+    String? selectedPresetId,
+    List<String> openingAssistantMessages = const [],
+  }) : sessionId = null,
+       draftCharacterId = characterId,
+       draftTitle = title,
+       draftSelectedUserSettingId = selectedUserSettingId,
+       draftSelectedPresetId = selectedPresetId,
+       draftOpeningAssistantMessages = openingAssistantMessages;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -195,6 +219,9 @@ class _ChatPageState extends State<ChatPage> {
   String? _regeneratingUserMessageId;
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
+  bool _isDraftSession = false;
+  List<String> _draftOpeningAssistantMessages = const [];
+  int _draftOpeningMessageIndex = 0;
   int _sessionLoadGeneration = 0;
 
   @override
@@ -233,7 +260,94 @@ class _ChatPageState extends State<ChatPage> {
       _presets = presets;
     });
 
+    if (widget.draftCharacterId != null) {
+      await _loadDraftSession();
+      return;
+    }
+
     await _loadSession(preferredSessionId: widget.sessionId);
+  }
+
+  Future<void> _loadDraftSession() async {
+    final characterId = widget.draftCharacterId;
+    if (characterId == null) {
+      return;
+    }
+
+    final loadGeneration = ++_sessionLoadGeneration;
+    final resolvedCharacter = await ChatCharacterResolver.instance.resolveById(
+      characterId,
+    );
+    if (!mounted || loadGeneration != _sessionLoadGeneration) {
+      return;
+    }
+
+    if (resolvedCharacter == null) {
+      setState(() {
+        _activeSession = null;
+        _activeCharacter = null;
+        _messages = [];
+        _isDraftSession = false;
+        _draftOpeningAssistantMessages = const [];
+        _isLoading = false;
+        _isSwitchingSession = false;
+      });
+      return;
+    }
+
+    final now = DateTime.now();
+    final openingMessages = widget.draftOpeningAssistantMessages
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    final title = widget.draftTitle?.trim().isNotEmpty == true
+        ? widget.draftTitle!.trim()
+        : resolvedCharacter.name;
+
+    setState(() {
+      _activeSession = ChatSession(
+        id: '__draft_chat__${resolvedCharacter.id}',
+        title: title,
+        characterId: resolvedCharacter.id,
+        selectedUserSettingId: widget.draftSelectedUserSettingId,
+        selectedWorldBookIds: const [],
+        selectedPresetId: widget.draftSelectedPresetId,
+        currentLeafMessageId: null,
+        lastMessagePreview: openingMessages.isNotEmpty
+            ? openingMessages.first
+            : '',
+        createdAt: now,
+        updatedAt: now,
+      );
+      _activeCharacter = resolvedCharacter;
+      _draftOpeningMessageIndex = 0;
+      _messages = _buildDraftOpeningMessages(openingMessages);
+      _selectedUserSettingId = widget.draftSelectedUserSettingId;
+      _selectedPresetId = widget.draftSelectedPresetId;
+      _selectedWorldBookIds.clear();
+      _isDraftSession = true;
+      _draftOpeningAssistantMessages = openingMessages;
+      _isLoading = false;
+      _isSwitchingSession = false;
+    });
+  }
+
+  List<ChatMessage> _buildDraftOpeningMessages(List<String> openingMessages) {
+    if (openingMessages.isEmpty) {
+      return const [];
+    }
+    final index = _draftOpeningMessageIndex.clamp(
+      0,
+      openingMessages.length - 1,
+    );
+    return [
+      ChatMessage(
+        text: openingMessages[index],
+        isMe: false,
+        index: index + 1,
+        total: openingMessages.length,
+      ),
+    ];
   }
 
   Future<void> _loadWorldBooks() async {
@@ -261,6 +375,9 @@ class _ChatPageState extends State<ChatPage> {
         _selectedUserSettingId = null;
         _selectedPresetId = null;
         _selectedWorldBookIds.clear();
+        _isDraftSession = false;
+        _draftOpeningAssistantMessages = const [];
+        _draftOpeningMessageIndex = 0;
         _isLoading = false;
         _isSwitchingSession = false;
       });
@@ -301,6 +418,9 @@ class _ChatPageState extends State<ChatPage> {
       _selectedWorldBookIds
         ..clear()
         ..addAll(bundle.session.selectedWorldBookIds);
+      _isDraftSession = false;
+      _draftOpeningAssistantMessages = const [];
+      _draftOpeningMessageIndex = 0;
       _isLoading = false;
       if (_isSwitchingSession) {
         _inputText = '';
@@ -316,6 +436,17 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _persistSessionConfig() async {
     final session = _activeSession;
     if (session == null) {
+      return;
+    }
+
+    if (_isDraftSession) {
+      setState(() {
+        _activeSession = session.copyWith(
+          selectedUserSettingId: _selectedUserSettingId,
+          selectedWorldBookIds: _selectedWorldBookIds.toList(),
+          selectedPresetId: _selectedPresetId,
+        );
+      });
       return;
     }
 
@@ -415,6 +546,9 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _handleChatDatabaseChanged() {
+    if (_isDraftSession) {
+      return;
+    }
     final sessionId = _activeSession?.id ?? widget.sessionId;
     if (sessionId == null || _isLoading || _isSwitchingSession || _isSending) {
       return;
@@ -442,6 +576,43 @@ class _ChatPageState extends State<ChatPage> {
 
     _isSwitchingSession = true;
     await _loadSession(preferredSessionId: summary.id);
+  }
+
+  Future<ChatSession> _persistDraftSession() async {
+    final session = _activeSession;
+    final character = _activeCharacter;
+    if (!_isDraftSession || session == null || character == null) {
+      if (session == null) {
+        throw StateError('当前没有可保存的聊天');
+      }
+      return session;
+    }
+
+    final createdSession = await ChatDatabaseService.instance.createSession(
+      characterId: character.id,
+      title: session.title,
+      selectedUserSettingId: _selectedUserSettingId,
+      selectedWorldBookIds: _selectedWorldBookIds.toList(),
+      selectedPresetId: _selectedPresetId,
+      openingAssistantMessages: _draftOpeningAssistantMessages,
+      activeOpeningMessageIndex: _draftOpeningMessageIndex,
+    );
+
+    if (mounted) {
+      setState(() {
+        _activeSession = createdSession;
+        _isDraftSession = false;
+        _draftOpeningAssistantMessages = const [];
+        _draftOpeningMessageIndex = 0;
+      });
+    } else {
+      _activeSession = createdSession;
+      _isDraftSession = false;
+      _draftOpeningAssistantMessages = const [];
+      _draftOpeningMessageIndex = 0;
+    }
+
+    return createdSession;
   }
 
   Future<void> _refreshEnabledApiStatus() async {
@@ -808,6 +979,13 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
+    if (_isDraftSession) {
+      setState(() {
+        _activeSession = session.copyWith(title: normalizedTitle);
+      });
+      return;
+    }
+
     await ChatDatabaseService.instance.updateSessionTitle(
       sessionId: session.id,
       title: normalizedTitle,
@@ -857,6 +1035,34 @@ class _ChatPageState extends State<ChatPage> {
       characterName: character.name,
       userName: _resolvedUserName(),
     );
+
+    if (_isDraftSession) {
+      setState(() {
+        _textController.clear();
+        _inputText = '';
+        _resetPendingMessages();
+        _draftOpeningMessageIndex = 0;
+        _draftOpeningAssistantMessages = openingMessages;
+        _messages = _buildDraftOpeningMessages(openingMessages);
+        _selectedUserSettingId = selectedUserSettingId;
+        _activeSession = session.copyWith(
+          title: nextTitle,
+          selectedUserSettingId: selectedUserSettingId,
+          selectedWorldBookIds: _selectedWorldBookIds.toList(),
+          selectedPresetId: _selectedPresetId,
+          lastMessagePreview: openingMessages.isNotEmpty
+              ? openingMessages.first
+              : '',
+        );
+      });
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已按当前选择重置聊天')));
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -1094,6 +1300,7 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     _textController.clear();
+    ChatSession? persistedSession;
 
     try {
       await ChatService.instance.sendMessage(
@@ -1119,6 +1326,13 @@ class _ChatPageState extends State<ChatPage> {
             }
           });
         },
+        persistSession: _isDraftSession
+            ? () async {
+                final createdSession = await _persistDraftSession();
+                persistedSession = createdSession;
+                return createdSession;
+              }
+            : null,
       );
     } on ChatCompletionCancelledException {
       // 用户主动终止，不弹错误提示。
@@ -1132,7 +1346,10 @@ class _ChatPageState extends State<ChatPage> {
       }
     } finally {
       _resetPendingMessages();
-      await _loadSession(preferredSessionId: session.id);
+      final reloadSessionId = persistedSession?.id;
+      if (reloadSessionId != null || !_isDraftSession) {
+        await _loadSession(preferredSessionId: reloadSessionId ?? session.id);
+      }
       if (mounted) {
         setState(() {
           _isSending = false;
@@ -1411,6 +1628,28 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _onSwitchMessageVariant(ChatMessage message, int delta) async {
+    if (_isDraftSession) {
+      if (message.isMe || _draftOpeningAssistantMessages.length <= 1) {
+        return;
+      }
+      final nextIndex = (_draftOpeningMessageIndex + delta).clamp(
+        0,
+        _draftOpeningAssistantMessages.length - 1,
+      );
+      if (nextIndex == _draftOpeningMessageIndex) {
+        return;
+      }
+      setState(() {
+        _draftOpeningMessageIndex = nextIndex;
+        _messages = _buildDraftOpeningMessages(_draftOpeningAssistantMessages);
+        _activeSession = _activeSession?.copyWith(
+          lastMessagePreview:
+              _draftOpeningAssistantMessages[_draftOpeningMessageIndex],
+        );
+      });
+      return;
+    }
+
     final session = _activeSession;
     if (session == null || message.id == null || message.siblingIds.isEmpty) {
       return;
@@ -2118,7 +2357,15 @@ class _MessageBubble extends StatelessWidget {
   /// 构建操作按钮行
   Widget _buildActionButtons(BuildContext context, ColorScheme colorScheme) {
     if (!showActions) {
-      return const SizedBox.shrink();
+      if (!message.hasMultiple) {
+        return const SizedBox.shrink();
+      }
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          children: [const Spacer(), _buildIndexSelector(colorScheme)],
+        ),
+      );
     }
 
     final actionWidgets = <Widget>[

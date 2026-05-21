@@ -6,7 +6,6 @@ import '../data/mock_user_settings.dart';
 import '../data/preset_selection.dart';
 import '../models/character_card.dart';
 import '../services/chat_opening_message_builder.dart';
-import '../services/chat_database_service.dart';
 import '../services/character_service.dart';
 import 'chat_page.dart';
 import 'char_edit_page.dart';
@@ -175,18 +174,19 @@ class _CharListPageState extends State<CharListPage> {
       characterName: summary.name,
       userName: userName,
     );
-    final session = await ChatDatabaseService.instance.createSession(
-      characterId: summary.id,
-      title: summary.name,
-      selectedUserSettingId: selectedUserSettingIdNotifier.value,
-      selectedPresetId: selectedPresetIdNotifier.value,
-      openingAssistantMessages: openingMessages,
-    );
     if (!mounted) {
       return;
     }
     await Navigator.of(context).pushAndRemoveUntil<void>(
-      MaterialPageRoute(builder: (context) => ChatPage(sessionId: session.id)),
+      MaterialPageRoute(
+        builder: (context) => ChatPage.draft(
+          characterId: summary.id,
+          title: summary.name,
+          selectedUserSettingId: selectedUserSettingIdNotifier.value,
+          selectedPresetId: selectedPresetIdNotifier.value,
+          openingAssistantMessages: openingMessages,
+        ),
+      ),
       (_) => false,
     );
   }
