@@ -193,9 +193,16 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
+  static const double _popupMenuAnchorGap = 8.0;
+  static const double _popupMenuScreenPadding = 8.0;
+  static const double _popupMenuVerticalPadding = 16.0;
+  static const double _popupMenuMinWidth = 112.0;
+  static const double _popupMenuMaxWidth = 280.0;
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
+  final Object _inputTapRegionGroupId = Object();
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
@@ -516,6 +523,74 @@ class _ChatPageState extends State<ChatPage> {
     _inputFocusNode.unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
     SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+  }
+
+  Widget _inputTapRegion(Widget child) {
+    return TextFieldTapRegion(groupId: _inputTapRegionGroupId, child: child);
+  }
+
+  RelativeRect _popupMenuPositionAbove(
+    BuildContext buttonContext,
+    int itemCount,
+  ) {
+    final button = buttonContext.findRenderObject() as RenderBox;
+    final overlayRenderObject = Navigator.of(
+      buttonContext,
+    ).overlay?.context.findRenderObject();
+    final overlay = overlayRenderObject is RenderBox
+        ? overlayRenderObject
+        : null;
+    final overlaySize = overlay?.size ?? MediaQuery.sizeOf(buttonContext);
+    final buttonRect = Rect.fromPoints(
+      button.localToGlobal(Offset.zero, ancestor: overlay),
+      button.localToGlobal(
+        button.size.bottomRight(Offset.zero),
+        ancestor: overlay,
+      ),
+    );
+    final menuHeight = _popupMenuHeightAbove(buttonRect, itemCount);
+    final top = (buttonRect.top - menuHeight - _popupMenuAnchorGap)
+        .clamp(_popupMenuScreenPadding, double.infinity)
+        .toDouble();
+
+    return RelativeRect.fromRect(
+      Rect.fromLTWH(buttonRect.left, top, buttonRect.width, buttonRect.height),
+      Offset.zero & overlaySize,
+    );
+  }
+
+  BoxConstraints _popupMenuConstraintsAbove(BuildContext buttonContext) {
+    final button = buttonContext.findRenderObject() as RenderBox;
+    final overlayRenderObject = Navigator.of(
+      buttonContext,
+    ).overlay?.context.findRenderObject();
+    final overlay = overlayRenderObject is RenderBox
+        ? overlayRenderObject
+        : null;
+    final buttonTop = button.localToGlobal(Offset.zero, ancestor: overlay).dy;
+    final maxHeight =
+        (buttonTop - _popupMenuAnchorGap - _popupMenuScreenPadding)
+            .clamp(kMinInteractiveDimension, double.infinity)
+            .toDouble();
+
+    return BoxConstraints(
+      minWidth: _popupMenuMinWidth,
+      maxWidth: _popupMenuMaxWidth,
+      maxHeight: maxHeight,
+    );
+  }
+
+  double _popupMenuHeightAbove(Rect buttonRect, int itemCount) {
+    final estimatedHeight =
+        itemCount * kMinInteractiveDimension + _popupMenuVerticalPadding;
+    final availableHeight =
+        buttonRect.top - _popupMenuAnchorGap - _popupMenuScreenPadding;
+    final maxHeight = availableHeight < kMinInteractiveDimension
+        ? kMinInteractiveDimension
+        : availableHeight;
+    return estimatedHeight
+        .clamp(kMinInteractiveDimension, maxHeight)
+        .toDouble();
   }
 
   String _resolvedUserName() {
@@ -1105,68 +1180,66 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onUserSettingsPressed(BuildContext context) {
-    final RenderBox button = context.findRenderObject() as RenderBox;
-    final Offset position = button.localToGlobal(Offset.zero);
-    final Size size = button.size;
-
     showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy + size.height,
-        position.dx + size.width,
-        position.dy,
+      requestFocus: false,
+      position: _popupMenuPositionAbove(
+        context,
+        userSettingsNotifier.value.length,
       ),
+      constraints: _popupMenuConstraintsAbove(context),
       items: userSettingsNotifier.value.map((setting) {
         final isSelected = setting.id == _selectedUserSettingId;
         return PopupMenuItem<String>(
           value: setting.id,
           padding: EdgeInsets.zero,
-          child: Container(
-            decoration: isSelected
-                ? BoxDecoration(color: setting.color.withValues(alpha: 0.12))
-                : null,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: setting.color,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    setting.avatarText,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+          child: _inputTapRegion(
+            Container(
+              decoration: isSelected
+                  ? BoxDecoration(color: setting.color.withValues(alpha: 0.12))
+                  : null,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: setting.color,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      setting.avatarText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(setting.name, overflow: TextOverflow.ellipsis),
-                ),
-                const SizedBox(width: 4),
-                InkWell(
-                  onTap: () {
-                    Navigator.pop(context);
-                    _onUserSettingEditPressed(setting.id);
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: Colors.grey.shade600,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(setting.name, overflow: TextOverflow.ellipsis),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onUserSettingEditPressed(setting.id);
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1182,19 +1255,13 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onWorldBookPressed(BuildContext context) {
-    final RenderBox button = context.findRenderObject() as RenderBox;
-    final Offset position = button.localToGlobal(Offset.zero);
-    final Size size = button.size;
     final colorScheme = Theme.of(context).colorScheme;
 
     showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy + size.height,
-        position.dx + size.width,
-        position.dy,
-      ),
+      requestFocus: false,
+      position: _popupMenuPositionAbove(context, _worldBooks.length),
+      constraints: _popupMenuConstraintsAbove(context),
       items: _worldBooks.map((worldBook) {
         final isSelected = _selectedWorldBookIds.contains(worldBook.id);
         return PopupMenuItem<String>(
@@ -1210,35 +1277,40 @@ class _ChatPageState extends State<ChatPage> {
             });
             Future<void>.microtask(_persistSessionConfig);
           },
-          child: Container(
-            decoration: isSelected
-                ? BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.12),
-                  )
-                : null,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(worldBook.name, overflow: TextOverflow.ellipsis),
-                ),
-                const SizedBox(width: 4),
-                InkWell(
-                  onTap: () {
-                    Navigator.pop(context);
-                    _onWorldBookEditPressed(worldBook.id);
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: Colors.grey.shade600,
+          child: _inputTapRegion(
+            Container(
+              decoration: isSelected
+                  ? BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.12),
+                    )
+                  : null,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      worldBook.name,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onWorldBookEditPressed(worldBook.id);
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1298,53 +1370,49 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onPresetPressed(BuildContext context) {
-    final RenderBox button = context.findRenderObject() as RenderBox;
-    final Offset position = button.localToGlobal(Offset.zero);
-    final Size size = button.size;
     final colorScheme = Theme.of(context).colorScheme;
 
     showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy + size.height,
-        position.dx + size.width,
-        position.dy,
-      ),
+      requestFocus: false,
+      position: _popupMenuPositionAbove(context, _presets.length),
+      constraints: _popupMenuConstraintsAbove(context),
       items: _presets.map((preset) {
         final isSelected = preset.id == _selectedPresetId;
         return PopupMenuItem<String>(
           value: preset.id,
           padding: EdgeInsets.zero,
-          child: Container(
-            decoration: isSelected
-                ? BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.12),
-                  )
-                : null,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(preset.name, overflow: TextOverflow.ellipsis),
-                ),
-                const SizedBox(width: 4),
-                InkWell(
-                  onTap: () {
-                    Navigator.pop(context);
-                    _onPresetEditPressed(preset.id);
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: Colors.grey.shade600,
+          child: _inputTapRegion(
+            Container(
+              decoration: isSelected
+                  ? BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.12),
+                    )
+                  : null,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(preset.name, overflow: TextOverflow.ellipsis),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onPresetEditPressed(preset.id);
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1984,6 +2052,7 @@ class _ChatPageState extends State<ChatPage> {
             key: ValueKey(_activeSession?.id),
             controller: _textController,
             focusNode: _inputFocusNode,
+            groupId: _inputTapRegionGroupId,
             maxLines: 5,
             minLines: 1,
             keyboardType: TextInputType.multiline,
@@ -2120,6 +2189,7 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ],
     );
+    inputContent = _inputTapRegion(inputContent);
 
     // 毛玻璃效果容器
     if (useGlassEffect) {
