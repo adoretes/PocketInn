@@ -33,6 +33,8 @@ enum _MessageEditAction { save, saveAndSend }
 
 enum _ChatTitleDialogAction { save, reset }
 
+enum _MessageOverflowAction { copy, edit, delete }
+
 class _MessageEditDialogResult {
   const _MessageEditDialogResult({required this.action, required this.text});
 
@@ -1619,6 +1621,56 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _onEditDraftOpeningMessage() async {
+    final session = _activeSession;
+    if (!_isDraftSession ||
+        session == null ||
+        _isSending ||
+        _draftOpeningAssistantMessages.isEmpty) {
+      return;
+    }
+    final editingIndex = _draftOpeningMessageIndex.clamp(
+      0,
+      _draftOpeningAssistantMessages.length - 1,
+    );
+
+    final result = await showDialog<_MessageEditDialogResult>(
+      context: context,
+      builder: (context) => _MessageEditDialog(
+        initialText: _draftOpeningAssistantMessages[editingIndex],
+        title: '编辑角色消息',
+        canSaveAndSend: false,
+      ),
+    );
+
+    if (result == null) {
+      return;
+    }
+    final normalizedText = result.text.trim();
+    if (normalizedText.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('消息不能为空')));
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    final nextOpeningMessages = List<String>.from(
+      _draftOpeningAssistantMessages,
+    );
+    nextOpeningMessages[editingIndex] = normalizedText;
+    setState(() {
+      _draftOpeningAssistantMessages = nextOpeningMessages;
+      _messages = _buildDraftOpeningMessages(nextOpeningMessages);
+      _activeSession = session.copyWith(lastMessagePreview: normalizedText);
+    });
+  }
+
   Future<void> _onDeleteMessage(int index) async {
     final session = _activeSession;
     final message = index >= 0 && index < _messages.length
@@ -1954,24 +2006,42 @@ class _ChatPageState extends State<ChatPage> {
                                 final isRegeneratingUserMessage =
                                     _regeneratingUserMessageId != null &&
                                     msg.id == _regeneratingUserMessageId;
+                                final hasPersistedMessage = msg.id != null;
+                                final hasDraftOpeningActions =
+                                    _isDraftSession &&
+                                    !hasPersistedMessage &&
+                                    !msg.isMe;
                                 final showActions =
-                                    msg.id != null &&
+                                    (hasPersistedMessage ||
+                                        hasDraftOpeningActions) &&
                                     (!_isSending || isRegeneratingUserMessage);
+                                final canEditMessage =
+                                    (hasPersistedMessage ||
+                                        hasDraftOpeningActions) &&
+                                    !_isSending;
+                                final canDeleteMessage =
+                                    hasPersistedMessage && !_isSending;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
                                   child: _MessageBubble(
                                     message: msg,
                                     userSetting: _currentUserSetting(),
                                     character: _activeCharacter,
+                                    inputTapRegionGroupId:
+                                        _inputTapRegionGroupId,
                                     isLastUserMessageWithoutReply:
                                         isLastUserMessageWithoutReply,
                                     isLastCharacterMessage:
                                         isLastCharacterMessage,
                                     showActions: showActions,
+                                    canEdit: canEditMessage,
+                                    canDelete: canDeleteMessage,
                                     isBusyRegenerating:
                                         isRegeneratingUserMessage,
                                     onCopy: () => _onCopyMessage(msg),
-                                    onEdit: () => _onEditMessage(messageIndex),
+                                    onEdit: hasDraftOpeningActions
+                                        ? _onEditDraftOpeningMessage
+                                        : () => _onEditMessage(messageIndex),
                                     onDelete: () =>
                                         _onDeleteMessage(messageIndex),
                                     onGenerate:
@@ -2256,9 +2326,12 @@ class _MessageBubble extends StatelessWidget {
     required this.message,
     required this.userSetting,
     required this.character,
+    required this.inputTapRegionGroupId,
     required this.isLastUserMessageWithoutReply,
     required this.isLastCharacterMessage,
     required this.showActions,
+    required this.canEdit,
+    required this.canDelete,
     required this.isBusyRegenerating,
     required this.onCopy,
     required this.onEdit,
@@ -2272,9 +2345,12 @@ class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final UserSetting? userSetting;
   final ResolvedChatCharacter? character;
+  final Object inputTapRegionGroupId;
   final bool isLastUserMessageWithoutReply;
   final bool isLastCharacterMessage;
   final bool showActions;
+  final bool canEdit;
+  final bool canDelete;
   final bool isBusyRegenerating;
   final VoidCallback onCopy;
   final VoidCallback onEdit;
@@ -2521,24 +2597,6 @@ class _MessageBubble extends StatelessWidget {
     }
 
     final actionWidgets = <Widget>[
-      _buildActionButton(
-        icon: Icons.copy_outlined,
-        tooltip: '复制',
-        onPressed: onCopy,
-        colorScheme: colorScheme,
-      ),
-      _buildActionButton(
-        icon: Icons.edit_outlined,
-        tooltip: '编辑',
-        onPressed: onEdit,
-        colorScheme: colorScheme,
-      ),
-      _buildActionButton(
-        icon: Icons.delete_outline,
-        tooltip: '删除',
-        onPressed: onDelete,
-        colorScheme: colorScheme,
-      ),
       if (isLastUserMessageWithoutReply && onGenerate != null)
         _buildActionButton(
           icon: isBusyRegenerating ? Icons.hourglass_top : Icons.auto_awesome,
@@ -2553,6 +2611,7 @@ class _MessageBubble extends StatelessWidget {
           onPressed: onRegenerate!,
           colorScheme: colorScheme,
         ),
+      _buildMoreActionsMenu(context, colorScheme),
     ];
 
     return Padding(
@@ -2564,6 +2623,101 @@ class _MessageBubble extends StatelessWidget {
           if (!message.isMe) const Spacer(),
           if (message.hasMultiple) _buildIndexSelector(colorScheme),
         ],
+      ),
+    );
+  }
+
+  /// 构建更多操作菜单
+  Widget _buildMoreActionsMenu(BuildContext context, ColorScheme colorScheme) {
+    return TextFieldTapRegion(
+      groupId: inputTapRegionGroupId,
+      child: ExcludeFocus(
+        child: PopupMenuButton<_MessageOverflowAction>(
+          tooltip: '更多',
+          requestFocus: false,
+          position: PopupMenuPosition.under,
+          onSelected: (action) {
+            switch (action) {
+              case _MessageOverflowAction.copy:
+                onCopy();
+              case _MessageOverflowAction.edit:
+                onEdit();
+              case _MessageOverflowAction.delete:
+                onDelete();
+            }
+          },
+          itemBuilder: (context) => _buildOverflowMenuItems(colorScheme),
+          child: SizedBox.square(
+            dimension: 32,
+            child: Icon(
+              Icons.more_horiz,
+              size: 18,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<PopupMenuEntry<_MessageOverflowAction>> _buildOverflowMenuItems(
+    ColorScheme colorScheme,
+  ) {
+    final items = <PopupMenuEntry<_MessageOverflowAction>>[
+      _buildOverflowMenuItem(
+        value: _MessageOverflowAction.copy,
+        icon: Icons.copy_outlined,
+        label: '复制',
+        color: colorScheme.onSurface,
+      ),
+    ];
+
+    if (canEdit) {
+      items.add(
+        _buildOverflowMenuItem(
+          value: _MessageOverflowAction.edit,
+          icon: Icons.edit_outlined,
+          label: '编辑',
+          color: colorScheme.onSurface,
+        ),
+      );
+    }
+
+    if (canDelete) {
+      items
+        ..add(const PopupMenuDivider(height: 8))
+        ..add(
+          _buildOverflowMenuItem(
+            value: _MessageOverflowAction.delete,
+            icon: Icons.delete_outline,
+            label: '删除',
+            color: colorScheme.error,
+          ),
+        );
+    }
+
+    return items;
+  }
+
+  PopupMenuItem<_MessageOverflowAction> _buildOverflowMenuItem({
+    required _MessageOverflowAction value,
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return PopupMenuItem<_MessageOverflowAction>(
+      value: value,
+      height: 40,
+      child: TextFieldTapRegion(
+        groupId: inputTapRegionGroupId,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 12),
+            Text(label, style: TextStyle(color: color)),
+          ],
+        ),
       ),
     );
   }
