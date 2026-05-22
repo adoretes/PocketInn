@@ -65,14 +65,13 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.10',
-                  date: '2026-05-21',
+                  version: 'v1.0.11',
+                  date: '2026-05-22',
                   changes: [
-                    '添加导入时选择合并到同名角色的功能',
-                    '添加预设复制功能',
-                    '添加正文颜色配置',
-                    '重构聊天创建逻辑',
-                    '移除生成时的强制滚动，用户可自由查看旧内容',
+                    '优化消息文本选择',
+                    '消息气泡改版，收纳复制编辑删除按钮',
+                    '优化输入框的交互体验',
+                    '输入框的三个选择改版，统一样式增加编辑入口',
                   ],
                 ),
               ],
