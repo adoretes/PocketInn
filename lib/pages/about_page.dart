@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
@@ -9,6 +10,10 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
+  static final Uri _githubUri = Uri.parse(
+    'https://github.com/adoretes/PocketInn',
+  );
+
   late final Future<PackageInfo> _packageInfoFuture;
 
   @override
@@ -121,7 +126,8 @@ class _AboutPageState extends State<AboutPage> {
                 _ContactItem(
                   icon: Icons.code_rounded,
                   label: 'GitHub',
-                  value: 'https://github.com/adoretes/PocketInn',
+                  value: _githubUri.toString(),
+                  onTap: _openGitHub,
                 ),
                 const SizedBox(height: 8),
               ],
@@ -164,6 +170,25 @@ class _AboutPageState extends State<AboutPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _openGitHub() async {
+    var launched = false;
+
+    try {
+      launched = await launchUrl(
+        _githubUri,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      launched = false;
+    }
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开 GitHub 链接')));
+    }
   }
 }
 
@@ -419,34 +444,62 @@ class _ContactItem extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isLink = onTap != null;
 
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: colorScheme.primary),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
+            Icon(icon, size: 20, color: colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isLink ? colorScheme.primary : null,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Text(value, style: const TextStyle(fontSize: 14)),
+            if (isLink) ...[
+              const SizedBox(width: 8),
+              Icon(
+                Icons.open_in_new_rounded,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
           ],
         ),
-      ],
+      ),
     );
   }
 }
