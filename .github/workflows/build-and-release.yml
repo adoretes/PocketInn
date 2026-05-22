@@ -76,14 +76,16 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
           echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/upload-keystore.jks" >> "$GITHUB_ENV"
 
-      - name: Build Android APK
-        run: flutter build apk --release --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}"
+      - name: Build Android APKs
+        run: flutter build apk --release --split-per-abi --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}"
 
       - name: Collect Android artifacts
         shell: bash
         run: |
           mkdir -p release-assets
-          cp build/app/outputs/flutter-apk/app-release.apk "release-assets/PocketInn-${{ needs.prepare-release.outputs.version }}-android.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "release-assets/PocketInn-${{ needs.prepare-release.outputs.version }}-android-arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "release-assets/PocketInn-${{ needs.prepare-release.outputs.version }}-android-armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk "release-assets/PocketInn-${{ needs.prepare-release.outputs.version }}-android-x86_64.apk"
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
