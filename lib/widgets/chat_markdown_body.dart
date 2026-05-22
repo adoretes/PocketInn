@@ -40,10 +40,11 @@ class ChatMarkdownBody extends StatelessWidget {
         ? resolveBodyMessageTextColor(chatTextTheme, fallback: textColor)
         : textColor;
 
-    return MarkdownBody(
+    final body = MarkdownBody(
       key: ValueKey<String>(_buildChatMarkdownThemeKey(settings)),
       data: formatChatMarkdownText(text),
-      selectable: selectable,
+      // SelectionArea can select across Markdown's multiple text widgets.
+      selectable: false,
       inlineSyntaxes: buildChatMarkdownInlineSyntaxes(),
       builders: buildChatMarkdownBuilders(
         chatTextTheme: chatTextTheme,
@@ -58,6 +59,12 @@ class ChatMarkdownBody extends StatelessWidget {
         codeBlockColor: codeBlockColor,
       ),
     );
+
+    if (!selectable) {
+      return body;
+    }
+
+    return SelectionArea(child: body);
   }
 }
 

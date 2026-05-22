@@ -1,6 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import 'package:pocket_inn/data/app_settings.dart';
 import 'package:pocket_inn/widgets/chat_markdown_body.dart';
 
 void main() {
@@ -38,6 +40,48 @@ void main() {
       expect(formatted, contains('Hello\n\n'));
       expect(formatted, contains('Next\n\n'));
       expect(formatted, contains('---'));
+    });
+  });
+
+  group('ChatMarkdownBody selection', () {
+    testWidgets('uses SelectionArea for selectable markdown', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatMarkdownBody(
+              text: 'first line\n\nsecond line',
+              settings: const AppSettings(),
+              textColor: Colors.black,
+              inlineCodeColor: Colors.grey,
+              codeBlockColor: Colors.grey,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(SelectionArea), findsOneWidget);
+      expect(find.byType(SelectableText), findsNothing);
+    });
+
+    testWidgets('does not wrap preview-only markdown in SelectionArea', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatMarkdownBody(
+              text: 'preview text',
+              settings: const AppSettings(),
+              textColor: Colors.black,
+              inlineCodeColor: Colors.grey,
+              codeBlockColor: Colors.grey,
+              selectable: false,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(SelectionArea), findsNothing);
     });
   });
 }
