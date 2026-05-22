@@ -176,174 +176,26 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   }
 
   Future<void> _openEditDialog(UserSetting setting) async {
-    final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController(text: setting.name);
-    final descriptionController = TextEditingController(text: setting.prompt);
-    Color selectedColor = setting.color;
+    final result = await showEditUserSettingDialog(context, setting);
+    if (result == null) return;
 
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('编辑用户设定'),
-              content: SizedBox(
-                width: 440,
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: nameController,
-                        decoration: const InputDecoration(
-                          labelText: '名字',
-                          hintText: '请输入名字',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return '名字不能为空';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: descriptionController,
-                        maxLines: 5,
-                        minLines: 4,
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: const InputDecoration(
-                          labelText: '描述',
-                          hintText: '请输入用户设定描述',
-                          alignLabelWithHint: true,
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          const Text('颜色：'),
-                          const SizedBox(width: 8),
-                          ...[
-                            const Color(0xFF5C6BC0),
-                            const Color(0xFF00897B),
-                            const Color(0xFFD81B60),
-                            const Color(0xFFE76F51),
-                            const Color(0xFF277DA1),
-                          ].map(
-                            (color) => Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: GestureDetector(
-                                onTap: () {
-                                  setDialogState(() {
-                                    selectedColor = color;
-                                  });
-                                },
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: color,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: selectedColor == color
-                                        ? Border.all(
-                                            color: colorScheme.onSurface,
-                                            width: 2,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('取消'),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    // 删除
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('确认删除'),
-                        content: Text('确定要删除「${setting.name}」吗？'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('取消'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.red,
-                            ),
-                            child: const Text('删除'),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (confirmed == true) {
-                      setState(() {
-                        _settings.removeWhere((s) => s.id == setting.id);
-                        if (_selectedId == setting.id) {
-                          _selectedId = _settings.isNotEmpty
-                              ? _settings.first.id
-                              : null;
-                        }
-                      });
-                      if (context.mounted) {
-                        Navigator.of(context).pop();
-                        _showMessage('已删除用户设定');
-                      }
-                    }
-                  },
-                  child: Text('删除', style: TextStyle(color: colorScheme.error)),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    if (formKey.currentState?.validate() ?? false) {
-                      final updatedSetting = setting.copyWith(
-                        name: nameController.text.trim(),
-                        prompt: descriptionController.text.trim(),
-                        color: selectedColor,
-                      );
-
-                      setState(() {
-                        final index = _settings.indexWhere(
-                          (s) => s.id == setting.id,
-                        );
-                        if (index != -1) {
-                          _settings[index] = updatedSetting;
-                        }
-                      });
-
-                      Navigator.of(context).pop();
-                      _showMessage('已保存');
-                    }
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+    if (result.deleted) {
+      setState(() {
+        _settings.removeWhere((s) => s.id == setting.id);
+        if (_selectedId == setting.id) {
+          _selectedId = _settings.isNotEmpty ? _settings.first.id : null;
+        }
+      });
+      _showMessage('已删除用户设定');
+    } else {
+      setState(() {
+        final index = _settings.indexWhere((s) => s.id == setting.id);
+        if (index != -1) {
+          _settings[index] = result.setting;
+        }
+      });
+      _showMessage('已保存');
+    }
   }
 
   @override
@@ -450,6 +302,178 @@ class UserSettingsPageResult {
 
   final List<UserSetting> settings;
   final String? selectedId;
+}
+
+/// 编辑用户设定弹窗的结果
+class UserSettingEditDialogResult {
+  const UserSettingEditDialogResult({
+    required this.setting,
+    this.deleted = false,
+  });
+
+  final UserSetting setting;
+  final bool deleted;
+}
+
+/// 显示编辑用户设定弹窗（可复用于 chat_page 等场景）
+Future<UserSettingEditDialogResult?> showEditUserSettingDialog(
+  BuildContext context,
+  UserSetting setting,
+) async {
+  final formKey = GlobalKey<FormState>();
+  final nameController = TextEditingController(text: setting.name);
+  final descriptionController = TextEditingController(text: setting.prompt);
+  Color selectedColor = setting.color;
+
+  final result = await showDialog<UserSettingEditDialogResult>(
+    context: context,
+    builder: (context) {
+      final colorScheme = Theme.of(context).colorScheme;
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('编辑用户设定'),
+            content: SizedBox(
+              width: 440,
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: '名字',
+                        hintText: '请输入名字',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return '名字不能为空';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: descriptionController,
+                      maxLines: 5,
+                      minLines: 4,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: const InputDecoration(
+                        labelText: '描述',
+                        hintText: '请输入用户设定描述',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Text('颜色：'),
+                        const SizedBox(width: 8),
+                        ...[
+                          const Color(0xFF5C6BC0),
+                          const Color(0xFF00897B),
+                          const Color(0xFFD81B60),
+                          const Color(0xFFE76F51),
+                          const Color(0xFF277DA1),
+                        ].map(
+                          (color) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  selectedColor = color;
+                                });
+                              },
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: selectedColor == color
+                                      ? Border.all(
+                                          color: colorScheme.onSurface,
+                                          width: 2,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('确认删除'),
+                      content: Text('确定要删除「${setting.name}」吗？'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('取消'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red,
+                          ),
+                          child: const Text('删除'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true && context.mounted) {
+                    Navigator.of(context).pop(
+                      UserSettingEditDialogResult(
+                        setting: setting,
+                        deleted: true,
+                      ),
+                    );
+                  }
+                },
+                child: Text('删除', style: TextStyle(color: colorScheme.error)),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (formKey.currentState?.validate() ?? false) {
+                    final updatedSetting = setting.copyWith(
+                      name: nameController.text.trim(),
+                      prompt: descriptionController.text.trim(),
+                      color: selectedColor,
+                    );
+                    Navigator.of(
+                      context,
+                    ).pop(UserSettingEditDialogResult(setting: updatedSetting));
+                  }
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+
+  return result;
 }
 
 class _UserSettingGridCard extends StatelessWidget {

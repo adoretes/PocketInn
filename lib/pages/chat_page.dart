@@ -25,6 +25,8 @@ import '../services/world_book_service.dart';
 import '../widgets/chat_markdown_body.dart';
 import '../widgets/expanded_text_editor_field.dart';
 import 'chat_sidebar_page.dart';
+import 'preset_edit_page.dart';
+import 'user_settings_page.dart';
 import 'world_book_edit_page.dart';
 
 enum _MessageEditAction { save, saveAndSend }
@@ -1119,34 +1121,53 @@ class _ChatPageState extends State<ChatPage> {
         final isSelected = setting.id == _selectedUserSettingId;
         return PopupMenuItem<String>(
           value: setting.id,
-          child: Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: setting.color,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  setting.avatarText,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+          padding: EdgeInsets.zero,
+          child: Container(
+            decoration: isSelected
+                ? BoxDecoration(color: setting.color.withValues(alpha: 0.12))
+                : null,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: setting.color,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    setting.avatarText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(setting.name, overflow: TextOverflow.ellipsis),
-              ),
-              if (isSelected) ...[
-                const SizedBox(width: 8),
-                Icon(Icons.check, size: 18, color: setting.color),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(setting.name, overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(context);
+                    _onUserSettingEditPressed(setting.id);
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
               ],
-            ],
+            ),
           ),
         );
       }).toList(),
@@ -1178,6 +1199,7 @@ class _ChatPageState extends State<ChatPage> {
         final isSelected = _selectedWorldBookIds.contains(worldBook.id);
         return PopupMenuItem<String>(
           value: worldBook.id,
+          padding: EdgeInsets.zero,
           onTap: () {
             setState(() {
               if (isSelected) {
@@ -1188,36 +1210,36 @@ class _ChatPageState extends State<ChatPage> {
             });
             Future<void>.microtask(_persistSessionConfig);
           },
-          child: Row(
-            children: [
-              Icon(
-                isSelected ? Icons.check_box : Icons.check_box_outline_blank,
-                size: 20,
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(worldBook.name, overflow: TextOverflow.ellipsis),
-              ),
-              const SizedBox(width: 4),
-              InkWell(
-                onTap: () {
-                  Navigator.pop(context);
-                  _onWorldBookEditPressed(worldBook.id);
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    Icons.edit_outlined,
-                    size: 18,
-                    color: Colors.grey.shade600,
+          child: Container(
+            decoration: isSelected
+                ? BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.12),
+                  )
+                : null,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(worldBook.name, overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(context);
+                    _onWorldBookEditPressed(worldBook.id);
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       }).toList(),
@@ -1238,10 +1260,48 @@ class _ChatPageState extends State<ChatPage> {
     await _loadWorldBooks();
   }
 
+  Future<void> _onUserSettingEditPressed(String settingId) async {
+    final settings = userSettingsNotifier.value;
+    final setting = settings.firstWhere((s) => s.id == settingId);
+    final result = await showEditUserSettingDialog(context, setting);
+    if (result == null || !mounted) return;
+
+    if (result.deleted) {
+      await deleteUserSetting(settingId);
+      if (_selectedUserSettingId == settingId) {
+        setState(() {
+          _selectedUserSettingId = userSettingsNotifier.value.isNotEmpty
+              ? userSettingsNotifier.value.first.id
+              : null;
+        });
+      }
+    } else {
+      await updateUserSetting(result.setting);
+    }
+  }
+
+  Future<void> _onPresetEditPressed(String presetId) async {
+    final preset = await PresetService.instance.loadById(presetId);
+    if (preset == null || !mounted) return;
+
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => PresetEditPage(preset: preset)),
+    );
+
+    if (saved == true && mounted) {
+      final presets = await PresetService.instance.loadAllSummaries();
+      setState(() {
+        _presets = presets;
+      });
+    }
+  }
+
   void _onPresetPressed(BuildContext context) {
     final RenderBox button = context.findRenderObject() as RenderBox;
     final Offset position = button.localToGlobal(Offset.zero);
     final Size size = button.size;
+    final colorScheme = Theme.of(context).colorScheme;
 
     showMenu<String>(
       context: context,
@@ -1255,16 +1315,37 @@ class _ChatPageState extends State<ChatPage> {
         final isSelected = preset.id == _selectedPresetId;
         return PopupMenuItem<String>(
           value: preset.id,
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(preset.name, overflow: TextOverflow.ellipsis),
-              ),
-              if (isSelected) ...[
-                const SizedBox(width: 8),
-                const Icon(Icons.check, size: 18, color: Colors.blue),
+          padding: EdgeInsets.zero,
+          child: Container(
+            decoration: isSelected
+                ? BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.12),
+                  )
+                : null,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(preset.name, overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(context);
+                    _onPresetEditPressed(preset.id);
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
               ],
-            ],
+            ),
           ),
         );
       }).toList(),
