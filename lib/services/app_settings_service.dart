@@ -40,7 +40,8 @@ class AppSettingsService {
   static const String _keyShowAvatar = 'app_show_avatar';
   static const String _keyBackgroundOpacity = 'app_background_opacity';
   static const String _keyInputGlassEffect = 'app_input_glass_effect';
-  static const String _keyUseWenKaiScreenFont = 'app_use_wenkai_screen_font';
+  static const String _keyCustomFontFamily = 'app_custom_font_family';
+  static const String _keyCustomFontFilePath = 'app_custom_font_file_path';
   static const String _keyShowApiRequestLogEntry =
       'app_show_api_request_log_entry';
 
@@ -54,7 +55,8 @@ class AppSettingsService {
     final showAvatar = storage.getBool(_keyShowAvatar);
     final backgroundOpacity = storage.getDouble(_keyBackgroundOpacity);
     final inputGlassEffect = storage.getBool(_keyInputGlassEffect);
-    final useWenKaiScreenFont = storage.getBool(_keyUseWenKaiScreenFont);
+    final customFontFamily = storage.getString(_keyCustomFontFamily);
+    storage.getString(_keyCustomFontFilePath);
     final showApiRequestLogEntry = storage.getBool(_keyShowApiRequestLogEntry);
     final themePreset = _enumValueOrDefault(
       AppThemePreset.values,
@@ -73,7 +75,7 @@ class AppSettingsService {
       themeConfigs: _loadThemeConfigs(
         storage: storage,
         activePreset: themePreset,
-        legacyUseWenKaiScreenFont: useWenKaiScreenFont,
+        legacyCustomFontFamily: customFontFamily,
       ),
       showAvatar: showAvatar ?? true,
       backgroundOpacity: backgroundOpacity ?? 0.85,
@@ -101,6 +103,16 @@ class AppSettingsService {
         settings.showApiRequestLogEntry,
       ),
     ]);
+
+    final currentConfig = resolveThemeConfig(settings);
+    if (currentConfig.customFontFamily != null) {
+      await storage.setString(
+        _keyCustomFontFamily,
+        currentConfig.customFontFamily!,
+      );
+    } else {
+      await storage.remove(_keyCustomFontFamily);
+    }
   }
 
   /// 更新颜色模式
@@ -128,6 +140,26 @@ class AppSettingsService {
     await StorageService.instance.setBool(_keyInputGlassEffect, enabled);
   }
 
+  /// 保持自定义字体文件路径
+  Future<void> saveCustomFontFilePath(String? path) async {
+    final storage = StorageService.instance;
+    if (path == null) {
+      await storage.remove(_keyCustomFontFilePath);
+    } else {
+      await storage.setString(_keyCustomFontFilePath, path);
+    }
+  }
+
+  /// 获取已知的自定义字体文件路径
+  String? getCustomFontFilePath() {
+    return StorageService.instance.getString(_keyCustomFontFilePath);
+  }
+
+  /// 获取已知的自定义字体族名称
+  String? getCustomFontFamily() {
+    return StorageService.instance.getString(_keyCustomFontFamily);
+  }
+
   /// 更新是否显示 API 请求日志入口
   Future<void> updateShowApiRequestLogEntry(bool enabled) async {
     await StorageService.instance.setBool(_keyShowApiRequestLogEntry, enabled);
@@ -150,7 +182,7 @@ class AppSettingsService {
   Map<AppThemePreset, AppThemeConfig> _loadThemeConfigs({
     required StorageService storage,
     required AppThemePreset activePreset,
-    required bool? legacyUseWenKaiScreenFont,
+    required String? legacyCustomFontFamily,
   }) {
     final encoded = storage.getString(_keyThemeConfigs);
     if (encoded != null && encoded.trim().isNotEmpty) {
@@ -160,7 +192,7 @@ class AppSettingsService {
         if (data != null) {
           return _decodeThemeConfigs(
             data,
-            legacyUseWenKaiScreenFont: legacyUseWenKaiScreenFont,
+            legacyCustomFontFamily: legacyCustomFontFamily,
           );
         }
       } catch (_) {
@@ -171,13 +203,13 @@ class AppSettingsService {
     return _loadLegacyThemeConfigs(
       storage: storage,
       activePreset: activePreset,
-      legacyUseWenKaiScreenFont: legacyUseWenKaiScreenFont,
+      legacyCustomFontFamily: legacyCustomFontFamily,
     );
   }
 
   Map<AppThemePreset, AppThemeConfig> _decodeThemeConfigs(
     Map<String, dynamic> data, {
-    required bool? legacyUseWenKaiScreenFont,
+    required String? legacyCustomFontFamily,
   }) {
     final themeConfigs = <AppThemePreset, AppThemeConfig>{};
 
@@ -185,7 +217,7 @@ class AppSettingsService {
       themeConfigs[preset] = _decodeThemeConfig(
         _asMap(data[preset.name]),
         fallback: defaultAppThemeConfigs[preset]!.copyWith(
-          useWenKaiScreenFont: legacyUseWenKaiScreenFont ?? true,
+          customFontFamily: legacyCustomFontFamily,
         ),
       );
     }
@@ -206,8 +238,8 @@ class AppSettingsService {
         _asInt(data['themeColorIndex']),
         fallback.themeColorIndex,
       ),
-      useWenKaiScreenFont:
-          _asBool(data['useWenKaiScreenFont']) ?? fallback.useWenKaiScreenFont,
+      customFontFamily:
+          _asString(data['customFontFamily']) ?? fallback.customFontFamily,
       chatTextTheme: _decodeChatTextTheme(
         _asMap(data['chatTextTheme']),
         fallback: fallback.chatTextTheme,
@@ -281,12 +313,12 @@ class AppSettingsService {
   Map<AppThemePreset, AppThemeConfig> _loadLegacyThemeConfigs({
     required StorageService storage,
     required AppThemePreset activePreset,
-    required bool? legacyUseWenKaiScreenFont,
+    required String? legacyCustomFontFamily,
   }) {
     final themeConfigs = <AppThemePreset, AppThemeConfig>{
       for (final entry in defaultAppThemeConfigs.entries)
         entry.key: entry.value.copyWith(
-          useWenKaiScreenFont: legacyUseWenKaiScreenFont ?? true,
+          customFontFamily: legacyCustomFontFamily,
         ),
     };
 
@@ -296,7 +328,7 @@ class AppSettingsService {
         storage.getInt(_keyCustomThemeColorIndex),
         customFallback.themeColorIndex,
       ),
-      useWenKaiScreenFont: legacyUseWenKaiScreenFont ?? true,
+      customFontFamily: legacyCustomFontFamily,
     );
 
     final activeFallback = themeConfigs[activePreset]!;
@@ -384,7 +416,7 @@ class AppSettingsService {
           config.themeColorIndex,
           fallback.themeColorIndex,
         ),
-        'useWenKaiScreenFont': config.useWenKaiScreenFont,
+        'customFontFamily': config.customFontFamily,
         'chatTextTheme': _encodeChatTextTheme(config.chatTextTheme),
       };
     }
@@ -444,6 +476,13 @@ class AppSettingsService {
 
   bool? _asBool(Object? value) {
     if (value is bool) {
+      return value;
+    }
+    return null;
+  }
+
+  String? _asString(Object? value) {
+    if (value is String) {
       return value;
     }
     return null;

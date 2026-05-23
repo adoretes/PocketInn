@@ -186,22 +186,27 @@ const Object _unset = Object();
 class AppThemeConfig {
   const AppThemeConfig({
     required this.themeColorIndex,
-    this.useWenKaiScreenFont = true,
+    this.customFontFamily,
     this.chatTextTheme = const ChatTextThemeSettings(),
   });
 
   final int themeColorIndex;
-  final bool useWenKaiScreenFont;
+
+  /// 用户自定义字体族名称，null 表示使用系统默认字体
+  final String? customFontFamily;
+
   final ChatTextThemeSettings chatTextTheme;
 
   AppThemeConfig copyWith({
     int? themeColorIndex,
-    bool? useWenKaiScreenFont,
+    Object? customFontFamily = _unset,
     ChatTextThemeSettings? chatTextTheme,
   }) {
     return AppThemeConfig(
       themeColorIndex: themeColorIndex ?? this.themeColorIndex,
-      useWenKaiScreenFont: useWenKaiScreenFont ?? this.useWenKaiScreenFont,
+      customFontFamily: customFontFamily == _unset
+          ? this.customFontFamily
+          : customFontFamily as String?,
       chatTextTheme: chatTextTheme ?? this.chatTextTheme,
     );
   }
@@ -426,7 +431,7 @@ void updateAppSettings({
 void updateThemeConfig({
   AppThemePreset? preset,
   int? themeColorIndex,
-  bool? useWenKaiScreenFont,
+  String? customFontFamily,
   AppQuoteStyle? quoteStyle,
   bool? enableMessageTextShadow,
   Object? bodyTextColorPaletteIndex = _unset,
@@ -444,7 +449,7 @@ void updateThemeConfig({
 
   nextThemeConfigs[targetPreset] = currentConfig.copyWith(
     themeColorIndex: themeColorIndex,
-    useWenKaiScreenFont: useWenKaiScreenFont,
+    customFontFamily: customFontFamily,
     chatTextTheme: currentConfig.chatTextTheme.copyWith(
       quoteStyle: quoteStyle,
       enableMessageTextShadow: enableMessageTextShadow,
@@ -526,11 +531,11 @@ ChatTextThemeSettings resolveChatTextTheme(
   return resolveThemeConfig(settings, preset: preset).chatTextTheme;
 }
 
-bool resolveUseWenKaiScreenFont(
+String? resolveCustomFontFamily(
   AppSettings settings, {
   AppThemePreset? preset,
 }) {
-  return resolveThemeConfig(settings, preset: preset).useWenKaiScreenFont;
+  return resolveThemeConfig(settings, preset: preset).customFontFamily;
 }
 
 ThemeData buildAppTheme(AppSettings settings, Brightness brightness) {
@@ -543,9 +548,7 @@ ThemeData buildAppTheme(AppSettings settings, Brightness brightness) {
     useMaterial3: true,
     brightness: brightness,
     colorScheme: colorScheme,
-    fontFamily: resolveUseWenKaiScreenFont(settings)
-        ? 'LXGW WenKai Screen'
-        : null,
+    fontFamily: resolveCustomFontFamily(settings),
     scaffoldBackgroundColor: colorScheme.surface,
     appBarTheme: AppBarTheme(
       backgroundColor: colorScheme.surface,

@@ -27,5 +27,5 @@ PocketInn 是一个基于 Flutter 开发的 AI 聊天应用，偏向角色扮演
 
 ### 字体
 
-项目内置字体 `LXGW WenKai Screen`，来源于 [lxgw/LxgwWenKai-Screen](https://github.com/lxgw/LxgwWenKai-Screen)。
-字体许可证为 `SIL Open Font License 1.1`，随仓库附带于 [assets/fonts/OFL.txt](assets/fonts/OFL.txt)。
+- 可在应用设置中配置自定义字体，支持输入字体族名称或加载 .ttf/.otf 字体文件。
+- 推荐字体[霞鹜文楷屏幕阅读版](https://github.com/lxgw/LxgwWenKai-Screen)。

@@ -102,16 +102,6 @@ class _AboutPageState extends State<AboutPage> {
                   license: 'BSD-3-Clause',
                   onTap: () => _showLicenseDialog(context, 'Dart', dartLicense),
                 ),
-                const SizedBox(height: 8),
-                _LicenseItem(
-                  name: 'LXGW WenKai Screen',
-                  license: 'SIL OFL 1.1',
-                  onTap: () => _showLicenseDialog(
-                    context,
-                    'LXGW WenKai Screen',
-                    fontLicense,
-                  ),
-                ),
               ],
             ),
           ),
@@ -561,13 +551,4 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-''';
-
-const String fontLicense = '''
-Copyright 2021-2024 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)
-Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
-
-This Font Software is licensed under the SIL Open Font License, Version 1.1.
-This license is copied below, and is also available with a FAQ at:
-https://openfontlicense.org
 ''';

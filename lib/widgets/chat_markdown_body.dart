@@ -180,7 +180,7 @@ String _buildChatMarkdownThemeKey(AppSettings settings) {
 
   return <String>[
     settings.themePreset.name,
-    themeConfig.useWenKaiScreenFont ? 'wenkai' : 'system',
+    themeConfig.customFontFamily ?? 'system',
     chatTextTheme.quoteStyle.name,
     chatTextTheme.enableMessageTextShadow ? 'shadow' : 'plain',
     chatTextTheme.bodyTextColorPaletteIndex?.toString() ?? 'body-auto',

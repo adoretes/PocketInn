@@ -10,6 +10,7 @@ import 'services/api_config_service.dart';
 import 'services/api_request_log_service.dart';
 import 'services/chat_database_service.dart';
 import 'services/character_service.dart';
+import 'services/font_service.dart';
 import 'services/preset_service.dart';
 import 'services/storage_service.dart';
 import 'services/world_book_service.dart';
@@ -38,6 +39,9 @@ void main() async {
 
   // 加载应用设置
   await initializeAppSettings();
+
+  // 初始化自定义字体
+  await FontService.instance.initializeCustomFont();
 
   // 加载用户设定
   await initializeUserSettings();
