@@ -70,6 +70,11 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.0.12',
+                  date: '2026-05-22',
+                  changes: ['将关于页面的 GitHub 链接改为可点击', '自定义字体改为用户自选'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.0.11',
                   date: '2026-05-22',
                   changes: [
