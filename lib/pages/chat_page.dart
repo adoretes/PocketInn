@@ -2154,7 +2154,7 @@ class _ChatPageState extends State<ChatPage> {
                     }
 
                     return ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 148),
+                      constraints: const BoxConstraints(maxWidth: 120),
                       child: TextButton.icon(
                         onPressed: () => _onUserSettingsPressed(context),
                         style: TextButton.styleFrom(
@@ -2193,7 +2193,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
               Builder(
                 builder: (context) => ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 148),
+                  constraints: const BoxConstraints(maxWidth: 120),
                   child: TextButton.icon(
                     onPressed: hasWorldBooks
                         ? () => _onWorldBookPressed(context)
