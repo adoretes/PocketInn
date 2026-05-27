@@ -172,13 +172,6 @@ class AppSettingsService {
     return values[index];
   }
 
-  AppQuoteStyle _normalizeQuoteStyle(AppQuoteStyle style) {
-    if (style == AppQuoteStyle.bookTitle) {
-      return AppQuoteStyle.curlyDouble;
-    }
-    return style;
-  }
-
   Map<AppThemePreset, AppThemeConfig> _loadThemeConfigs({
     required StorageService storage,
     required AppThemePreset activePreset,
@@ -256,12 +249,10 @@ class AppSettingsService {
     }
 
     return ChatTextThemeSettings(
-      quoteStyle: _normalizeQuoteStyle(
-        _enumValueOrDefault(
-          AppQuoteStyle.values,
-          _asInt(data['quoteStyle']),
-          fallback.quoteStyle,
-        ),
+      quoteStyle: _enumValueOrDefault(
+        AppQuoteStyle.values,
+        _asInt(data['quoteStyle']),
+        fallback.quoteStyle,
       ),
       enableMessageTextShadow:
           _asBool(data['enableMessageTextShadow']) ??
@@ -364,12 +355,10 @@ class AppSettingsService {
     final boldTextOpacity = storage.getDouble(_keyBoldTextOpacity);
 
     return ChatTextThemeSettings(
-      quoteStyle: _normalizeQuoteStyle(
-        _enumValueOrDefault(
-          AppQuoteStyle.values,
-          quoteStyleIndex,
-          fallback.quoteStyle,
-        ),
+      quoteStyle: _enumValueOrDefault(
+        AppQuoteStyle.values,
+        quoteStyleIndex,
+        fallback.quoteStyle,
       ),
       enableMessageTextShadow:
           enableMessageTextShadow ?? fallback.enableMessageTextShadow,

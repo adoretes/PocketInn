@@ -68,7 +68,6 @@ enum AppQuoteStyle {
   curlyDouble('中文引号', '“', '”'),
   corner('直角引号', '「', '」'),
   doubleCorner('双角引号', '『', '』'),
-  bookTitle('书名号', '《', '》'),
   asciiDouble('英文引号', '"', '"');
 
   const AppQuoteStyle(this.label, this.leading, this.trailing);
@@ -431,7 +430,7 @@ void updateAppSettings({
 void updateThemeConfig({
   AppThemePreset? preset,
   int? themeColorIndex,
-  String? customFontFamily,
+  Object? customFontFamily = _unset,
   AppQuoteStyle? quoteStyle,
   bool? enableMessageTextShadow,
   Object? bodyTextColorPaletteIndex = _unset,
