@@ -70,19 +70,17 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.0.13',
+                  date: '2026-05-28',
+                  changes: [
+                    '修复输入框按钮溢出问题',
+                    '修复更改配置掉字体的bug',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.0.12',
                   date: '2026-05-22',
                   changes: ['将关于页面的 GitHub 链接改为可点击', '自定义字体改为用户自选'],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.0.11',
-                  date: '2026-05-22',
-                  changes: [
-                    '优化消息文本选择',
-                    '消息气泡改版，收纳复制编辑删除按钮',
-                    '优化输入框的交互体验',
-                    '输入框的三个选择改版，统一样式增加编辑入口',
-                  ],
                 ),
               ],
             ),
