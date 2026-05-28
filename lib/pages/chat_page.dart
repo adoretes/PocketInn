@@ -33,8 +33,6 @@ enum _MessageEditAction { save, saveAndSend }
 
 enum _ChatTitleDialogAction { save, reset }
 
-enum _MessageOverflowAction { copy, edit, delete }
-
 class _MessageEditDialogResult {
   const _MessageEditDialogResult({required this.action, required this.text});
 
@@ -2321,7 +2319,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   const _MessageBubble({
     required this.message,
     required this.userSetting,
@@ -2361,8 +2359,148 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback? onSelectNextVariant;
 
   @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  static _MessageBubbleState? _currentPopupOwner;
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void dispose() {
+    _hideActionPopup();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _hideActionPopup();
+  }
+
+  void _showActionPopup() {
+    _currentPopupOwner?._hideActionPopup();
+    _hideActionPopup();
+    if (!mounted) return;
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final isMe = widget.message.isMe;
+
+    _overlayEntry = OverlayEntry(
+      builder: (BuildContext overlayContext) {
+        return Stack(
+          children: [
+            Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) => _hideActionPopup(),
+              child: const SizedBox.expand(),
+            ),
+            CompositedTransformFollower(
+              link: _layerLink,
+              targetAnchor:
+                  isMe ? Alignment.bottomRight : Alignment.bottomLeft,
+              followerAnchor:
+                  isMe ? Alignment.topRight : Alignment.topLeft,
+              offset: const Offset(0, 4),
+              child: TextFieldTapRegion(
+                groupId: widget.inputTapRegionGroupId,
+                child: Material(
+                  elevation: 6,
+                  borderRadius: BorderRadius.circular(12),
+                  color: colorScheme.surfaceContainerHigh,
+                  shadowColor:
+                      colorScheme.shadow.withValues(alpha: 0.3),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _buildPopupActions(colorScheme),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+    _currentPopupOwner = this;
+  }
+
+  void _hideActionPopup() {
+    final entry = _overlayEntry;
+    _overlayEntry = null;
+    if (_currentPopupOwner == this) {
+      _currentPopupOwner = null;
+    }
+    entry?.remove();
+  }
+
+  List<Widget> _buildPopupActions(ColorScheme colorScheme) {
+    return <Widget>[
+      _buildPopupActionButton(
+        icon: Icons.copy_outlined,
+        tooltip: '复制',
+        onPressed: () {
+          widget.onCopy();
+          _hideActionPopup();
+        },
+        color: colorScheme.onSurface,
+      ),
+      if (widget.canEdit)
+        _buildPopupActionButton(
+          icon: Icons.edit_outlined,
+          tooltip: '编辑',
+          onPressed: () {
+            widget.onEdit();
+            _hideActionPopup();
+          },
+          color: colorScheme.onSurface,
+        ),
+      if (widget.canDelete)
+        _buildPopupActionButton(
+          icon: Icons.delete_outline,
+          tooltip: '删除',
+          onPressed: () {
+            widget.onDelete();
+            _hideActionPopup();
+          },
+          color: colorScheme.error,
+        ),
+    ];
+  }
+
+  Widget _buildPopupActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+    required Color color,
+  }) {
+    return ExcludeFocus(
+      child: IconButton(
+        icon: Icon(icon, size: 18, color: color),
+        onPressed: onPressed,
+        tooltip: tooltip,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        style: IconButton.styleFrom(
+          foregroundColor: color,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isMe = message.isMe;
+    final isMe = widget.message.isMe;
     final colorScheme = Theme.of(context).colorScheme;
 
     return ValueListenableBuilder<AppSettings>(
@@ -2371,10 +2509,8 @@ class _MessageBubble extends StatelessWidget {
         final showAvatar = settings.showAvatar;
 
         if (isMe) {
-          // 用户消息：保持原有气泡样式
           return _buildUserBubble(context, colorScheme, settings, showAvatar);
         } else {
-          // 角色消息：全宽无背景
           return _buildCharacterBubble(
             context,
             colorScheme,
@@ -2406,33 +2542,40 @@ class _MessageBubble extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(18),
-                    topRight: Radius.circular(18),
-                    bottomLeft: Radius.circular(18),
-                    bottomRight: Radius.circular(4),
-                  ),
-                ),
-                child: Semantics(
-                  container: true,
-                  child: ChatMarkdownBody(
-                    text: message.text,
-                    settings: settings,
-                    textColor: textColor,
-                    inlineCodeColor: inlineCodeColor,
-                    codeBlockColor: codeBlockColor,
-                    applyBodyTextColor: false,
+              CompositedTransformTarget(
+                link: _layerLink,
+                child: GestureDetector(
+                  onTapDown: widget.showActions ? (_) => _showActionPopup() : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: bubbleColor,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(18),
+                        topRight: Radius.circular(18),
+                        bottomLeft: Radius.circular(18),
+                        bottomRight: Radius.circular(4),
+                      ),
+                    ),
+                    child: Semantics(
+                      container: true,
+                      child: ChatMarkdownBody(
+                        text: widget.message.text,
+                        settings: settings,
+                        textColor: textColor,
+                        inlineCodeColor: inlineCodeColor,
+                        codeBlockColor: codeBlockColor,
+                        applyBodyTextColor: false,
+                      ),
+                    ),
                   ),
                 ),
               ),
-              if (showActions) _buildActionButtons(context, colorScheme),
+              if (widget.showActions)
+                _buildActionButtons(context, colorScheme),
             ],
           ),
         ),
@@ -2466,26 +2609,29 @@ class _MessageBubble extends StatelessWidget {
               const SizedBox(width: 12),
             ],
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 思考链（如果有）
-                  if (message.hasThinkingChain)
-                    _buildThinkingChain(context, colorScheme),
-                  // 消息内容
-                  Semantics(
-                    container: true,
-                    child: ChatMarkdownBody(
-                      text: message.text,
-                      settings: settings,
-                      textColor: textColor,
-                      inlineCodeColor: inlineCodeColor,
-                      codeBlockColor: codeBlockColor,
+              child: CompositedTransformTarget(
+                link: _layerLink,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.message.hasThinkingChain)
+                      _buildThinkingChain(context, colorScheme),
+                    GestureDetector(
+                      onTapDown: widget.showActions ? (_) => _showActionPopup() : null,
+                      child: Semantics(
+                        container: true,
+                        child: ChatMarkdownBody(
+                          text: widget.message.text,
+                          settings: settings,
+                          textColor: textColor,
+                          inlineCodeColor: inlineCodeColor,
+                          codeBlockColor: codeBlockColor,
+                        ),
+                      ),
                     ),
-                  ),
-                  // 操作按钮行（包含索引按钮在右下角）
-                  _buildActionButtons(context, colorScheme),
-                ],
+                    _buildActionButtons(context, colorScheme),
+                  ],
+                ),
               ),
             ),
           ],
@@ -2497,14 +2643,14 @@ class _MessageBubble extends StatelessWidget {
   /// 构建折叠的思考链
   Widget _buildThinkingChain(BuildContext context, ColorScheme colorScheme) {
     return _ThinkingChainWidget(
-      thinkingChain: message.thinkingChain!,
+      thinkingChain: widget.message.thinkingChain!,
       colorScheme: colorScheme,
     );
   }
 
   /// 构建用户头像
   Widget _buildUserAvatar(ColorScheme colorScheme) {
-    final currentUser = userSetting;
+    final currentUser = widget.userSetting;
     if (currentUser != null) {
       return Container(
         width: 36,
@@ -2538,7 +2684,7 @@ class _MessageBubble extends StatelessWidget {
 
   /// 构建角色头像
   Widget _buildCharacterAvatar(ColorScheme colorScheme) {
-    final imagePath = character?.thumbnailPath ?? character?.imagePath;
+    final imagePath = widget.character?.thumbnailPath ?? widget.character?.imagePath;
     if (imagePath != null && imagePath.isNotEmpty) {
       final imageProvider = imagePath.startsWith('assets/')
           ? AssetImage(imagePath) as ImageProvider
@@ -2582,10 +2728,9 @@ class _MessageBubble extends StatelessWidget {
     );
   }
 
-  /// 构建操作按钮行
   Widget _buildActionButtons(BuildContext context, ColorScheme colorScheme) {
-    if (!showActions) {
-      if (!message.hasMultiple) {
+    if (!widget.showActions) {
+      if (!widget.message.hasMultiple) {
         return const SizedBox.shrink();
       }
       return Padding(
@@ -2597,130 +2742,40 @@ class _MessageBubble extends StatelessWidget {
     }
 
     final actionWidgets = <Widget>[
-      if (isLastUserMessageWithoutReply && onGenerate != null)
+      if (widget.isLastUserMessageWithoutReply && widget.onGenerate != null)
         _buildActionButton(
-          icon: isBusyRegenerating ? Icons.hourglass_top : Icons.auto_awesome,
-          tooltip: isBusyRegenerating ? '生成中' : '生成回复',
-          onPressed: onGenerate!,
+          icon: widget.isBusyRegenerating
+              ? Icons.hourglass_top
+              : Icons.auto_awesome,
+          tooltip: widget.isBusyRegenerating ? '生成中' : '生成回复',
+          onPressed: widget.onGenerate!,
           colorScheme: colorScheme,
         ),
-      if (isLastCharacterMessage && onRegenerate != null)
+      if (widget.isLastCharacterMessage && widget.onRegenerate != null)
         _buildActionButton(
           icon: Icons.refresh,
           tooltip: '重新生成',
-          onPressed: onRegenerate!,
+          onPressed: widget.onRegenerate!,
           colorScheme: colorScheme,
         ),
-      _buildMoreActionsMenu(context, colorScheme),
     ];
+
+    if (actionWidgets.isEmpty && !widget.message.hasMultiple) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
-          if (message.isMe) const Spacer(),
+          if (widget.message.isMe) const Spacer(),
           ...actionWidgets,
-          if (!message.isMe) const Spacer(),
-          if (message.hasMultiple) _buildIndexSelector(colorScheme),
+          if (!widget.message.isMe) const Spacer(),
+          if (widget.message.hasMultiple) _buildIndexSelector(colorScheme),
         ],
       ),
     );
-  }
-
-  /// 构建更多操作菜单
-  Widget _buildMoreActionsMenu(BuildContext context, ColorScheme colorScheme) {
-    return TextFieldTapRegion(
-      groupId: inputTapRegionGroupId,
-      child: ExcludeFocus(
-        child: PopupMenuButton<_MessageOverflowAction>(
-          tooltip: '更多',
-          requestFocus: false,
-          position: PopupMenuPosition.under,
-          onSelected: (action) {
-            switch (action) {
-              case _MessageOverflowAction.copy:
-                onCopy();
-              case _MessageOverflowAction.edit:
-                onEdit();
-              case _MessageOverflowAction.delete:
-                onDelete();
-            }
-          },
-          itemBuilder: (context) => _buildOverflowMenuItems(colorScheme),
-          child: SizedBox.square(
-            dimension: 32,
-            child: Icon(
-              Icons.more_horiz,
-              size: 18,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<PopupMenuEntry<_MessageOverflowAction>> _buildOverflowMenuItems(
-    ColorScheme colorScheme,
-  ) {
-    final items = <PopupMenuEntry<_MessageOverflowAction>>[
-      _buildOverflowMenuItem(
-        value: _MessageOverflowAction.copy,
-        icon: Icons.copy_outlined,
-        label: '复制',
-        color: colorScheme.onSurface,
-      ),
-    ];
-
-    if (canEdit) {
-      items.add(
-        _buildOverflowMenuItem(
-          value: _MessageOverflowAction.edit,
-          icon: Icons.edit_outlined,
-          label: '编辑',
-          color: colorScheme.onSurface,
-        ),
-      );
-    }
-
-    if (canDelete) {
-      items
-        ..add(const PopupMenuDivider(height: 8))
-        ..add(
-          _buildOverflowMenuItem(
-            value: _MessageOverflowAction.delete,
-            icon: Icons.delete_outline,
-            label: '删除',
-            color: colorScheme.error,
-          ),
-        );
-    }
-
-    return items;
-  }
-
-  PopupMenuItem<_MessageOverflowAction> _buildOverflowMenuItem({
-    required _MessageOverflowAction value,
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return PopupMenuItem<_MessageOverflowAction>(
-      value: value,
-      height: 40,
-      child: TextFieldTapRegion(
-        groupId: inputTapRegionGroupId,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 12),
-            Text(label, style: TextStyle(color: color)),
-          ],
-        ),
-      ),
-    );
-  }
+}
 
   /// 构建消息索引选择器 < 1/x >
   Widget _buildIndexSelector(ColorScheme colorScheme) {
@@ -2730,13 +2785,13 @@ class _MessageBubble extends StatelessWidget {
         _buildSmallActionButton(
           icon: Icons.chevron_left,
           tooltip: '上一条',
-          onPressed: message.index > 1 ? onSelectPreviousVariant : null,
+          onPressed: widget.message.index > 1 ? widget.onSelectPreviousVariant : null,
           colorScheme: colorScheme,
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            '${message.index}/${message.total}',
+            '${widget.message.index}/${widget.message.total}',
             style: TextStyle(
               fontSize: 12,
               color: colorScheme.onSurfaceVariant,
@@ -2747,7 +2802,7 @@ class _MessageBubble extends StatelessWidget {
         _buildSmallActionButton(
           icon: Icons.chevron_right,
           tooltip: '下一条',
-          onPressed: message.index < message.total ? onSelectNextVariant : null,
+          onPressed: widget.message.index < widget.message.total ? widget.onSelectNextVariant : null,
           colorScheme: colorScheme,
         ),
       ],
