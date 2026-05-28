@@ -70,8 +70,13 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.13',
+                  version: 'v1.0.14',
                   date: '2026-05-28',
+                  changes: ['消息气泡组件改为弹出浮窗'],
+                ),
+                _UpdateLogItem(
+                  version: 'v1.0.13',
+                  date: '2026-05-27',
                   changes: [
                     '修复输入框按钮溢出问题',
                     '修复更改配置掉字体的bug',
