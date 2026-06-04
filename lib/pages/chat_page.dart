@@ -2374,7 +2374,8 @@ class _MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<_MessageBubble> {
   static _MessageBubbleState? _currentPopupOwner;
-  final OverlayPortalController _overlayPortalController = OverlayPortalController();
+  final OverlayPortalController _overlayPortalController =
+      OverlayPortalController();
 
   @override
   void dispose() {
@@ -2428,7 +2429,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
         ),
         Positioned(
           left: isMe ? null : targetPos.dx,
-          right: isMe ? info.overlaySize.width - targetPos.dx - info.childSize.width : null,
+          right: isMe
+              ? info.overlaySize.width - targetPos.dx - info.childSize.width
+              : null,
           top: targetPos.dy + info.childSize.height + 4,
           child: TextFieldTapRegion(
             groupId: widget.inputTapRegionGroupId,
@@ -2438,10 +2441,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
               color: colorScheme.surfaceContainerHigh,
               shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: _buildPopupActions(colorScheme),
@@ -2558,7 +2558,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 controller: _overlayPortalController,
                 overlayChildBuilder: _buildPopupOverlay,
                 child: GestureDetector(
-                  onTapDown: widget.showActions ? (_) => _showActionPopup() : null,
+                  onTapDown: widget.showActions
+                      ? (_) => _showActionPopup()
+                      : null,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -2587,8 +2589,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   ),
                 ),
               ),
-              if (widget.showActions)
-                _buildActionButtons(context, colorScheme),
+              if (widget.showActions) _buildActionButtons(context, colorScheme),
             ],
           ),
         ),
@@ -2610,6 +2611,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final textColor = colorScheme.onSurface;
     final inlineCodeColor = colorScheme.surfaceContainerHigh;
     final codeBlockColor = colorScheme.surfaceContainerLow;
+    final (pseudoChain, cleanedText, pseudoChainComplete) =
+        _extractPseudoThinkingChain(widget.message.text);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2630,12 +2633,20 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   children: [
                     if (widget.message.hasThinkingChain)
                       _buildThinkingChain(context, colorScheme),
+                    if (pseudoChain != null)
+                      _ThinkingChainWidget(
+                        thinkingChain: pseudoChain,
+                        colorScheme: colorScheme,
+                        initiallyExpanded: !pseudoChainComplete,
+                      ),
                     GestureDetector(
-                      onTapDown: widget.showActions ? (_) => _showActionPopup() : null,
+                      onTapDown: widget.showActions
+                          ? (_) => _showActionPopup()
+                          : null,
                       child: Semantics(
                         container: true,
                         child: ChatMarkdownBody(
-                          text: widget.message.text,
+                          text: cleanedText,
                           settings: settings,
                           textColor: textColor,
                           inlineCodeColor: inlineCodeColor,
@@ -2698,7 +2709,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
 
   /// 构建角色头像
   Widget _buildCharacterAvatar(ColorScheme colorScheme) {
-    final imagePath = widget.character?.thumbnailPath ?? widget.character?.imagePath;
+    final imagePath =
+        widget.character?.thumbnailPath ?? widget.character?.imagePath;
     if (imagePath != null && imagePath.isNotEmpty) {
       final imageProvider = imagePath.startsWith('assets/')
           ? AssetImage(imagePath) as ImageProvider
@@ -2789,7 +2801,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
         ],
       ),
     );
-}
+  }
 
   /// 构建消息索引选择器 < 1/x >
   Widget _buildIndexSelector(ColorScheme colorScheme) {
@@ -2799,7 +2811,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
         _buildSmallActionButton(
           icon: Icons.chevron_left,
           tooltip: '上一条',
-          onPressed: widget.message.index > 1 ? widget.onSelectPreviousVariant : null,
+          onPressed: widget.message.index > 1
+              ? widget.onSelectPreviousVariant
+              : null,
           colorScheme: colorScheme,
         ),
         Container(
@@ -2816,7 +2830,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
         _buildSmallActionButton(
           icon: Icons.chevron_right,
           tooltip: '下一条',
-          onPressed: widget.message.index < widget.message.total ? widget.onSelectNextVariant : null,
+          onPressed: widget.message.index < widget.message.total
+              ? widget.onSelectNextVariant
+              : null,
           colorScheme: colorScheme,
         ),
       ],
@@ -2868,22 +2884,86 @@ class _MessageBubbleState extends State<_MessageBubble> {
   }
 }
 
+/// 从文本开头提取伪思维链（`<think>`/`<thinking>` 标签包裹的内容），
+/// 避开代码块和行内代码。
+/// 返回 (提取到的内容, 清理后的文本, 是否已闭合)。
+(String?, String, bool) _extractPseudoThinkingChain(String text) {
+  if (text.isEmpty) return (null, text, true);
+
+  final protectedPattern = RegExp(r'```[\s\S]*?```|`[^`\n]+`', dotAll: true);
+  final protectedMatches = protectedPattern.allMatches(text).toList();
+
+  bool isProtected(int index) {
+    for (final m in protectedMatches) {
+      if (m.start <= index && index < m.end) return true;
+    }
+    return false;
+  }
+
+  final startPattern = RegExp(
+    r'^\s*<(?:think|thinking)>\s*',
+    caseSensitive: false,
+  );
+  final startMatch = startPattern.firstMatch(text);
+  if (startMatch == null || isProtected(startMatch.start)) {
+    return (null, text, true);
+  }
+
+  final endPattern = RegExp(r'<\/(?:think|thinking)>\s*', caseSensitive: false);
+  final remaining = text.substring(startMatch.end);
+  final endMatch = endPattern.firstMatch(remaining);
+
+  if (endMatch == null) {
+    // 流式未闭合：将开头到末尾作为思维链内容
+    final content = text.substring(startMatch.end).trim();
+    final cleaned = text.substring(0, startMatch.start);
+    return (content.isEmpty ? null : content, cleaned, false);
+  }
+
+  final endPos = startMatch.end + endMatch.start;
+  final afterEndPos = startMatch.end + endMatch.end;
+
+  if (isProtected(endPos)) return (null, text, true);
+
+  final content = text.substring(startMatch.end, endPos).trim();
+  final cleaned =
+      text.substring(0, startMatch.start) + text.substring(afterEndPos);
+
+  return (content.isEmpty ? null : content, cleaned, true);
+}
+
 /// 思考链组件 - 文字加展开符样式，无底板
 class _ThinkingChainWidget extends StatefulWidget {
   const _ThinkingChainWidget({
     required this.thinkingChain,
     required this.colorScheme,
+    this.initiallyExpanded = false,
   });
 
   final String thinkingChain;
   final ColorScheme colorScheme;
+  final bool initiallyExpanded;
 
   @override
   State<_ThinkingChainWidget> createState() => _ThinkingChainWidgetState();
 }
 
 class _ThinkingChainWidgetState extends State<_ThinkingChainWidget> {
-  bool _isExpanded = false;
+  late bool _isExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _isExpanded = widget.initiallyExpanded;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThinkingChainWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initiallyExpanded && !widget.initiallyExpanded) {
+      _isExpanded = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
