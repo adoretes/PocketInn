@@ -2374,8 +2374,7 @@ class _MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<_MessageBubble> {
   static _MessageBubbleState? _currentPopupOwner;
-  final LayerLink _layerLink = LayerLink();
-  OverlayEntry? _overlayEntry;
+  final OverlayPortalController _overlayPortalController = OverlayPortalController();
 
   @override
   void dispose() {
@@ -2393,63 +2392,66 @@ class _MessageBubbleState extends State<_MessageBubble> {
     _currentPopupOwner?._hideActionPopup();
     _hideActionPopup();
     if (!mounted) return;
-
-    final colorScheme = Theme.of(context).colorScheme;
-    final isMe = widget.message.isMe;
-
-    _overlayEntry = OverlayEntry(
-      builder: (BuildContext overlayContext) {
-        return Stack(
-          children: [
-            Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) => _hideActionPopup(),
-              child: const SizedBox.expand(),
-            ),
-            CompositedTransformFollower(
-              link: _layerLink,
-              targetAnchor:
-                  isMe ? Alignment.bottomRight : Alignment.bottomLeft,
-              followerAnchor:
-                  isMe ? Alignment.topRight : Alignment.topLeft,
-              offset: const Offset(0, 4),
-              child: TextFieldTapRegion(
-                groupId: widget.inputTapRegionGroupId,
-                child: Material(
-                  elevation: 6,
-                  borderRadius: BorderRadius.circular(12),
-                  color: colorScheme.surfaceContainerHigh,
-                  shadowColor:
-                      colorScheme.shadow.withValues(alpha: 0.3),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 2,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: _buildPopupActions(colorScheme),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    Overlay.of(context).insert(_overlayEntry!);
+    _overlayPortalController.show();
     _currentPopupOwner = this;
   }
 
   void _hideActionPopup() {
-    final entry = _overlayEntry;
-    _overlayEntry = null;
+    if (_overlayPortalController.isShowing) {
+      _overlayPortalController.hide();
+    }
     if (_currentPopupOwner == this) {
       _currentPopupOwner = null;
     }
-    entry?.remove();
+  }
+
+  Widget _buildPopupOverlay(BuildContext context, OverlayChildLayoutInfo info) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isMe = widget.message.isMe;
+    final Offset targetPos = Offset(
+      info.childPaintTransform.getTranslation().x,
+      info.childPaintTransform.getTranslation().y,
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned(
+          left: -targetPos.dx,
+          top: -targetPos.dy,
+          width: info.overlaySize.width,
+          height: info.overlaySize.height,
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) => _hideActionPopup(),
+          ),
+        ),
+        Positioned(
+          left: isMe ? null : targetPos.dx,
+          right: isMe ? info.overlaySize.width - targetPos.dx - info.childSize.width : null,
+          top: targetPos.dy + info.childSize.height + 4,
+          child: TextFieldTapRegion(
+            groupId: widget.inputTapRegionGroupId,
+            child: Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(12),
+              color: colorScheme.surfaceContainerHigh,
+              shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 2,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _buildPopupActions(colorScheme),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   List<Widget> _buildPopupActions(ColorScheme colorScheme) {
@@ -2552,8 +2554,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              CompositedTransformTarget(
-                link: _layerLink,
+              OverlayPortal.overlayChildLayoutBuilder(
+                controller: _overlayPortalController,
+                overlayChildBuilder: _buildPopupOverlay,
                 child: GestureDetector(
                   onTapDown: widget.showActions ? (_) => _showActionPopup() : null,
                   child: Container(
@@ -2619,8 +2622,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
               const SizedBox(width: 12),
             ],
             Expanded(
-              child: CompositedTransformTarget(
-                link: _layerLink,
+              child: OverlayPortal.overlayChildLayoutBuilder(
+                controller: _overlayPortalController,
+                overlayChildBuilder: _buildPopupOverlay,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
