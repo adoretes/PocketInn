@@ -33,13 +33,82 @@ void main() {
     });
 
     test('normalizes simple html block tags before markdown parsing', () {
-      final formatted = formatChatMarkdownText(
+      final normalized = normalizeSimpleHtmlBlocks(
         '<p>Hello</p><div>Next</div><hr>',
       );
 
-      expect(formatted, contains('Hello\n\n'));
-      expect(formatted, contains('Next\n\n'));
-      expect(formatted, contains('---'));
+      expect(normalized, contains('Hello\n\n'));
+      expect(normalized, contains('Next\n\n'));
+      expect(normalized, contains('---'));
+    });
+  });
+
+  group('ChatMarkdownBody quote syntax', () {
+    test('matches Chinese curly double quotes', () {
+      final tags = _elementTags(_parseChatMarkdown('“你好”'));
+      expect(tags, contains('pinn_quote'));
+    });
+
+    test('matches corner quotes', () {
+      final tags = _elementTags(_parseChatMarkdown('「你好」'));
+      expect(tags, contains('pinn_quote'));
+    });
+
+    test('matches double corner quotes', () {
+      final tags = _elementTags(_parseChatMarkdown('『你好』'));
+      expect(tags, contains('pinn_quote'));
+    });
+
+    test('matches ASCII double quotes not adjacent to word characters', () {
+      final tags = _elementTags(_parseChatMarkdown('She said "hello" to me'));
+      expect(tags, contains('pinn_quote'));
+    });
+
+    test('matches Unicode single quotes', () {
+      final tags = _elementTags(_parseChatMarkdown('\u2018\u4f60\u597d\u2019'));
+      expect(tags, contains('pinn_single_quote'));
+    });
+
+    test('matches ASCII single quotes not adjacent to word characters', () {
+      final tags = _elementTags(_parseChatMarkdown("He said 'hello' to me"));
+      expect(tags, contains('pinn_single_quote'));
+    });
+
+    test('does not match quotes inside code spans', () {
+      final tags = _elementTags(
+        _parseChatMarkdown('`\u201ccode\u201d`\n\n```\n\u300ccode\u300d\n```'),
+      );
+      expect(tags, isNot(contains('pinn_quote')));
+      expect(tags, isNot(contains('pinn_single_quote')));
+    });
+  });
+
+  group('ChatMarkdownBody bracket syntax', () {
+    test('matches fullwidth parentheses', () {
+      final tags = _elementTags(_parseChatMarkdown('（旁白）'));
+      expect(tags, contains('pinn_bracket'));
+    });
+
+    test('matches ASCII parentheses', () {
+      final tags = _elementTags(_parseChatMarkdown('(aside)'));
+      expect(tags, contains('pinn_bracket'));
+    });
+
+    test('matches fullwidth square brackets', () {
+      final tags = _elementTags(_parseChatMarkdown('【动作】'));
+      expect(tags, contains('pinn_bracket'));
+    });
+
+    test('matches ASCII square brackets', () {
+      final tags = _elementTags(_parseChatMarkdown('[action]'));
+      expect(tags, contains('pinn_bracket'));
+    });
+
+    test('does not match brackets inside code spans', () {
+      final tags = _elementTags(
+        _parseChatMarkdown('`（code）`\n\n```\n[code]\n```'),
+      );
+      expect(tags, isNot(contains('pinn_bracket')));
     });
   });
 
@@ -93,7 +162,7 @@ List<md.Node> _parseChatMarkdown(String input) {
     encodeHtml: false,
   );
 
-  return document.parseLines(formatChatMarkdownText(input).split('\n'));
+  return document.parseLines(normalizeSimpleHtmlBlocks(input).split('\n'));
 }
 
 List<String> _elementTags(List<md.Node> nodes) {

@@ -2386,7 +2386,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
   @override
   void didUpdateWidget(covariant _MessageBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _hideActionPopup();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _hideActionPopup();
+    });
   }
 
   void _showActionPopup() {

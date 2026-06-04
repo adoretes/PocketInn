@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -7,10 +5,9 @@ import 'package:markdown/markdown.dart' as md;
 import '../data/app_settings.dart';
 
 const String _quoteTokenTag = 'pinn_quote';
+const String _singleQuoteTokenTag = 'pinn_single_quote';
 const String _bracketTokenTag = 'pinn_bracket';
 const String _underlineTag = 'u';
-const String _quoteTokenPattern = r'%%PINN_Q:([-_A-Za-z0-9=]+)%%';
-const String _bracketTokenPattern = r'%%PINN_B:([-_A-Za-z0-9=]+)%%';
 
 class ChatMarkdownBody extends StatelessWidget {
   const ChatMarkdownBody({
@@ -42,7 +39,7 @@ class ChatMarkdownBody extends StatelessWidget {
 
     final body = MarkdownBody(
       key: ValueKey<String>(_buildChatMarkdownThemeKey(settings)),
-      data: formatChatMarkdownText(text),
+      data: normalizeSimpleHtmlBlocks(text),
       // SelectionArea can select across Markdown's multiple text widgets.
       selectable: false,
       inlineSyntaxes: buildChatMarkdownInlineSyntaxes(),
@@ -68,30 +65,15 @@ class ChatMarkdownBody extends StatelessWidget {
   }
 }
 
-String formatChatMarkdownText(String input) {
-  if (input.isEmpty) {
+String normalizeSimpleHtmlBlocks(String input) {
+  if (input.isEmpty || !input.contains('<')) {
     return input;
   }
 
-  final protectedPattern = RegExp(r'```[\s\S]*?```|`[^`\n]+`', dotAll: true);
-  final buffer = StringBuffer();
-  var cursor = 0;
-
-  for (final match in protectedPattern.allMatches(input)) {
-    if (match.start > cursor) {
-      buffer.write(
-        _transformStyledSegments(input.substring(cursor, match.start)),
-      );
-    }
-    buffer.write(match.group(0));
-    cursor = match.end;
-  }
-
-  if (cursor < input.length) {
-    buffer.write(_transformStyledSegments(input.substring(cursor)));
-  }
-
-  return buffer.toString();
+  return input
+      .replaceAll(RegExp(r'<(?:p|div)(?:\s+[^>]*)?>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'</(?:p|div)\s*>', caseSensitive: false), '\n\n')
+      .replaceAll(RegExp(r'<hr\s*/?>', caseSensitive: false), '\n\n---\n\n');
 }
 
 List<md.InlineSyntax> buildChatMarkdownInlineSyntaxes() {
@@ -106,8 +88,9 @@ List<md.InlineSyntax> buildChatMarkdownInlineSyntaxes() {
       markdownTag: 'code',
       parseChildren: false,
     ),
-    _InlineTokenSyntax(_quoteTokenPattern, _quoteTokenTag),
-    _InlineTokenSyntax(_bracketTokenPattern, _bracketTokenTag),
+    _QuoteSyntax(),
+    _SingleQuoteSyntax(),
+    _BracketSyntax(),
   ];
 }
 
@@ -119,6 +102,11 @@ Map<String, MarkdownElementBuilder> buildChatMarkdownBuilders({
   return <String, MarkdownElementBuilder>{
     _underlineTag: _UnderlineBuilder(),
     _quoteTokenTag: _QuoteTokenBuilder(
+      chatTextTheme: chatTextTheme,
+      colorScheme: colorScheme,
+      textColor: textColor,
+    ),
+    _singleQuoteTokenTag: _SingleQuoteTokenBuilder(
       chatTextTheme: chatTextTheme,
       colorScheme: colorScheme,
       textColor: textColor,
@@ -258,52 +246,6 @@ TextStyle buildDecoratedChatTextStyle({
   }
 }
 
-String _transformStyledSegments(String input) {
-  var output = _transformSimpleHtmlBlocks(input);
-
-  for (final pattern in _quotePatterns) {
-    output = output.replaceAllMapped(pattern, (match) {
-      final content = match.group(1)?.trim();
-      if (content == null || content.isEmpty) {
-        return match.group(0) ?? '';
-      }
-      return _buildInlineToken(_quoteTokenTag, content);
-    });
-  }
-
-  for (final pattern in _bracketPatterns) {
-    output = output.replaceAllMapped(pattern, (match) {
-      final content = match.group(1)?.trim();
-      if (content == null || content.isEmpty) {
-        return match.group(0) ?? '';
-      }
-      return _buildInlineToken(_bracketTokenTag, content);
-    });
-  }
-
-  return output;
-}
-
-String _transformSimpleHtmlBlocks(String input) {
-  if (!input.contains('<')) {
-    return input;
-  }
-
-  return input
-      .replaceAll(RegExp(r'<(?:p|div)(?:\s+[^>]*)?>', caseSensitive: false), '')
-      .replaceAll(RegExp(r'</(?:p|div)\s*>', caseSensitive: false), '\n\n')
-      .replaceAll(RegExp(r'<hr\s*/?>', caseSensitive: false), '\n\n---\n\n');
-}
-
-String _buildInlineToken(String tag, String content) {
-  final encoded = base64Url.encode(utf8.encode(content));
-  return switch (tag) {
-    _quoteTokenTag => '%%PINN_Q:$encoded%%',
-    _bracketTokenTag => '%%PINN_B:$encoded%%',
-    _ => content,
-  };
-}
-
 List<Shadow> _buildMessageTextShadows(Brightness brightness) {
   final shadowColor = brightness == Brightness.dark
       ? Colors.black.withValues(alpha: 0.34)
@@ -314,34 +256,72 @@ List<Shadow> _buildMessageTextShadows(Brightness brightness) {
   ];
 }
 
-final List<RegExp> _quotePatterns = <RegExp>[
-  RegExp(r'“([^“”\n]+)”'),
-  //RegExp(r'‘([^‘’\n]+)’'),
-  RegExp(r'「([^「」\n]+)」'),
-  RegExp(r'『([^『』\n]+)』'),
-  RegExp(r'(?<!\w)"([^"\n]+)"(?!\w)'),
-];
+class _QuoteSyntax extends md.InlineSyntax {
+  _QuoteSyntax()
+    : super(
+        '“([^”\n]+)”'
+        r'|'
+        '「([^」\n]+)」'
+        r'|'
+        '『([^』\n]+)』'
+        r'|'
+        r'(?<!\w)"([^"\n]+)"(?!\w)',
+      );
 
-final List<RegExp> _bracketPatterns = <RegExp>[
-  RegExp(r'[（(]([^()（）\n]+)[)）]'),
-  RegExp(r'[【\[]([^\[\]【】\n]+)[】\]]'),
-];
-
-class _InlineTokenSyntax extends md.InlineSyntax {
-  _InlineTokenSyntax(super.pattern, this.tag);
-
-  final String tag;
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
-    final encoded = match.group(1);
-    if (encoded == null || encoded.isEmpty) {
+    final content = (match.group(1) ??
+            match.group(2) ??
+            match.group(3) ??
+            match.group(4))
+        ?.trim();
+    if (content == null || content.isEmpty) {
       return false;
     }
 
-    parser.addNode(
-      md.Element.text(tag, utf8.decode(base64Url.decode(encoded))),
-    );
+    parser.addNode(md.Element.text(_quoteTokenTag, content));
+    return true;
+  }
+}
+
+class _SingleQuoteSyntax extends md.InlineSyntax {
+  _SingleQuoteSyntax()
+    : super(
+        '‘([^’\n]+)’'
+        r'|'
+        "(?<!\\w)'([^'\\n]+)'(?!\\w)",
+      );
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final content =
+        (match.group(1) ?? match.group(2))?.trim();
+    if (content == null || content.isEmpty) {
+      return false;
+    }
+
+    parser.addNode(md.Element.text(_singleQuoteTokenTag, content));
+    return true;
+  }
+}
+
+class _BracketSyntax extends md.InlineSyntax {
+  _BracketSyntax()
+    : super(
+        r'[（(]([^()（）\n]+)[)）]'
+        r'|'
+        r'[【\[]([^\[\]【】\n]+)[】\]]',
+      );
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final content = (match.group(1) ?? match.group(2))?.trim();
+    if (content == null || content.isEmpty) {
+      return false;
+    }
+
+    parser.addNode(md.Element.text(_bracketTokenTag, content));
     return true;
   }
 }
@@ -441,8 +421,82 @@ class _QuoteTokenBuilder extends MarkdownElementBuilder {
       TextSpan(
         children: <InlineSpan>[
           TextSpan(text: chatTextTheme.quoteStyle.leading, style: quoteStyle),
-          TextSpan(text: element.textContent, style: contentStyle),
+          TextSpan(
+            text: _unifySingleQuotes(
+              element.textContent,
+              chatTextTheme.quoteStyle,
+            ),
+            style: contentStyle,
+          ),
           TextSpan(text: chatTextTheme.quoteStyle.trailing, style: quoteStyle),
+        ],
+      ),
+    );
+  }
+}
+
+String _unifySingleQuotes(String content, AppQuoteStyle style) {
+  final result = content
+      .replaceAll('「', style.leadingSingle)
+      .replaceAll('」', style.trailingSingle)
+      .replaceAll('『', style.leadingSingle)
+      .replaceAll('』', style.trailingSingle)
+      .replaceAll('‘', style.leadingSingle)
+      .replaceAll('’', style.trailingSingle);
+  return result.replaceAllMapped(
+    RegExp(r"(?<!\w)'([^'\n]+)'(?!\w)"),
+    (m) => '${style.leadingSingle}${m.group(1)}${style.trailingSingle}',
+  );
+}
+
+class _SingleQuoteTokenBuilder extends MarkdownElementBuilder {
+  _SingleQuoteTokenBuilder({
+    required this.chatTextTheme,
+    required this.colorScheme,
+    required this.textColor,
+  });
+
+  final ChatTextThemeSettings chatTextTheme;
+  final ColorScheme colorScheme;
+  final Color textColor;
+
+  @override
+  Widget visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final baseStyle =
+        parentStyle ??
+        preferredStyle ??
+        buildBaseMessageTextStyle(
+          textColor: textColor,
+          brightness: colorScheme.brightness,
+          enableShadow: chatTextTheme.enableMessageTextShadow,
+        );
+    final contentStyle = buildDecoratedChatTextStyle(
+      baseStyle: baseStyle,
+      config: chatTextTheme.quotedTextStyle,
+    );
+    final quoteStyle = baseStyle.copyWith(
+      color: contentStyle.color,
+      fontWeight: contentStyle.fontWeight,
+      fontStyle: contentStyle.fontStyle,
+    );
+
+    return Text.rich(
+      TextSpan(
+        children: <InlineSpan>[
+          TextSpan(
+            text: chatTextTheme.quoteStyle.leadingSingle,
+            style: quoteStyle,
+          ),
+          TextSpan(text: element.textContent, style: contentStyle),
+          TextSpan(
+            text: chatTextTheme.quoteStyle.trailingSingle,
+            style: quoteStyle,
+          ),
         ],
       ),
     );

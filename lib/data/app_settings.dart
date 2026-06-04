@@ -65,16 +65,24 @@ const List<Color> customThemePalette = <Color>[
 ];
 
 enum AppQuoteStyle {
-  curlyDouble('中文引号', '“', '”'),
-  corner('直角引号', '「', '」'),
-  doubleCorner('双角引号', '『', '』'),
-  asciiDouble('英文引号', '"', '"');
+  curlyDouble('中文引号', '“', '”', '‘', '’'),
+  corner('直角引号', '「', '」', '『', '』'),
+  doubleCorner('双角引号', '『', '』', '「', '」'),
+  asciiDouble('英文引号', '"', '"', "'", "'");
 
-  const AppQuoteStyle(this.label, this.leading, this.trailing);
+  const AppQuoteStyle(
+    this.label,
+    this.leading,
+    this.trailing,
+    this.leadingSingle,
+    this.trailingSingle,
+  );
 
   final String label;
   final String leading;
   final String trailing;
+  final String leadingSingle;
+  final String trailingSingle;
 
   static const List<AppQuoteStyle> selectableValues = <AppQuoteStyle>[
     AppQuoteStyle.curlyDouble,
