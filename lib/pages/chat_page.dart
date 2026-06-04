@@ -24,6 +24,7 @@ import '../services/preset_service.dart';
 import '../services/world_book_service.dart';
 import '../widgets/chat_markdown_body.dart';
 import '../widgets/expanded_text_editor_field.dart';
+import '../widgets/scroll_float_button.dart';
 import 'chat_sidebar_page.dart';
 import 'preset_edit_page.dart';
 import 'user_settings_page.dart';
@@ -1988,9 +1989,12 @@ class _ChatPageState extends State<ChatPage> {
                   Expanded(
                     child: Padding(
                       padding: EdgeInsets.only(top: topContentPadding),
-                      child: visibleMessages.isEmpty
-                          ? const Center(child: Text('这段聊天还没有消息'))
-                          : ListView.builder(
+                      child: Stack(
+                        children: [
+                          if (visibleMessages.isEmpty)
+                            const Center(child: Text('这段聊天还没有消息'))
+                          else
+                            ListView.builder(
                               key: ValueKey(session.id),
                               controller: _scrollController,
                               reverse: true,
@@ -2075,6 +2079,16 @@ class _ChatPageState extends State<ChatPage> {
                                 );
                               },
                             ),
+                          Positioned(
+                            right: 16,
+                            bottom: 16,
+                            child: ScrollFloatButton(
+                              scrollController: _scrollController,
+                              isReversed: true,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   _buildInputArea(isSendEnabled, settings, hasBackground),
