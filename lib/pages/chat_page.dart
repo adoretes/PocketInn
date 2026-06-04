@@ -240,6 +240,7 @@ class _ChatPageState extends State<ChatPage> {
     ChatDatabaseService.instance.changeNotifier.addListener(
       _handleChatDatabaseChanged,
     );
+    PresetService.instance.changeNotifier.addListener(_handlePresetsChanged);
     _textController.addListener(() {
       if (_inputText == _textController.text) {
         return;
@@ -612,6 +613,7 @@ class _ChatPageState extends State<ChatPage> {
     ChatDatabaseService.instance.changeNotifier.removeListener(
       _handleChatDatabaseChanged,
     );
+    PresetService.instance.changeNotifier.removeListener(_handlePresetsChanged);
     _textController.dispose();
     _inputFocusNode.dispose();
     _scrollController.dispose();
@@ -631,6 +633,14 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     _loadSession(preferredSessionId: sessionId);
+  }
+
+  Future<void> _handlePresetsChanged() async {
+    final presets = await PresetService.instance.loadAllSummaries();
+    if (!mounted) return;
+    setState(() {
+      _presets = presets;
+    });
   }
 
   void _onChatListPressed() {

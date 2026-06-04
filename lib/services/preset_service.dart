@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/preset.dart';
@@ -17,6 +18,8 @@ class PresetService {
   static const String _selectedPresetKey = 'selected_preset_id';
   static const int _dataVersion = 1;
   static const String builtinDefaultId = 'preset-default';
+
+  final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
 
   late final String _presetsPath;
   bool _initialized = false;
@@ -187,6 +190,8 @@ class PresetService {
     if (currentSelectedId == null || currentSelectedId.isEmpty) {
       await setSelectedPresetId(normalized.id);
     }
+
+    _notify();
   }
 
   Future<Preset?> duplicate(String id) async {
@@ -240,6 +245,8 @@ class PresetService {
         await StorageService.instance.remove(_selectedPresetKey);
       }
     }
+
+    _notify();
   }
 
   Future<String?> exportToFile(Preset preset) async {
@@ -380,6 +387,10 @@ class PresetService {
     if (!_initialized) {
       throw StateError('PresetService 未初始化，请先调用 initialize()');
     }
+  }
+
+  void _notify() {
+    changeNotifier.value++;
   }
 
   Future<void> _saveSummaries(List<PresetSummary> summaries) async {
