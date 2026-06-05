@@ -70,6 +70,11 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.0.16',
+                  date: '2026-06-05',
+                  changes: ['优化滚动按钮', '优化模型下拉菜单体验', '移除世界书图标', '修复一些已知问题'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.0.15',
                   date: '2026-06-04',
                   changes: [
@@ -79,16 +84,6 @@ class _AboutPageState extends State<AboutPage> {
                     '重构消息气泡组件的弹出层实现',
                     '修复一些已知问题',
                   ],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.0.14',
-                  date: '2026-05-28',
-                  changes: ['消息气泡组件改为弹出浮窗'],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.0.12',
-                  date: '2026-05-22',
-                  changes: ['将关于页面的 GitHub 链接改为可点击', '自定义字体改为用户自选'],
                 ),
               ],
             ),
