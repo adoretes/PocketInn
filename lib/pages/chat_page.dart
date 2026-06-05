@@ -48,6 +48,65 @@ class _ChatTitleDialogResult {
   final String title;
 }
 
+class _ChatTitleDialog extends StatefulWidget {
+  const _ChatTitleDialog({required this.initialTitle});
+
+  final String initialTitle;
+
+  @override
+  State<_ChatTitleDialog> createState() => _ChatTitleDialogState();
+}
+
+class _ChatTitleDialogState extends State<_ChatTitleDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialTitle);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _closeWith(_ChatTitleDialogAction action) {
+    Navigator.of(context).pop(
+      _ChatTitleDialogResult(action: action, title: _controller.text),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('修改聊天名称'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(hintText: '输入聊天名称'),
+        onSubmitted: (_) => _closeWith(_ChatTitleDialogAction.save),
+      ),
+      actions: [
+        IconButton(
+          onPressed: () => _closeWith(_ChatTitleDialogAction.reset),
+          icon: const Icon(Icons.refresh),
+          tooltip: '按当前选择重置聊天',
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => _closeWith(_ChatTitleDialogAction.save),
+          child: const Text('保存'),
+        ),
+      ],
+    );
+  }
+}
+
 class _MessageEditDialog extends StatefulWidget {
   const _MessageEditDialog({
     required this.initialText,
@@ -1003,53 +1062,14 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
-    final controller = TextEditingController(text: session.title);
     final result = await showDialog<_ChatTitleDialogResult>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('修改聊天名称'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: '输入聊天名称'),
-            onSubmitted: (value) => Navigator.of(context).pop(
-              _ChatTitleDialogResult(
-                action: _ChatTitleDialogAction.save,
-                title: value,
-              ),
-            ),
-          ),
-          actions: [
-            IconButton(
-              onPressed: () => Navigator.of(context).pop(
-                _ChatTitleDialogResult(
-                  action: _ChatTitleDialogAction.reset,
-                  title: controller.text,
-                ),
-              ),
-              icon: const Icon(Icons.refresh),
-              tooltip: '按当前选择重置聊天',
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(
-                _ChatTitleDialogResult(
-                  action: _ChatTitleDialogAction.save,
-                  title: controller.text,
-                ),
-              ),
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _ChatTitleDialog(initialTitle: session.title),
     );
-    controller.dispose();
 
+    if (!mounted) {
+      return;
+    }
     if (result == null) {
       return;
     }
@@ -1113,6 +1133,9 @@ class _ChatPageState extends State<ChatPage> {
       },
     );
 
+    if (!mounted) {
+      return;
+    }
     if (confirmed != true) {
       return;
     }
