@@ -21,6 +21,7 @@ class _OpenAICompatibleConfigPageState
   final Set<String> _testingIds = <String>{};
   final Set<String> _loadingModelIds = <String>{};
   final Map<String, List<String>> _modelsByConfigId = {};
+  final Map<String, FocusNode> _modelFocusNodes = {};
   bool _isSaving = false;
 
   @override
@@ -51,6 +52,13 @@ class _OpenAICompatibleConfigPageState
       'model': TextEditingController(text: item.model),
       'customBody': TextEditingController(text: item.customBody),
     };
+    final focusNode = FocusNode();
+    _modelFocusNodes[item.id] = focusNode;
+    focusNode.addListener(() {
+      if (focusNode.hasFocus) {
+        _fetchModels(item.id);
+      }
+    });
   }
 
   void _disposeControllersForItem(String id) {
@@ -60,6 +68,8 @@ class _OpenAICompatibleConfigPageState
       controller.dispose();
     }
     _controllers.remove(id);
+    _modelFocusNodes[id]?.dispose();
+    _modelFocusNodes.remove(id);
   }
 
   ApiConfig _applyControllersToItem(ApiConfig item) {
@@ -157,132 +167,142 @@ class _OpenAICompatibleConfigPageState
     }
   }
 
-  Future<void> _onModelFieldTap(
-    ApiConfig item,
-    BuildContext fieldContext,
-  ) async {
+  Future<void> _fetchModels(String configId) async {
+    if (_loadingModelIds.contains(configId)) return;
+    final cached = _modelsByConfigId[configId];
+    if (cached != null && cached.isNotEmpty) return;
+
+    final itemIndex = _configItems.indexWhere((i) => i.id == configId);
+    if (itemIndex < 0) return;
+    final item = _configItems[itemIndex];
     final draft = _buildDraftConfig(item);
     if (draft == null) return;
 
     setState(() {
-      _loadingModelIds.add(item.id);
+      _loadingModelIds.add(configId);
     });
     try {
-      final models = await OpenAICompatibleApiService.instance.fetchModels(
-        draft,
-      );
+      final models =
+          await OpenAICompatibleApiService.instance.fetchModels(draft);
       if (!mounted) return;
-      _modelsByConfigId[item.id] = models;
+      setState(() {
+        _modelsByConfigId[configId] = models;
+        _loadingModelIds.remove(configId);
+      });
       if (models.isEmpty) {
         _showError('未拉取到模型列表');
-        return;
       }
-      if (!fieldContext.mounted) {
-        return;
-      }
-      await _showModelMenu(
-        item: item,
-        fieldContext: fieldContext,
-        models: models,
-      );
     } on FormatException catch (error) {
-      _showError(error.message.toString());
-    } on Object catch (error) {
-      _showError('拉取模型失败: $error');
-    } finally {
       if (mounted) {
         setState(() {
-          _loadingModelIds.remove(item.id);
+          _loadingModelIds.remove(configId);
         });
+        _showError(error.message.toString());
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _loadingModelIds.remove(configId);
+        });
+        _showError('拉取模型失败: $error');
       }
     }
-  }
-
-  Future<void> _showModelMenu({
-    required ApiConfig item,
-    required BuildContext fieldContext,
-    required List<String> models,
-  }) async {
-    final controller = _controllers[item.id]?['model'];
-    if (controller == null) return;
-
-    final renderBox = fieldContext.findRenderObject() as RenderBox?;
-    final overlay =
-        Overlay.of(fieldContext).context.findRenderObject() as RenderBox?;
-    if (renderBox == null || overlay == null) return;
-
-    final offset = renderBox.localToGlobal(Offset.zero, ancestor: overlay);
-    final rect = RelativeRect.fromRect(
-      Rect.fromLTWH(
-        offset.dx,
-        offset.dy,
-        renderBox.size.width,
-        renderBox.size.height,
-      ),
-      Offset.zero & overlay.size,
-    );
-
-    final selected = await showMenu<String>(
-      context: context,
-      position: rect,
-      items: models
-          .map(
-            (model) => PopupMenuItem<String>(
-              value: model,
-              child: Text(model, overflow: TextOverflow.ellipsis),
-            ),
-          )
-          .toList(),
-    );
-    if (selected == null) {
-      return;
-    }
-    controller.value = controller.value.copyWith(
-      text: selected,
-      selection: TextSelection.collapsed(offset: selected.length),
-      composing: TextRange.empty,
-    );
-    setState(() {
-      item.model = selected;
-    });
   }
 
   InputDecoration _buildInputDecoration({
     required String label,
     required String? hint,
     required int maxLines,
-    Widget? suffixIcon,
   }) {
     return InputDecoration(
       labelText: label,
       hintText: hint,
       alignLabelWithHint: maxLines > 1,
       border: const OutlineInputBorder(),
-      suffixIcon: suffixIcon,
     );
   }
 
-  Widget? _buildModelSuffix(ApiConfig item) {
-    if (_loadingModelIds.contains(item.id)) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-    final models = _modelsByConfigId[item.id];
-    if (models == null || models.isEmpty) {
-      return null;
-    }
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Text(
-        '${models.length}',
-        style: const TextStyle(fontSize: 12, color: Colors.grey),
-      ),
+  Widget _buildModelDropdownMenu(ApiConfig item) {
+    final controller = _controllers[item.id]!['model']!;
+    final models = _modelsByConfigId[item.id] ?? [];
+    final isLoading = _loadingModelIds.contains(item.id);
+    final focusNode = _modelFocusNodes[item.id]!;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return DropdownMenu<String>(
+          width: constraints.maxWidth,
+          controller: controller,
+          focusNode: focusNode,
+          enableFilter: true,
+          menuHeight: 300,
+          hintText: 'gpt-3.5-turbo, deepseek-chat, etc.',
+          trailingIcon: isLoading
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : const Icon(Icons.arrow_drop_down),
+          dropdownMenuEntries: models
+              .map((model) => DropdownMenuEntry<String>(
+                    value: model,
+                    label: model,
+                    labelWidget: Text(
+                      model,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ))
+              .toList(),
+          onSelected: (value) {
+            if (value != null) {
+              setState(() {
+                item.model = value;
+              });
+            }
+          },
+          inputDecorationTheme: const InputDecorationTheme(
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(horizontal: 16),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showCustomBodyDialog(ApiConfig item) async {
+    final controller = _controllers[item.id]?['customBody'];
+    if (controller == null) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('自定义 Body'),
+          content: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.85,
+            child: TextField(
+              controller: controller,
+              maxLines: 12,
+              minLines: 8,
+              style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+              decoration: const InputDecoration(
+                hintText: '{"temperature":0.7,"stream":true}',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('完成'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -333,6 +353,9 @@ class _OpenAICompatibleConfigPageState
       for (final controller in controllers.values) {
         controller.dispose();
       }
+    }
+    for (final focusNode in _modelFocusNodes.values) {
+      focusNode.dispose();
     }
     super.dispose();
   }
@@ -443,21 +466,7 @@ class _OpenAICompatibleConfigPageState
                     obscureText: true,
                   ),
                   const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: controllers['model']!,
-                    label: 'Model',
-                    hint: 'gpt-3.5-turbo, deepseek-chat, etc.',
-                    onTapBuilder: (fieldContext) =>
-                        _onModelFieldTap(item, fieldContext),
-                    suffixIcon: _buildModelSuffix(item),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: controllers['customBody']!,
-                    label: '自定义 Body',
-                    hint: '{"temperature":0.7,"stream":true}',
-                    maxLines: 6,
-                  ),
+                  _buildModelDropdownMenu(item),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -474,28 +483,25 @@ class _OpenAICompatibleConfigPageState
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.link, size: 24),
-                        color: Colors.blue,
+                            : const Icon(Icons.network_ping, size: 22),
                         tooltip: '测试连接',
                       ),
-                      const SizedBox(width: 12),
+                      IconButton(
+                        onPressed: () => _showCustomBodyDialog(item),
+                        icon: const Icon(Icons.code, size: 22),
+                        tooltip: '自定义 Body',
+                      ),
                       IconButton(
                         onPressed: () => _deleteConfigItem(item),
-                        icon: const Icon(Icons.delete_outline),
-                        color: Colors.red,
+                        icon: const Icon(Icons.delete_outline, size: 22),
                         tooltip: '删除配置',
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
+                      const SizedBox(width: 4),
+                      FilledButton.icon(
                         onPressed: _isSaving
                             ? null
                             : () => _saveConfigItem(item),
-                        icon: const Icon(Icons.save, size: 18),
                         label: const Text('保存'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
                       ),
                     ],
                   ),
@@ -513,28 +519,22 @@ class _OpenAICompatibleConfigPageState
     String? hint,
     bool obscureText = false,
     int maxLines = 1,
-    Widget? suffixIcon,
-    Future<void> Function(BuildContext fieldContext)? onTapBuilder,
   }) {
-    return Builder(
-      builder: (fieldContext) => TextField(
-        controller: controller,
-        decoration: _buildInputDecoration(
-          label: label,
-          hint: hint,
-          maxLines: obscureText ? 1 : maxLines,
-          suffixIcon: suffixIcon,
-        ),
-        obscureText: obscureText,
-        maxLines: obscureText ? 1 : maxLines,
-        minLines: obscureText
-            ? 1
-            : maxLines > 1
-            ? 4
-            : 1,
-        style: const TextStyle(fontSize: 14),
-        onTap: onTapBuilder == null ? null : () => onTapBuilder(fieldContext),
+    return TextField(
+      controller: controller,
+      decoration: _buildInputDecoration(
+        label: label,
+        hint: hint,
+        maxLines: maxLines,
       ),
+      obscureText: obscureText,
+      maxLines: obscureText ? 1 : maxLines,
+      minLines: obscureText
+          ? 1
+          : maxLines > 1
+              ? 4
+              : 1,
+      style: const TextStyle(fontSize: 14),
     );
   }
 }
