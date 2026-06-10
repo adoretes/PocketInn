@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/chat_memory.dart';
 import '../../../services/chat_memory_service.dart';
+import '../../memory_settings_page.dart';
 
 class MemoryEditDialog extends StatefulWidget {
   final String sessionId;
@@ -109,7 +110,20 @@ class _MemoryEditDialogState extends State<MemoryEditDialog> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('长期记忆管理')),
+      appBar: AppBar(
+        title: const Text('长期记忆'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '记忆配置',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MemorySettingsPage()),
+              );
+            },
+          ),
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _memories == null || _memories!.isEmpty

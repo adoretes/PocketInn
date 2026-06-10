@@ -83,13 +83,6 @@ class GeneralSettingsPage extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              ValueListenableBuilder<MemoryExtractionConfig>(
-                valueListenable: memoryExtractionNotifier,
-                builder: (context, memoryConfig, _) {
-                  return _MemorySettingsCard(memoryConfig: memoryConfig);
-                },
-              ),
             ],
           ),
         );
@@ -482,14 +475,13 @@ class _NavigationSectionCard extends StatelessWidget {
   }
 }
 
-class _MemorySettingsCard extends StatelessWidget {
-  const _MemorySettingsCard({required this.memoryConfig});
+class MemorySettingsCard extends StatelessWidget {
+  const MemorySettingsCard({super.key, required this.memoryConfig});
 
   final MemoryExtractionConfig memoryConfig;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final apiConfigs = apiConfigsNotifier.value;
 
     return _SectionCard(
@@ -508,7 +500,7 @@ class _MemorySettingsCard extends StatelessWidget {
             const SizedBox(height: 12),
             _SliderTile(
               title: '提取间隔',
-              subtitle: '每 X 轮对话提取一次记忆（一轮 = 一上一下）',
+              subtitle: '每 X 轮对话提取一次记忆',
               value: memoryConfig.interval.toDouble(),
               min: 1,
               max: 20,
@@ -519,7 +511,7 @@ class _MemorySettingsCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _SliderTile(
-              title: '最近对话轮数（N）',
+              title: '最近对话轮数',
               subtitle: '拼入提示词的最近 N 轮对话',
               value: memoryConfig.recentRounds.toDouble(),
               min: 1,
@@ -531,7 +523,7 @@ class _MemorySettingsCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _SliderTile(
-              title: '记忆节点数（M）',
+              title: '记忆节点数',
               subtitle: '拼入提示词的历史记忆节点数量',
               value: memoryConfig.recallCount.toDouble(),
               min: 0,
