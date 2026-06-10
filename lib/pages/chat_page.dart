@@ -599,6 +599,7 @@ class _ChatPageState extends State<ChatPage> {
       onRefreshStatus: _refreshEnabledApiStatus,
       onOpenConfigPage: _openApiConfigPage,
       onOpenRequestLogPage: _openApiRequestLogPage,
+      onOpenMemoryManager: _openMemoryManager,
     );
   }
 
@@ -1513,11 +1514,6 @@ class _ChatPageState extends State<ChatPage> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.psychology_outlined),
-            tooltip: '长期记忆',
-            onPressed: session == null ? null : _openMemoryManager,
-          ),
           ApiStatusActionButton(
             status: ApiStatusInfo(
               isChecking: _isCheckingApiStatus,

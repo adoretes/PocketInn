@@ -117,7 +117,7 @@ class ApiStatusActionButton extends StatelessWidget {
           foregroundColor: statusColor,
           visualDensity: VisualDensity.compact,
         ),
-        icon: Icon(status.iconFor(config), size: 20),
+        icon: const Icon(Icons.dashboard_outlined, size: 20),
       ),
     );
   }
@@ -133,6 +133,7 @@ Future<void> showApiSelectorSheet({
   required Future<void> Function() onRefreshStatus,
   required Future<void> Function() onOpenConfigPage,
   required Future<void> Function() onOpenRequestLogPage,
+  required Future<void> Function() onOpenMemoryManager,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -159,6 +160,23 @@ Future<void> showApiSelectorSheet({
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                            leading: Icon(Icons.auto_awesome, color: colorScheme.primary),
+                            title: const Text('长期记忆'),
+                            trailing: Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              await onOpenMemoryManager();
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         Text(
                           'API 选择',
                           style: Theme.of(context).textTheme.titleMedium,
