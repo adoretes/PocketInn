@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../data/api_configs.dart';
@@ -10,6 +11,7 @@ import '../models/prompt_assembly.dart';
 import '../models/world_book.dart';
 import 'chat_character_resolver.dart';
 import 'chat_database_service.dart';
+import 'chat_memory_service.dart';
 import 'openai_compatible_api_service.dart';
 import 'preset_service.dart';
 import 'prompt_assembler.dart';
@@ -72,6 +74,11 @@ class ChatService {
           : session.selectedWorldBookIds.toSet(),
     );
 
+    final memoryContext = await _buildMemoryContext(
+      sessionId: session.id,
+      chatMessages: chatMessages,
+    );
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -82,6 +89,7 @@ class ChatService {
         selectedWorldBooks: worldBooks,
         chatMessages: chatMessages,
         currentInput: normalizedInput,
+        memoryContext: memoryContext,
       ),
     );
     cancellationToken?.throwIfCancelled();
@@ -113,6 +121,24 @@ class ChatService {
             text: completion.text,
             thinkingChain: completion.thinkingChain,
           );
+
+      unawaited(_tryAutoExtractMemories(
+        sessionId: activeSession.id,
+        branchLeafId: assistantNode.id,
+        chatMessages: chatMessages,
+        userMessage: ChatMessage(
+          id: userNode.id,
+          text: userNode.text,
+          isMe: true,
+        ),
+        assistantMessage: ChatMessage(
+          id: assistantNode.id,
+          text: assistantNode.text,
+          isMe: false,
+        ),
+        characterName: character.name,
+        userName: userSetting.name,
+      ));
 
       return ChatSendResult(
         userNode: userNode,
@@ -174,6 +200,11 @@ class ChatService {
           : session.selectedWorldBookIds.toSet(),
     );
 
+    final memoryContext = await _buildMemoryContext(
+      sessionId: session.id,
+      chatMessages: historyBeforeUserMessage,
+    );
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -184,6 +215,7 @@ class ChatService {
         selectedWorldBooks: worldBooks,
         chatMessages: historyBeforeUserMessage,
         currentInput: userMessage.text,
+        memoryContext: memoryContext,
       ),
     );
     cancellationToken?.throwIfCancelled();
@@ -343,6 +375,84 @@ class ChatService {
       text: text,
       thinkingChain: thinking.isEmpty ? null : thinking,
     );
+  }
+
+  Future<List<String>> _buildMemoryContext({
+    required String sessionId,
+    required List<ChatMessage> chatMessages,
+  }) async {
+    final memoryConfig = memoryExtractionNotifier.value;
+    if (!memoryConfig.enabled) return const [];
+
+    final pathIds = chatMessages
+        .where((m) => m.id != null)
+        .map((m) => m.id!)
+        .toList();
+    if (pathIds.isEmpty) return const [];
+
+    final memories = await ChatMemoryService.instance.getRecentBranchMemories(
+      sessionId: sessionId,
+      pathMessageIds: pathIds,
+      count: memoryConfig.recallCount,
+    );
+    return memories.map((m) => m.content).toList();
+  }
+
+  Future<void> _tryAutoExtractMemories({
+    required String sessionId,
+    required String branchLeafId,
+    required List<ChatMessage> chatMessages,
+    required ChatMessage userMessage,
+    required ChatMessage assistantMessage,
+    required String characterName,
+    required String userName,
+  }) async {
+    final memoryConfig = memoryExtractionNotifier.value;
+    if (!memoryConfig.enabled) return;
+    if (memoryConfig.interval <= 0) return;
+
+    final allMessages = [
+      ...chatMessages,
+      userMessage,
+      assistantMessage,
+    ];
+    final pathIds = chatMessages
+        .where((m) => m.id != null)
+        .map((m) => m.id!)
+        .toList();
+    final newAssistantCount =
+        await _countNewAssistantSinceLastExtraction(
+          sessionId: sessionId,
+          allMessages: allMessages,
+          pathIds: pathIds,
+        );
+    if (newAssistantCount < memoryConfig.interval) return;
+
+    await ChatMemoryService.instance.tryExtractAndSave(
+      sessionId: sessionId,
+      branchLeafId: branchLeafId,
+      messages: allMessages,
+      characterName: characterName,
+      userName: userName,
+    );
+  }
+
+  Future<int> _countNewAssistantSinceLastExtraction({
+    required String sessionId,
+    required List<ChatMessage> allMessages,
+    required List<String> pathIds,
+  }) async {
+    final memories = await ChatMemoryService.instance.getBranchMemories(
+      sessionId: sessionId,
+      pathMessageIds: pathIds,
+    );
+    if (memories.isEmpty) {
+      return allMessages.where((m) => !m.isMe).length;
+    }
+    final processedIds = memories.first.sourceMessageIds.toSet();
+    return allMessages
+        .where((m) => !m.isMe && m.id != null && !processedIds.contains(m.id))
+        .length;
   }
 
   Map<String, dynamic> _buildCompletionDefaults(

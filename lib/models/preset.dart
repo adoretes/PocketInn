@@ -696,6 +696,7 @@ const List<String> defaultPromptIdentifiers = [
   'nsfw',
   'dialogueExamples',
   'jailbreak',
+  'longTermMemory',
   'chatHistory',
   'worldInfoAfter',
   'worldInfoBefore',

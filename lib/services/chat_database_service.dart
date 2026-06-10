@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../models/chat_memory.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 
@@ -14,7 +16,7 @@ class ChatDatabaseService {
   static final ChatDatabaseService instance = ChatDatabaseService._();
   final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
 
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 3;
   static const String _dbName = 'pocket_inn_chat.db';
 
   Database? _database;
@@ -45,6 +47,9 @@ class ChatDatabaseService {
         },
         onCreate: (db, version) async {
           await _createSchema(db);
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          await _migrateSchema(db, oldVersion, newVersion);
         },
       ),
     );
@@ -84,6 +89,43 @@ class ChatDatabaseService {
       throw StateError('ChatDatabaseService 未初始化，请先调用 initialize()');
     }
     return db;
+  }
+
+  Future<void> _createMemoriesSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_memories (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        branch_leaf_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        source_message_ids TEXT NOT NULL DEFAULT '[]',
+        is_user_edited INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chat_memories_session_branch '
+      'ON chat_memories(session_id, branch_leaf_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chat_memories_created '
+      'ON chat_memories(session_id, created_at DESC)',
+    );
+  }
+
+  Future<void> _migrateSchema(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    if (oldVersion < 2 && newVersion >= 2) {
+      await _createMemoriesSchema(db);
+    }
+    if (oldVersion < 3 && newVersion >= 3) {
+      await _createMemoriesSchema(db);
+    }
   }
 
   Future<void> _createSchema(Database db) async {
@@ -141,6 +183,8 @@ class ChatDatabaseService {
     await db.execute(
       'CREATE INDEX idx_chat_messages_session_created ON chat_messages(session_id, created_at)',
     );
+
+    await _createMemoriesSchema(db);
   }
 
   Future<ChatSession> createSession({
@@ -336,6 +380,11 @@ class ChatDatabaseService {
         'chat_branch_state',
         where: 'parent_message_id = ?',
         whereArgs: [_rootBranchKey(sessionId)],
+      );
+      await tx.delete(
+        'chat_memories',
+        where: 'session_id = ?',
+        whereArgs: [sessionId],
       );
       await tx.delete(
         'chat_messages',
@@ -641,6 +690,12 @@ class ChatDatabaseService {
       );
 
       await tx.delete(
+        'chat_memories',
+        where: 'branch_leaf_id IN ($placeholders)',
+        whereArgs: subtreeIds,
+      );
+
+      await tx.delete(
         'chat_messages',
         where: 'id IN ($placeholders)',
         whereArgs: subtreeIds,
@@ -846,6 +901,80 @@ class ChatDatabaseService {
         whereArgs: sessionIds,
       );
     });
+  }
+
+  Future<List<MemoryNode>> loadBranchMemories(
+    String sessionId,
+    List<String> branchLeafIds,
+  ) async {
+    if (branchLeafIds.isEmpty) return const [];
+    final placeholders = List.filled(branchLeafIds.length, '?').join(',');
+    final rows = await _db.query(
+      'chat_memories',
+      where: 'session_id = ? AND branch_leaf_id IN ($placeholders)',
+      whereArgs: [sessionId, ...branchLeafIds],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map(_memoryFromMap).toList();
+  }
+
+  Future<List<MemoryNode>> loadAllSessionMemories(String sessionId) async {
+    final rows = await _db.query(
+      'chat_memories',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map(_memoryFromMap).toList();
+  }
+
+  Future<void> insertMemory(MemoryNode memory) async {
+    await _db.insert('chat_memories', _memoryToMap(memory));
+    _notifyChanged();
+  }
+
+  Future<void> updateMemoryContent({
+    required String memoryId,
+    required String content,
+  }) async {
+    await _db.update(
+      'chat_memories',
+      {
+        'content': content,
+        'is_user_edited': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [memoryId],
+    );
+    _notifyChanged();
+  }
+
+  Future<void> deleteMemory(String memoryId) async {
+    await _db.delete(
+      'chat_memories',
+      where: 'id = ?',
+      whereArgs: [memoryId],
+    );
+    _notifyChanged();
+  }
+
+  Future<void> deleteSessionMemories(String sessionId) async {
+    await _db.delete(
+      'chat_memories',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
+  Future<void> deleteBranchMemoriesByLeafIds(List<String> leafIds) async {
+    if (leafIds.isEmpty) return;
+    final placeholders = List.filled(leafIds.length, '?').join(',');
+    await _db.delete(
+      'chat_memories',
+      where: 'branch_leaf_id IN ($placeholders)',
+      whereArgs: leafIds,
+    );
   }
 
   void _notifyChanged() {
@@ -1162,4 +1291,43 @@ class ChatDatabaseService {
       siblingOrder: map['sibling_order'] as int? ?? 0,
     );
   }
+
+  Map<String, Object?> _memoryToMap(MemoryNode memory) {
+    return {
+      'id': memory.id,
+      'session_id': memory.sessionId,
+      'branch_leaf_id': memory.branchLeafId,
+      'content': memory.content,
+      'source_message_ids': _sourceMessageIdsToJson(memory.sourceMessageIds),
+      'is_user_edited': memory.isUserEdited ? 1 : 0,
+      'created_at': memory.createdAt.toIso8601String(),
+      'updated_at': memory.updatedAt.toIso8601String(),
+    };
+  }
+
+  MemoryNode _memoryFromMap(Map<String, Object?> map) {
+    return MemoryNode(
+      id: map['id'] as String,
+      sessionId: map['session_id'] as String,
+      branchLeafId: map['branch_leaf_id'] as String,
+      content: map['content'] as String,
+      sourceMessageIds: _sourceMessageIdsFromJson(
+        map['source_message_ids'] as String? ?? '[]',
+      ),
+      isUserEdited: (map['is_user_edited'] as int? ?? 0) == 1,
+      createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: DateTime.parse(map['updated_at'] as String),
+    );
+  }
+}
+
+String _sourceMessageIdsToJson(List<String> ids) => jsonEncode(ids);
+List<String> _sourceMessageIdsFromJson(String json) {
+  try {
+    final decoded = jsonDecode(json);
+    if (decoded is List) {
+      return decoded.map((item) => item.toString()).toList();
+    }
+  } catch (_) {}
+  return [];
 }

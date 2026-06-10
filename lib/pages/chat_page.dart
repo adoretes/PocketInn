@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +13,13 @@ import '../models/preset.dart';
 import '../models/world_book.dart';
 import '../pages/api_request_log_page.dart';
 import '../pages/api_config_page.dart';
+import '../pages/chat/widgets/api_selector_sheet.dart';
+import '../pages/chat/widgets/chat_input_area.dart';
+import '../pages/chat/widgets/chat_title_dialog.dart';
+import '../pages/chat/widgets/memory_edit_dialog.dart';
+import '../pages/chat/widgets/message_bubble.dart';
+import '../pages/chat/widgets/message_edit_dialog.dart';
+import '../pages/chat/utils/popup_menu_position.dart';
 import '../services/chat_character_resolver.dart';
 import '../services/chat_database_service.dart';
 import '../services/chat_opening_message_builder.dart';
@@ -22,201 +28,11 @@ import '../services/chat_variable_service.dart';
 import '../services/openai_compatible_api_service.dart';
 import '../services/preset_service.dart';
 import '../services/world_book_service.dart';
-import '../widgets/chat_markdown_body.dart';
-import '../widgets/expanded_text_editor_field.dart';
 import '../widgets/scroll_float_button.dart';
 import 'chat_sidebar_page.dart';
 import 'preset_edit_page.dart';
 import 'user_settings_page.dart';
 import 'world_book_edit_page.dart';
-
-enum _MessageEditAction { save, saveAndSend }
-
-enum _ChatTitleDialogAction { save, reset }
-
-class _MessageEditDialogResult {
-  const _MessageEditDialogResult({required this.action, required this.text});
-
-  final _MessageEditAction action;
-  final String text;
-}
-
-class _ChatTitleDialogResult {
-  const _ChatTitleDialogResult({required this.action, required this.title});
-
-  final _ChatTitleDialogAction action;
-  final String title;
-}
-
-class _ChatTitleDialog extends StatefulWidget {
-  const _ChatTitleDialog({required this.initialTitle});
-
-  final String initialTitle;
-
-  @override
-  State<_ChatTitleDialog> createState() => _ChatTitleDialogState();
-}
-
-class _ChatTitleDialogState extends State<_ChatTitleDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialTitle);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _closeWith(_ChatTitleDialogAction action) {
-    Navigator.of(context).pop(
-      _ChatTitleDialogResult(action: action, title: _controller.text),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('修改聊天名称'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: const InputDecoration(hintText: '输入聊天名称'),
-        onSubmitted: (_) => _closeWith(_ChatTitleDialogAction.save),
-      ),
-      actions: [
-        IconButton(
-          onPressed: () => _closeWith(_ChatTitleDialogAction.reset),
-          icon: const Icon(Icons.refresh),
-          tooltip: '按当前选择重置聊天',
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => _closeWith(_ChatTitleDialogAction.save),
-          child: const Text('保存'),
-        ),
-      ],
-    );
-  }
-}
-
-class _MessageEditDialog extends StatefulWidget {
-  const _MessageEditDialog({
-    required this.initialText,
-    required this.title,
-    required this.canSaveAndSend,
-  });
-
-  final String initialText;
-  final String title;
-  final bool canSaveAndSend;
-
-  @override
-  State<_MessageEditDialog> createState() => _MessageEditDialogState();
-}
-
-class _MessageEditDialogState extends State<_MessageEditDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialText);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _closeWith(_MessageEditAction action) {
-    Navigator.of(
-      context,
-    ).pop(_MessageEditDialogResult(action: action, text: _controller.text));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    final keyboardInset = mediaQuery.viewInsets.bottom;
-    final availableHeight = mediaQuery.size.height - keyboardInset - 48;
-    final dialogMaxHeight = availableHeight
-        .clamp(240.0, mediaQuery.size.height)
-        .toDouble();
-    final keyboardVisible = keyboardInset > 0;
-    final actionButtons = <Widget>[
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('取消'),
-      ),
-      TextButton(
-        onPressed: () => _closeWith(_MessageEditAction.save),
-        child: const Text('保存'),
-      ),
-      if (widget.canSaveAndSend)
-        FilledButton(
-          onPressed: () => _closeWith(_MessageEditAction.saveAndSend),
-          child: const Text('保存并发送'),
-        ),
-    ];
-
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: 560, maxHeight: dialogMaxHeight),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  widget.title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-                ExpandedTextEditorField(
-                  controller: _controller,
-                  autofocus: true,
-                  maxLines: keyboardVisible ? 5 : 10,
-                  minLines: keyboardVisible ? 3 : 5,
-                  dialogTitle: widget.title,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: '输入消息内容',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < actionButtons.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 8),
-                        actionButtons[i],
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// 聊天页面
 class ChatPage extends StatefulWidget {
@@ -253,12 +69,6 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  static const double _popupMenuAnchorGap = 8.0;
-  static const double _popupMenuScreenPadding = 8.0;
-  static const double _popupMenuVerticalPadding = 16.0;
-  static const double _popupMenuMinWidth = 112.0;
-  static const double _popupMenuMaxWidth = 280.0;
-
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
@@ -590,70 +400,6 @@ class _ChatPageState extends State<ChatPage> {
     return TextFieldTapRegion(groupId: _inputTapRegionGroupId, child: child);
   }
 
-  RelativeRect _popupMenuPositionAbove(
-    BuildContext buttonContext,
-    int itemCount,
-  ) {
-    final button = buttonContext.findRenderObject() as RenderBox;
-    final overlayRenderObject = Navigator.of(
-      buttonContext,
-    ).overlay?.context.findRenderObject();
-    final overlay = overlayRenderObject is RenderBox
-        ? overlayRenderObject
-        : null;
-    final overlaySize = overlay?.size ?? MediaQuery.sizeOf(buttonContext);
-    final buttonRect = Rect.fromPoints(
-      button.localToGlobal(Offset.zero, ancestor: overlay),
-      button.localToGlobal(
-        button.size.bottomRight(Offset.zero),
-        ancestor: overlay,
-      ),
-    );
-    final menuHeight = _popupMenuHeightAbove(buttonRect, itemCount);
-    final top = (buttonRect.top - menuHeight - _popupMenuAnchorGap)
-        .clamp(_popupMenuScreenPadding, double.infinity)
-        .toDouble();
-
-    return RelativeRect.fromRect(
-      Rect.fromLTWH(buttonRect.left, top, buttonRect.width, buttonRect.height),
-      Offset.zero & overlaySize,
-    );
-  }
-
-  BoxConstraints _popupMenuConstraintsAbove(BuildContext buttonContext) {
-    final button = buttonContext.findRenderObject() as RenderBox;
-    final overlayRenderObject = Navigator.of(
-      buttonContext,
-    ).overlay?.context.findRenderObject();
-    final overlay = overlayRenderObject is RenderBox
-        ? overlayRenderObject
-        : null;
-    final buttonTop = button.localToGlobal(Offset.zero, ancestor: overlay).dy;
-    final maxHeight =
-        (buttonTop - _popupMenuAnchorGap - _popupMenuScreenPadding)
-            .clamp(kMinInteractiveDimension, double.infinity)
-            .toDouble();
-
-    return BoxConstraints(
-      minWidth: _popupMenuMinWidth,
-      maxWidth: _popupMenuMaxWidth,
-      maxHeight: maxHeight,
-    );
-  }
-
-  double _popupMenuHeightAbove(Rect buttonRect, int itemCount) {
-    final estimatedHeight =
-        itemCount * kMinInteractiveDimension + _popupMenuVerticalPadding;
-    final availableHeight =
-        buttonRect.top - _popupMenuAnchorGap - _popupMenuScreenPadding;
-    final maxHeight = availableHeight < kMinInteractiveDimension
-        ? kMinInteractiveDimension
-        : availableHeight;
-    return estimatedHeight
-        .clamp(kMinInteractiveDimension, maxHeight)
-        .toDouble();
-  }
-
   String _resolvedUserName() {
     return _currentUserSetting()?.name ?? '默认用户';
   }
@@ -762,6 +508,23 @@ class _ChatPageState extends State<ChatPage> {
     return createdSession;
   }
 
+  Future<void> _openMemoryManager() async {
+    final session = _activeSession;
+    if (session == null) return;
+    final pathMessageIds = _messages
+        .where((m) => m.id != null)
+        .map((m) => m.id!)
+        .toList();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MemoryEditDialog(
+          sessionId: session.id,
+          pathMessageIds: pathMessageIds,
+        ),
+      ),
+    );
+  }
+
   Future<void> _refreshEnabledApiStatus() async {
     final config = enabledApiConfig;
     if (config == null) {
@@ -818,241 +581,25 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _showApiSelectorSheet() async {
-    await showModalBottomSheet<void>(
+    await showApiSelectorSheet(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final colorScheme = Theme.of(sheetContext).colorScheme;
-        final screenHeight = MediaQuery.of(sheetContext).size.height;
-        return StatefulBuilder(
-          builder: (context, sheetSetState) {
-            return SafeArea(
-              child: ValueListenableBuilder<List<ApiConfig>>(
-                valueListenable: apiConfigsNotifier,
-                builder: (context, configs, _) {
-                  final currentConfig = enabledApiConfig;
-                  final settings = appSettingsNotifier.value;
-                  return SizedBox(
-                    height: screenHeight * 0.6,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'API 选择',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            currentConfig == null
-                                ? '当前未启用 API 配置'
-                                : '当前: ${currentConfig.name} · ${_apiStatusLabel(currentConfig)}',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 12),
-                          SwitchListTile.adaptive(
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text('流式输出'),
-                            subtitle: Text(
-                              _useStreaming ? '实时显示回复内容' : '等待完整回复后再显示',
-                            ),
-                            value: _useStreaming,
-                            onChanged: _isSending
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _useStreaming = value;
-                                    });
-                                    sheetSetState(() {});
-                                  },
-                          ),
-                          const SizedBox(height: 8),
-                          if (configs.isEmpty)
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.hub_outlined),
-                              title: const Text('暂无 API 配置'),
-                              subtitle: const Text('先添加配置后才能切换和检测状态'),
-                              trailing: FilledButton.tonal(
-                                onPressed: () async {
-                                  Navigator.of(sheetContext).pop();
-                                  await _openApiConfigPage();
-                                },
-                                child: const Text('去配置'),
-                              ),
-                            )
-                          else
-                            Expanded(
-                              child: ListView(
-                                children: [
-                                  for (final item in configs)
-                                    ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      leading: Icon(
-                                        item.id == currentConfig?.id
-                                            ? Icons.check_circle
-                                            : Icons.hub_outlined,
-                                        color: item.id == currentConfig?.id
-                                            ? colorScheme.primary
-                                            : colorScheme.onSurfaceVariant,
-                                      ),
-                                      title: Text(
-                                        item.name,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      subtitle: Text(
-                                        item.model.trim().isEmpty
-                                            ? item.baseUrl
-                                            : '${item.model} · ${item.baseUrl}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      trailing: item.id == currentConfig?.id
-                                          ? _buildApiStatusChip(
-                                              colorScheme,
-                                              item,
-                                            )
-                                          : null,
-                                      onTap: () async {
-                                        Navigator.of(sheetContext).pop();
-                                        await _selectApiConfig(item);
-                                      },
-                                    ),
-                                ],
-                              ),
-                            ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 2,
-                            runSpacing: 2,
-                            children: [
-                              TextButton.icon(
-                                onPressed: currentConfig == null
-                                    ? null
-                                    : () async {
-                                        Navigator.of(sheetContext).pop();
-                                        await _refreshEnabledApiStatus();
-                                      },
-                                icon: const Icon(Icons.sync),
-                                label: const Text('刷新状态'),
-                              ),
-                              TextButton.icon(
-                                onPressed: () async {
-                                  Navigator.of(sheetContext).pop();
-                                  await _openApiConfigPage();
-                                },
-                                icon: const Icon(Icons.settings_outlined),
-                                label: const Text('管理配置'),
-                              ),
-                              if (settings.showApiRequestLogEntry)
-                                TextButton.icon(
-                                  onPressed: () async {
-                                    Navigator.of(sheetContext).pop();
-                                    await _openApiRequestLogPage();
-                                  },
-                                  icon: const Icon(Icons.receipt_long_outlined),
-                                  label: const Text('请求日志'),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        );
+      statusProvider: () => ApiStatusInfo(
+        isChecking: _isCheckingApiStatus,
+        configId: _apiStatusConfigId,
+        result: _apiStatusResult,
+      ),
+      useStreamingProvider: () => _useStreaming,
+      isSendingProvider: () => _isSending,
+      onStreamingChanged: (value) {
+        setState(() {
+          _useStreaming = value;
+        });
       },
-    );
-  }
-
-  String _apiStatusLabel(ApiConfig config) {
-    if (_isCheckingApiStatus && _apiStatusConfigId == config.id) {
-      return '检查中';
-    }
-    if (_apiStatusConfigId != config.id || _apiStatusResult == null) {
-      return '未检查';
-    }
-    if (_apiStatusResult!.success) {
-      return _apiStatusResult!.isPartial ? '部分可用' : '在线';
-    }
-    return '异常';
-  }
-
-  Color _apiStatusColor(ColorScheme colorScheme, ApiConfig? config) {
-    if (config == null) {
-      return colorScheme.outline;
-    }
-    if (_isCheckingApiStatus && _apiStatusConfigId == config.id) {
-      return colorScheme.primary;
-    }
-    if (_apiStatusConfigId != config.id || _apiStatusResult == null) {
-      return colorScheme.outline;
-    }
-    return _apiStatusResult!.success
-        ? (_apiStatusResult!.isPartial ? Colors.orange : Colors.green)
-        : colorScheme.error;
-  }
-
-  IconData _apiStatusIcon(ApiConfig? config) {
-    if (config == null) {
-      return Icons.hub_outlined;
-    }
-    if (_isCheckingApiStatus && _apiStatusConfigId == config.id) {
-      return Icons.sync;
-    }
-    if (_apiStatusConfigId != config.id || _apiStatusResult == null) {
-      return Icons.help_outline;
-    }
-    return _apiStatusResult!.success
-        ? (_apiStatusResult!.isPartial
-              ? Icons.cloud_queue_outlined
-              : Icons.cloud_done_outlined)
-        : Icons.cloud_off_outlined;
-  }
-
-  Widget _buildApiStatusChip(ColorScheme colorScheme, ApiConfig config) {
-    final statusColor = _apiStatusColor(colorScheme, config);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        _apiStatusLabel(config),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: statusColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildApiActionButton(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final config = enabledApiConfig;
-    final statusColor = _apiStatusColor(colorScheme, config);
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: IconButton(
-        onPressed: _showApiSelectorSheet,
-        tooltip: config == null
-            ? 'API：未配置'
-            : 'API：${config.name}（${_apiStatusLabel(config)}）',
-        style: IconButton.styleFrom(
-          foregroundColor: statusColor,
-          visualDensity: VisualDensity.compact,
-        ),
-        icon: Icon(_apiStatusIcon(config), size: 20),
-      ),
+      onSelectConfig: _selectApiConfig,
+      onRefreshStatus: _refreshEnabledApiStatus,
+      onOpenConfigPage: _openApiConfigPage,
+      onOpenRequestLogPage: _openApiRequestLogPage,
+      onOpenMemoryManager: _openMemoryManager,
     );
   }
 
@@ -1062,9 +609,9 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
-    final result = await showDialog<_ChatTitleDialogResult>(
+    final result = await showDialog<ChatTitleDialogResult>(
       context: context,
-      builder: (_) => _ChatTitleDialog(initialTitle: session.title),
+      builder: (_) => ChatTitleDialog(initialTitle: session.title),
     );
 
     if (!mounted) {
@@ -1075,7 +622,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     final normalizedTitle = result.title.trim();
-    if (result.action == _ChatTitleDialogAction.reset) {
+    if (result.action == ChatTitleDialogAction.reset) {
       final nextTitle = normalizedTitle.isEmpty
           ? session.title
           : normalizedTitle;
@@ -1217,11 +764,11 @@ class _ChatPageState extends State<ChatPage> {
     showMenu<String>(
       context: context,
       requestFocus: false,
-      position: _popupMenuPositionAbove(
+      position: PopupMenuPositioning.positionAbove(
         context,
         userSettingsNotifier.value.length,
       ),
-      constraints: _popupMenuConstraintsAbove(context),
+      constraints: PopupMenuPositioning.constraintsAbove(context),
       items: userSettingsNotifier.value.map((setting) {
         final isSelected = setting.id == _selectedUserSettingId;
         return PopupMenuItem<String>(
@@ -1294,8 +841,8 @@ class _ChatPageState extends State<ChatPage> {
     showMenu<String>(
       context: context,
       requestFocus: false,
-      position: _popupMenuPositionAbove(context, _worldBooks.length),
-      constraints: _popupMenuConstraintsAbove(context),
+      position: PopupMenuPositioning.positionAbove(context, _worldBooks.length),
+      constraints: PopupMenuPositioning.constraintsAbove(context),
       items: _worldBooks.map((worldBook) {
         final isSelected = _selectedWorldBookIds.contains(worldBook.id);
         return PopupMenuItem<String>(
@@ -1409,8 +956,8 @@ class _ChatPageState extends State<ChatPage> {
     showMenu<String>(
       context: context,
       requestFocus: false,
-      position: _popupMenuPositionAbove(context, _presets.length),
-      constraints: _popupMenuConstraintsAbove(context),
+      position: PopupMenuPositioning.positionAbove(context, _presets.length),
+      constraints: PopupMenuPositioning.constraintsAbove(context),
       items: _presets.map((preset) {
         final isSelected = preset.id == _selectedPresetId;
         return PopupMenuItem<String>(
@@ -1570,9 +1117,9 @@ class _ChatPageState extends State<ChatPage> {
     }
     final editingMessage = message;
 
-    final result = await showDialog<_MessageEditDialogResult>(
+    final result = await showDialog<MessageEditDialogResult>(
       context: context,
-      builder: (context) => _MessageEditDialog(
+      builder: (context) => MessageEditDialog(
         initialText: editingMessage.text,
         title: editingMessage.isMe ? '编辑用户消息' : '编辑角色消息',
         canSaveAndSend: editingMessage.isMe && character != null,
@@ -1599,7 +1146,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     try {
-      if (editingMessage.isMe && action == _MessageEditAction.saveAndSend) {
+      if (editingMessage.isMe && action == MessageEditAction.saveAndSend) {
         final editedNode = await ChatDatabaseService.instance
             .branchMessageFromEdit(
               sessionId: session.id,
@@ -1632,7 +1179,7 @@ class _ChatPageState extends State<ChatPage> {
             editingMessage.isMe || editingMessage.thinkingChain == null,
       );
 
-      if (action == _MessageEditAction.saveAndSend) {
+      if (action == MessageEditAction.saveAndSend) {
         await _regenerateFromUserMessage(
           userMessageIndex: index,
           editedText: normalizedText,
@@ -1666,9 +1213,9 @@ class _ChatPageState extends State<ChatPage> {
       _draftOpeningAssistantMessages.length - 1,
     );
 
-    final result = await showDialog<_MessageEditDialogResult>(
+    final result = await showDialog<MessageEditDialogResult>(
       context: context,
-      builder: (context) => _MessageEditDialog(
+      builder: (context) => MessageEditDialog(
         initialText: _draftOpeningAssistantMessages[editingIndex],
         title: '编辑角色消息',
         canSaveAndSend: false,
@@ -1966,7 +1513,16 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ),
         centerTitle: true,
-        actions: [_buildApiActionButton(context)],
+        actions: [
+          ApiStatusActionButton(
+            status: ApiStatusInfo(
+              isChecking: _isCheckingApiStatus,
+              configId: _apiStatusConfigId,
+              result: _apiStatusResult,
+            ),
+            onPressed: _showApiSelectorSheet,
+          ),
+        ],
       ),
       body: ValueListenableBuilder<AppSettings>(
         valueListenable: appSettingsNotifier,
@@ -2058,7 +1614,7 @@ class _ChatPageState extends State<ChatPage> {
                                     hasPersistedMessage && !_isSending;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
-                                  child: _MessageBubble(
+                                  child: MessageBubble(
                                     message: msg,
                                     userSetting: _currentUserSetting(),
                                     character: _activeCharacter,
@@ -2114,238 +1670,30 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                   ),
-                  _buildInputArea(isSendEnabled, settings, hasBackground),
+                  ChatInputArea(
+                    textController: _textController,
+                    focusNode: _inputFocusNode,
+                    inputTapRegionGroupId: _inputTapRegionGroupId,
+                    sessionKey: ValueKey(_activeSession?.id),
+                    isSendEnabled: isSendEnabled,
+                    isSending: _isSending,
+                    hasBackground: hasBackground,
+                    settings: settings,
+                    worldBooks: _worldBooks,
+                    selectedWorldBookIds: _selectedWorldBookIds,
+                    currentUserSetting: _currentUserSetting(),
+                    onUserSettingsPressed: _onUserSettingsPressed,
+                    onWorldBookPressed: _onWorldBookPressed,
+                    onPresetPressed: _onPresetPressed,
+                    onSendPressed: _onSendPressed,
+                    onStopGeneratingPressed: _onStopGeneratingPressed,
+                  ),
                 ],
               ),
             ],
           );
         },
       ),
-    );
-  }
-
-  Widget _buildInputArea(
-    bool isSendEnabled,
-    AppSettings settings,
-    bool hasBackground,
-  ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final hasWorldBooks = _worldBooks.isNotEmpty;
-    // 获取所有选中的世界书
-    final selectedWorldBooks = _worldBooks
-        .where((item) => _selectedWorldBookIds.contains(item.id))
-        .toList();
-    // 显示文本：多个世界书时显示数量，单个时显示名称
-    final worldBookDisplayText = selectedWorldBooks.isEmpty
-        ? '世界书'
-        : selectedWorldBooks.length == 1
-        ? selectedWorldBooks.first.name
-        : '${selectedWorldBooks.length} 本世界书';
-    final worldBookColor = selectedWorldBooks.isNotEmpty
-        ? colorScheme.primary
-        : colorScheme.onSurfaceVariant;
-    // 是否启用毛玻璃效果（有背景且设置开启）
-    final useGlassEffect = hasBackground && settings.inputGlassEffect;
-    final sendButtonBackgroundColor = _isSending
-        ? colorScheme.errorContainer
-        : isSendEnabled
-        ? colorScheme.primary
-        : colorScheme.surfaceContainerHighest;
-    final sendButtonForegroundColor = _isSending
-        ? colorScheme.onErrorContainer
-        : isSendEnabled
-        ? colorScheme.onPrimary
-        : colorScheme.onSurfaceVariant;
-
-    // 输入框内容
-    Widget inputContent = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-          child: TextField(
-            key: ValueKey(_activeSession?.id),
-            controller: _textController,
-            focusNode: _inputFocusNode,
-            groupId: _inputTapRegionGroupId,
-            maxLines: 5,
-            minLines: 1,
-            keyboardType: TextInputType.multiline,
-            textInputAction: TextInputAction.newline,
-            decoration: InputDecoration(
-              hintText: '输入消息',
-              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-            ),
-            style: const TextStyle(fontSize: 16),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 12, 8),
-          child: Row(
-            children: [
-              Builder(
-                builder: (context) => ValueListenableBuilder<List<UserSetting>>(
-                  valueListenable: userSettingsNotifier,
-                  builder: (context, settings, _) {
-                    if (settings.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    final selectedSetting = _currentUserSetting();
-                    if (selectedSetting == null) {
-                      return const SizedBox.shrink();
-                    }
-
-                    return ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 120),
-                      child: TextButton.icon(
-                        onPressed: () => _onUserSettingsPressed(context),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          minimumSize: const Size(40, 40),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        icon: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: selectedSetting.color,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            selectedSetting.avatarText,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        label: Text(
-                          selectedSetting.name,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Builder(
-                builder: (context) => ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 120),
-                  child: TextButton.icon(
-                    onPressed: hasWorldBooks
-                        ? () => _onWorldBookPressed(context)
-                        : null,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      minimumSize: const Size(40, 40),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: Icon(
-                      Icons.menu_book_rounded,
-                      size: 20,
-                      color: worldBookColor,
-                    ),
-                    label: Text(
-                      worldBookDisplayText,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ),
-              Builder(
-                builder: (context) => IconButton(
-                  icon: const Icon(Icons.tune, size: 24),
-                  onPressed: () => _onPresetPressed(context),
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
-                  ),
-                  tooltip: '预设',
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: _isSending
-                    ? _onStopGeneratingPressed
-                    : (isSendEnabled ? _onSendPressed : null),
-                icon: Icon(
-                  _isSending ? Icons.stop_rounded : Icons.arrow_upward_rounded,
-                  size: 15,
-                ),
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(30, 30),
-                  fixedSize: const Size(30, 30),
-                  backgroundColor: sendButtonBackgroundColor,
-                  disabledBackgroundColor: sendButtonBackgroundColor,
-                  foregroundColor: sendButtonForegroundColor,
-                  disabledForegroundColor: sendButtonForegroundColor.withValues(
-                    alpha: 0.62,
-                  ),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  padding: EdgeInsets.zero,
-                ),
-                tooltip: _isSending ? '终止生成' : '发送',
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-    inputContent = _inputTapRegion(inputContent);
-
-    // 毛玻璃效果容器
-    if (useGlassEffect) {
-      return Container(
-        margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                color: colorScheme.surface.withValues(alpha: 0.4),
-                border: Border.all(
-                  color: colorScheme.outline.withValues(alpha: 0.3),
-                  width: 0.5,
-                ),
-              ),
-              child: inputContent,
-            ),
-          ),
-        ),
-      );
-    }
-
-    // 普通容器
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-        border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
-      ),
-      child: inputContent,
     );
   }
 
@@ -2363,732 +1711,5 @@ class _ChatPageState extends State<ChatPage> {
       }
     }
     return settings.first;
-  }
-}
-
-class _MessageBubble extends StatefulWidget {
-  const _MessageBubble({
-    required this.message,
-    required this.userSetting,
-    required this.character,
-    required this.inputTapRegionGroupId,
-    required this.isLastUserMessageWithoutReply,
-    required this.isLastCharacterMessage,
-    required this.showActions,
-    required this.canEdit,
-    required this.canDelete,
-    required this.isBusyRegenerating,
-    required this.onCopy,
-    required this.onEdit,
-    required this.onDelete,
-    this.onGenerate,
-    this.onRegenerate,
-    this.onSelectPreviousVariant,
-    this.onSelectNextVariant,
-  });
-
-  final ChatMessage message;
-  final UserSetting? userSetting;
-  final ResolvedChatCharacter? character;
-  final Object inputTapRegionGroupId;
-  final bool isLastUserMessageWithoutReply;
-  final bool isLastCharacterMessage;
-  final bool showActions;
-  final bool canEdit;
-  final bool canDelete;
-  final bool isBusyRegenerating;
-  final VoidCallback onCopy;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback? onGenerate;
-  final VoidCallback? onRegenerate;
-  final VoidCallback? onSelectPreviousVariant;
-  final VoidCallback? onSelectNextVariant;
-
-  @override
-  State<_MessageBubble> createState() => _MessageBubbleState();
-}
-
-class _MessageBubbleState extends State<_MessageBubble> {
-  static _MessageBubbleState? _currentPopupOwner;
-  final OverlayPortalController _overlayPortalController =
-      OverlayPortalController();
-
-  @override
-  void dispose() {
-    _hideActionPopup();
-    super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(covariant _MessageBubble oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _hideActionPopup();
-    });
-  }
-
-  void _showActionPopup() {
-    _currentPopupOwner?._hideActionPopup();
-    _hideActionPopup();
-    if (!mounted) return;
-    _overlayPortalController.show();
-    _currentPopupOwner = this;
-  }
-
-  void _hideActionPopup() {
-    if (_overlayPortalController.isShowing) {
-      _overlayPortalController.hide();
-    }
-    if (_currentPopupOwner == this) {
-      _currentPopupOwner = null;
-    }
-  }
-
-  Widget _buildPopupOverlay(BuildContext context, OverlayChildLayoutInfo info) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isMe = widget.message.isMe;
-    final Offset targetPos = Offset(
-      info.childPaintTransform.getTranslation().x,
-      info.childPaintTransform.getTranslation().y,
-    );
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned(
-          left: -targetPos.dx,
-          top: -targetPos.dy,
-          width: info.overlaySize.width,
-          height: info.overlaySize.height,
-          child: Listener(
-            behavior: HitTestBehavior.translucent,
-            onPointerDown: (_) => _hideActionPopup(),
-          ),
-        ),
-        Positioned(
-          left: isMe ? null : targetPos.dx,
-          right: isMe
-              ? info.overlaySize.width - targetPos.dx - info.childSize.width
-              : null,
-          top: targetPos.dy + info.childSize.height + 4,
-          child: TextFieldTapRegion(
-            groupId: widget.inputTapRegionGroupId,
-            child: Material(
-              elevation: 6,
-              borderRadius: BorderRadius.circular(12),
-              color: colorScheme.surfaceContainerHigh,
-              shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: _buildPopupActions(colorScheme),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  List<Widget> _buildPopupActions(ColorScheme colorScheme) {
-    return <Widget>[
-      _buildPopupActionButton(
-        icon: Icons.copy_outlined,
-        tooltip: '复制',
-        onPressed: () {
-          widget.onCopy();
-          _hideActionPopup();
-        },
-        color: colorScheme.onSurface,
-      ),
-      if (widget.canEdit)
-        _buildPopupActionButton(
-          icon: Icons.edit_outlined,
-          tooltip: '编辑',
-          onPressed: () {
-            widget.onEdit();
-            _hideActionPopup();
-          },
-          color: colorScheme.onSurface,
-        ),
-      if (widget.canDelete)
-        _buildPopupActionButton(
-          icon: Icons.delete_outline,
-          tooltip: '删除',
-          onPressed: () {
-            widget.onDelete();
-            _hideActionPopup();
-          },
-          color: colorScheme.error,
-        ),
-    ];
-  }
-
-  Widget _buildPopupActionButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onPressed,
-    required Color color,
-  }) {
-    return ExcludeFocus(
-      child: IconButton(
-        icon: Icon(icon, size: 18, color: color),
-        onPressed: onPressed,
-        tooltip: tooltip,
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-        style: IconButton.styleFrom(
-          foregroundColor: color,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isMe = widget.message.isMe;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return ValueListenableBuilder<AppSettings>(
-      valueListenable: appSettingsNotifier,
-      builder: (context, settings, _) {
-        final showAvatar = settings.showAvatar;
-
-        if (isMe) {
-          return _buildUserBubble(context, colorScheme, settings, showAvatar);
-        } else {
-          return _buildCharacterBubble(
-            context,
-            colorScheme,
-            settings,
-            showAvatar,
-          );
-        }
-      },
-    );
-  }
-
-  /// 构建用户消息气泡
-  Widget _buildUserBubble(
-    BuildContext context,
-    ColorScheme colorScheme,
-    AppSettings settings,
-    bool showAvatar,
-  ) {
-    final bubbleColor = colorScheme.primaryContainer;
-    final textColor = colorScheme.onPrimaryContainer;
-    final inlineCodeColor = colorScheme.primary.withValues(alpha: 0.12);
-    final codeBlockColor = colorScheme.primary.withValues(alpha: 0.08);
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              OverlayPortal.overlayChildLayoutBuilder(
-                controller: _overlayPortalController,
-                overlayChildBuilder: _buildPopupOverlay,
-                child: GestureDetector(
-                  onTapDown: widget.showActions
-                      ? (_) => _showActionPopup()
-                      : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: bubbleColor,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(18),
-                        topRight: Radius.circular(18),
-                        bottomLeft: Radius.circular(18),
-                        bottomRight: Radius.circular(4),
-                      ),
-                    ),
-                    child: Semantics(
-                      container: true,
-                      child: ChatMarkdownBody(
-                        text: widget.message.text,
-                        settings: settings,
-                        textColor: textColor,
-                        inlineCodeColor: inlineCodeColor,
-                        codeBlockColor: codeBlockColor,
-                        applyBodyTextColor: false,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (widget.showActions) _buildActionButtons(context, colorScheme),
-            ],
-          ),
-        ),
-        if (showAvatar) ...[
-          const SizedBox(width: 8),
-          _buildUserAvatar(colorScheme),
-        ],
-      ],
-    );
-  }
-
-  /// 构建角色消息气泡（全宽无背景）
-  Widget _buildCharacterBubble(
-    BuildContext context,
-    ColorScheme colorScheme,
-    AppSettings settings,
-    bool showAvatar,
-  ) {
-    final textColor = colorScheme.onSurface;
-    final inlineCodeColor = colorScheme.surfaceContainerHigh;
-    final codeBlockColor = colorScheme.surfaceContainerLow;
-    final (pseudoChain, cleanedText, pseudoChainComplete) =
-        _extractPseudoThinkingChain(widget.message.text);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (showAvatar) ...[
-              _buildCharacterAvatar(colorScheme),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: OverlayPortal.overlayChildLayoutBuilder(
-                controller: _overlayPortalController,
-                overlayChildBuilder: _buildPopupOverlay,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.message.hasThinkingChain)
-                      _buildThinkingChain(context, colorScheme),
-                    if (pseudoChain != null)
-                      _ThinkingChainWidget(
-                        thinkingChain: pseudoChain,
-                        colorScheme: colorScheme,
-                        initiallyExpanded: !pseudoChainComplete,
-                      ),
-                    GestureDetector(
-                      onTapDown: widget.showActions
-                          ? (_) => _showActionPopup()
-                          : null,
-                      child: Semantics(
-                        container: true,
-                        child: ChatMarkdownBody(
-                          text: cleanedText,
-                          settings: settings,
-                          textColor: textColor,
-                          inlineCodeColor: inlineCodeColor,
-                          codeBlockColor: codeBlockColor,
-                        ),
-                      ),
-                    ),
-                    _buildActionButtons(context, colorScheme),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  /// 构建折叠的思考链
-  Widget _buildThinkingChain(BuildContext context, ColorScheme colorScheme) {
-    return _ThinkingChainWidget(
-      thinkingChain: widget.message.thinkingChain!,
-      colorScheme: colorScheme,
-    );
-  }
-
-  /// 构建用户头像
-  Widget _buildUserAvatar(ColorScheme colorScheme) {
-    final currentUser = widget.userSetting;
-    if (currentUser != null) {
-      return Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: currentUser.color,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          currentUser.avatarText.isEmpty ? '我' : currentUser.avatarText,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      );
-    }
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: colorScheme.primary,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      alignment: Alignment.center,
-      child: Icon(Icons.person, size: 20, color: colorScheme.onPrimary),
-    );
-  }
-
-  /// 构建角色头像
-  Widget _buildCharacterAvatar(ColorScheme colorScheme) {
-    final imagePath =
-        widget.character?.thumbnailPath ?? widget.character?.imagePath;
-    if (imagePath != null && imagePath.isNotEmpty) {
-      final imageProvider = imagePath.startsWith('assets/')
-          ? AssetImage(imagePath) as ImageProvider
-          : FileImage(File(imagePath));
-      return Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Image(
-            image: imageProvider,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Icon(
-                Icons.smart_toy_outlined,
-                size: 20,
-                color: colorScheme.onSecondaryContainer,
-              );
-            },
-          ),
-        ),
-      );
-    }
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      alignment: Alignment.center,
-      child: Icon(
-        Icons.smart_toy_outlined,
-        size: 20,
-        color: colorScheme.onSecondaryContainer,
-      ),
-    );
-  }
-
-  Widget _buildActionButtons(BuildContext context, ColorScheme colorScheme) {
-    if (!widget.showActions) {
-      if (!widget.message.hasMultiple) {
-        return const SizedBox.shrink();
-      }
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Row(
-          children: [const Spacer(), _buildIndexSelector(colorScheme)],
-        ),
-      );
-    }
-
-    final actionWidgets = <Widget>[
-      if (widget.isLastUserMessageWithoutReply && widget.onGenerate != null)
-        _buildActionButton(
-          icon: widget.isBusyRegenerating
-              ? Icons.hourglass_top
-              : Icons.auto_awesome,
-          tooltip: widget.isBusyRegenerating ? '生成中' : '生成回复',
-          onPressed: widget.onGenerate!,
-          colorScheme: colorScheme,
-        ),
-      if (widget.isLastCharacterMessage && widget.onRegenerate != null)
-        _buildActionButton(
-          icon: Icons.refresh,
-          tooltip: '重新生成',
-          onPressed: widget.onRegenerate!,
-          colorScheme: colorScheme,
-        ),
-    ];
-
-    if (actionWidgets.isEmpty && !widget.message.hasMultiple) {
-      return const SizedBox.shrink();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          if (widget.message.isMe) const Spacer(),
-          ...actionWidgets,
-          if (!widget.message.isMe) const Spacer(),
-          if (widget.message.hasMultiple) _buildIndexSelector(colorScheme),
-        ],
-      ),
-    );
-  }
-
-  /// 构建消息索引选择器 < 1/x >
-  Widget _buildIndexSelector(ColorScheme colorScheme) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildSmallActionButton(
-          icon: Icons.chevron_left,
-          tooltip: '上一条',
-          onPressed: widget.message.index > 1
-              ? widget.onSelectPreviousVariant
-              : null,
-          colorScheme: colorScheme,
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text(
-            '${widget.message.index}/${widget.message.total}',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        _buildSmallActionButton(
-          icon: Icons.chevron_right,
-          tooltip: '下一条',
-          onPressed: widget.message.index < widget.message.total
-              ? widget.onSelectNextVariant
-              : null,
-          colorScheme: colorScheme,
-        ),
-      ],
-    );
-  }
-
-  /// 构建小型操作按钮（用于索引选择器）
-  Widget _buildSmallActionButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback? onPressed,
-    required ColorScheme colorScheme,
-  }) {
-    return IconButton(
-      icon: Icon(icon, size: 16),
-      onPressed: onPressed,
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-      style: IconButton.styleFrom(
-        foregroundColor: onPressed != null
-            ? colorScheme.onSurfaceVariant
-            : colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    );
-  }
-
-  /// 构建单个操作按钮
-  Widget _buildActionButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onPressed,
-    required ColorScheme colorScheme,
-  }) {
-    return IconButton(
-      icon: Icon(icon, size: 18),
-      onPressed: onPressed,
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      style: IconButton.styleFrom(
-        foregroundColor: colorScheme.onSurfaceVariant,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    );
-  }
-}
-
-/// 从文本开头提取伪思维链（`<think>`/`<thinking>` 标签包裹的内容），
-/// 避开代码块和行内代码。
-/// 返回 (提取到的内容, 清理后的文本, 是否已闭合)。
-(String?, String, bool) _extractPseudoThinkingChain(String text) {
-  if (text.isEmpty) return (null, text, true);
-
-  final protectedPattern = RegExp(r'```[\s\S]*?```|`[^`\n]+`', dotAll: true);
-  final protectedMatches = protectedPattern.allMatches(text).toList();
-
-  bool isProtected(int index) {
-    for (final m in protectedMatches) {
-      if (m.start <= index && index < m.end) return true;
-    }
-    return false;
-  }
-
-  final startPattern = RegExp(
-    r'^\s*<(?:think|thinking)>\s*',
-    caseSensitive: false,
-  );
-  final startMatch = startPattern.firstMatch(text);
-  if (startMatch == null || isProtected(startMatch.start)) {
-    return (null, text, true);
-  }
-
-  final endPattern = RegExp(r'<\/(?:think|thinking)>\s*', caseSensitive: false);
-  final remaining = text.substring(startMatch.end);
-  final endMatch = endPattern.firstMatch(remaining);
-
-  if (endMatch == null) {
-    // 流式未闭合：将开头到末尾作为思维链内容
-    final content = text.substring(startMatch.end).trim();
-    final cleaned = text.substring(0, startMatch.start);
-    return (content.isEmpty ? null : content, cleaned, false);
-  }
-
-  final endPos = startMatch.end + endMatch.start;
-  final afterEndPos = startMatch.end + endMatch.end;
-
-  if (isProtected(endPos)) return (null, text, true);
-
-  final content = text.substring(startMatch.end, endPos).trim();
-  final cleaned =
-      text.substring(0, startMatch.start) + text.substring(afterEndPos);
-
-  return (content.isEmpty ? null : content, cleaned, true);
-}
-
-/// 思考链组件 - 文字加展开符样式，无底板
-class _ThinkingChainWidget extends StatefulWidget {
-  const _ThinkingChainWidget({
-    required this.thinkingChain,
-    required this.colorScheme,
-    this.initiallyExpanded = false,
-  });
-
-  final String thinkingChain;
-  final ColorScheme colorScheme;
-  final bool initiallyExpanded;
-
-  @override
-  State<_ThinkingChainWidget> createState() => _ThinkingChainWidgetState();
-}
-
-class _ThinkingChainWidgetState extends State<_ThinkingChainWidget> {
-  late bool _isExpanded;
-
-  @override
-  void initState() {
-    super.initState();
-    _isExpanded = widget.initiallyExpanded;
-  }
-
-  @override
-  void didUpdateWidget(covariant _ThinkingChainWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initiallyExpanded && !widget.initiallyExpanded) {
-      _isExpanded = false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accentColor = widget.colorScheme.outline;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          onTap: () => setState(() => _isExpanded = !_isExpanded),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '思考过程',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: widget.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                _isExpanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                size: 16,
-                color: widget.colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-        if (_isExpanded) ...[
-          const SizedBox(height: 6),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: SizedBox(
-                    width: 10,
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 5,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: accentColor,
-                            borderRadius: BorderRadius.circular(1),
-                          ),
-                        ),
-                        Expanded(
-                          child: Container(
-                            width: 1.5,
-                            color: accentColor.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        Container(
-                          width: 5,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: accentColor,
-                            borderRadius: BorderRadius.circular(1),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.thinkingChain,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: widget.colorScheme.onSurfaceVariant,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
   }
 }

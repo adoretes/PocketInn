@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../data/mock_user_settings.dart';
+
 import 'about_page.dart';
 import 'api_config_page.dart';
-import 'char_list_page.dart';
+import 'character_content_page.dart';
 import 'data_management_page.dart';
 import 'general_settings_page.dart';
-import 'preset_page.dart';
-import 'user_settings_page.dart';
-import 'world_book_page.dart';
+import 'memory_settings_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -20,32 +18,13 @@ class SettingsPage extends StatelessWidget {
         await navigator.push(
           MaterialPageRoute(builder: (_) => const GeneralSettingsPage()),
         );
-      case _SettingsItemType.characters:
+      case _SettingsItemType.characterContent:
         await navigator.push(
-          MaterialPageRoute(builder: (_) => const CharListPage()),
+          MaterialPageRoute(builder: (_) => const CharacterContentPage()),
         );
-      case _SettingsItemType.userSettings:
-        final result = await navigator.push(
-          MaterialPageRoute(
-            builder: (_) => UserSettingsPage(
-              initialSettings: userSettingsNotifier.value,
-              initialSelectedId: selectedUserSettingIdNotifier.value,
-            ),
-          ),
-        );
-        if (result != null) {
-          updateUserSettings(
-            settings: result.settings,
-            selectedId: result.selectedId,
-          );
-        }
-      case _SettingsItemType.worldBook:
+      case _SettingsItemType.memory:
         await navigator.push(
-          MaterialPageRoute(builder: (_) => const WorldBookPage()),
-        );
-      case _SettingsItemType.presets:
-        await navigator.push(
-          MaterialPageRoute(builder: (_) => const PresetPage()),
+          MaterialPageRoute(builder: (_) => const MemorySettingsPage()),
         );
       case _SettingsItemType.api:
         await navigator.push(
@@ -75,28 +54,16 @@ class SettingsPage extends StatelessWidget {
         type: _SettingsItemType.general,
       ),
       const _SettingsItem(
-        title: '角色列表',
-        subtitle: '查看和管理当前角色',
+        title: '角色与设定',
+        subtitle: '角色、用户设定、世界书、预设',
         icon: Icons.people_alt_outlined,
-        type: _SettingsItemType.characters,
+        type: _SettingsItemType.characterContent,
       ),
       const _SettingsItem(
-        title: '用户设定',
-        subtitle: '管理你的身份与提示设定',
-        icon: Icons.person_outline_rounded,
-        type: _SettingsItemType.userSettings,
-      ),
-      const _SettingsItem(
-        title: '世界书管理',
-        subtitle: '管理世界书与知识条目',
-        icon: Icons.menu_book_outlined,
-        type: _SettingsItemType.worldBook,
-      ),
-      const _SettingsItem(
-        title: '预设管理',
-        subtitle: '管理聊天预设与参数组合',
-        icon: Icons.tune_outlined,
-        type: _SettingsItemType.presets,
+        title: '长期记忆',
+        subtitle: '配置记忆提取参数与管理记忆',
+        icon: Icons.psychology_outlined,
+        type: _SettingsItemType.memory,
       ),
       const _SettingsItem(
         title: 'Prompt 版本管理',
@@ -184,11 +151,9 @@ class _SettingsItem {
 
 enum _SettingsItemType {
   general,
-  characters,
-  userSettings,
-  worldBook,
-  presets,
-  promptVault,   // ← 新增
+  promptVault,
+  characterContent,
+  memory,
   api,
   data,
   about,

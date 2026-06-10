@@ -9,6 +9,7 @@ import 'pages/chat_page.dart';
 import 'services/api_config_service.dart';
 import 'services/api_request_log_service.dart';
 import 'services/chat_database_service.dart';
+import 'services/chat_memory_service.dart';
 import 'services/character_service.dart';
 import 'services/font_service.dart';
 import 'services/preset_service.dart';
@@ -48,6 +49,9 @@ void main() async {
 
   // 初始化聊天数据库
   await ChatDatabaseService.instance.initialize();
+
+  // 初始化长期记忆配置
+  await initializeMemoryConfig();
 
   // 加载 API 配置
   await initializeApiConfigs();

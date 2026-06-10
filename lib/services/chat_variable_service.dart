@@ -5,6 +5,7 @@ class PromptMacroState {
     this.currentInput = '',
     this.lastUserMessage = '',
     this.lastCharMessage = '',
+    this.memoryContext = const [],
     Map<String, String>? localVariables,
   }) : localVariables = localVariables == null
            ? <String, String>{}
@@ -15,6 +16,7 @@ class PromptMacroState {
   final String currentInput;
   final String lastUserMessage;
   final String lastCharMessage;
+  final List<String> memoryContext;
   final Map<String, String> localVariables;
 
   PromptMacroState copy() {
@@ -24,6 +26,7 @@ class PromptMacroState {
       currentInput: currentInput,
       lastUserMessage: lastUserMessage,
       lastCharMessage: lastCharMessage,
+      memoryContext: memoryContext,
       localVariables: localVariables,
     );
   }
@@ -116,6 +119,8 @@ class ChatVariableService {
         return state.lastUserMessage;
       case 'lastcharmessage':
         return state.lastCharMessage;
+      case 'memory':
+        return _formatMemoryContext(state.memoryContext);
       case 'trim':
         return _trimMarker;
       case 'noop':
@@ -137,6 +142,11 @@ class ChatVariableService {
       default:
         return fullMatch;
     }
+  }
+
+  static String _formatMemoryContext(List<String> memories) {
+    if (memories.isEmpty) return '';
+    return '以下是角色记得的关于过去事件的信息：\n${memories.map((m) => '- $m').join('\n')}';
   }
 
   static String _replaceBasicPlaceholders(

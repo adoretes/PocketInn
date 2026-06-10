@@ -12,6 +12,7 @@ class PromptAssemblyContext {
     required this.selectedWorldBooks,
     required this.chatMessages,
     required this.currentInput,
+    this.memoryContext = const [],
   });
 
   final String characterName;
@@ -22,6 +23,7 @@ class PromptAssemblyContext {
   final List<WorldBook> selectedWorldBooks;
   final List<ChatMessage> chatMessages;
   final String currentInput;
+  final List<String> memoryContext;
 }
 
 class PromptSegment {
