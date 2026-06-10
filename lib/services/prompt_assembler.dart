@@ -262,12 +262,20 @@ class PromptAssembler {
         return worldInfoBefore;
       case 'worldInfoAfter':
         return worldInfoAfter;
+      case 'longTermMemory':
+        return _formatMemoryContext(context);
       case 'main':
       case 'jailbreak':
       case 'post_history_instructions':
       default:
         return prompt.content;
     }
+  }
+
+  static String _formatMemoryContext(PromptAssemblyContext context) {
+    final memories = context.memoryContext;
+    if (memories.isEmpty) return '';
+    return '以下是角色记得的关于过去事件的信息：\n${memories.map((m) => '- $m').join('\n')}';
   }
 
   static String _formatChatHistory(
@@ -513,6 +521,8 @@ class PromptAssembler {
         return '世界书: before';
       case 'worldInfoAfter':
         return '世界书: after';
+      case 'longTermMemory':
+        return '长期记忆';
       case 'main':
         return '预设: main';
       case 'jailbreak':
@@ -600,6 +610,7 @@ class PromptAssembler {
       currentInput: context.currentInput,
       lastUserMessage: _lastUserMessage(context),
       lastCharMessage: _lastCharacterMessage(context),
+      memoryContext: context.memoryContext,
     );
   }
 

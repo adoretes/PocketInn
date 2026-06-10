@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../data/api_configs.dart';
 import '../data/app_settings.dart';
+import '../models/api_config.dart';
+import '../models/chat_memory.dart';
+import '../services/chat_memory_service.dart';
 import 'custom_theme_page.dart';
 
 class GeneralSettingsPage extends StatelessWidget {
@@ -78,6 +82,13 @@ class GeneralSettingsPage extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 16),
+              ValueListenableBuilder<MemoryExtractionConfig>(
+                valueListenable: memoryExtractionNotifier,
+                builder: (context, memoryConfig, _) {
+                  return _MemorySettingsCard(memoryConfig: memoryConfig);
+                },
               ),
             ],
           ),
@@ -471,6 +482,286 @@ class _NavigationSectionCard extends StatelessWidget {
   }
 }
 
+class _MemorySettingsCard extends StatelessWidget {
+  const _MemorySettingsCard({required this.memoryConfig});
+
+  final MemoryExtractionConfig memoryConfig;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final apiConfigs = apiConfigsNotifier.value;
+
+    return _SectionCard(
+      title: '长期记忆',
+      subtitle: '自动提取对话中的关键信息，在后续对话中作为上下文参考',
+      child: Column(
+        children: [
+          _SwitchTile(
+            title: '启用长期记忆',
+            subtitle: '开启后系统将自动提取和管理记忆点',
+            value: memoryConfig.enabled,
+            onChanged: (value) =>
+                updateMemoryExtractionConfig(enabled: value),
+          ),
+          if (memoryConfig.enabled) ...[
+            const SizedBox(height: 12),
+            _SliderTile(
+              title: '提取间隔',
+              subtitle: '每 X 轮对话提取一次记忆（一轮 = 一上一下）',
+              value: memoryConfig.interval.toDouble(),
+              min: 1,
+              max: 20,
+              divisions: 19,
+              displayValue: (v) => '${v.toInt()} 轮',
+              onChanged: (value) =>
+                  updateMemoryExtractionConfig(interval: value.toInt()),
+            ),
+            const SizedBox(height: 12),
+            _SliderTile(
+              title: '最近对话轮数（N）',
+              subtitle: '拼入提示词的最近 N 轮对话',
+              value: memoryConfig.recentRounds.toDouble(),
+              min: 1,
+              max: 50,
+              divisions: 49,
+              displayValue: (v) => '${v.toInt()} 轮',
+              onChanged: (value) =>
+                  updateMemoryExtractionConfig(recentRounds: value.toInt()),
+            ),
+            const SizedBox(height: 12),
+            _SliderTile(
+              title: '记忆节点数（M）',
+              subtitle: '拼入提示词的历史记忆节点数量',
+              value: memoryConfig.recallCount.toDouble(),
+              min: 0,
+              max: 10,
+              divisions: 10,
+              displayValue: (v) => v.toInt().toString(),
+              onChanged: (value) =>
+                  updateMemoryExtractionConfig(recallCount: value.toInt()),
+            ),
+            if (apiConfigs.length > 1) ...[
+              const SizedBox(height: 12),
+              _ApiConfigSelector(
+                apiConfigs: apiConfigs,
+                selectedConfigId: memoryConfig.extractionModelId,
+                onChanged: (id) => updateMemoryExtractionConfig(
+                  extractionModelId: id,
+                  clearExtractionModel: id == null,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            _CustomExtractionPromptTile(
+              prompt: memoryConfig.customExtractionPrompt,
+              onChanged: (value) => updateMemoryExtractionConfig(
+                customExtractionPrompt: value,
+                clearCustomExtractionPrompt: value.isEmpty,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomExtractionPromptTile extends StatelessWidget {
+  const _CustomExtractionPromptTile({
+    required this.prompt,
+    required this.onChanged,
+  });
+
+  final String prompt;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasCustom = prompt.trim().isNotEmpty;
+
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: () => _showEditDialog(context),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: hasCustom
+                      ? colorScheme.primary.withValues(alpha: 0.12)
+                      : colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.edit_note_outlined,
+                  size: 20,
+                  color: hasCustom
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '提取提示词',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasCustom ? '已使用自定义提示词' : '点击编辑自定义提取提示词',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEditDialog(BuildContext context) async {
+    final initialText = prompt.isNotEmpty ? prompt : ChatMemoryService.memoryExtractionPrompt;
+    final controller = TextEditingController(text: initialText);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑提取提示词'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              hintText: '输入 System Prompt，指导 AI 如何提取记忆...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              onChanged('');
+              Navigator.of(context).pop();
+            },
+            child: const Text('恢复默认'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && context.mounted) {
+      onChanged(result.trim());
+    }
+  }
+}
+
+class _ApiConfigSelector extends StatelessWidget {
+  const _ApiConfigSelector({
+    required this.apiConfigs,
+    this.selectedConfigId,
+    required this.onChanged,
+  });
+
+  final List<ApiConfig> apiConfigs;
+  final String? selectedConfigId;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '提取模型',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '默认使用当前启用的 API 配置',
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: selectedConfigId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: null,
+                  child: Text('使用当前 API'),
+                ),
+                for (final config in apiConfigs)
+                  DropdownMenuItem<String>(
+                    value: config.id,
+                    child: Text(config.name),
+                  ),
+              ],
+              onChanged: onChanged,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SwitchTile extends StatelessWidget {
   const _SwitchTile({
     required this.title,
@@ -542,6 +833,7 @@ class _SliderTile extends StatelessWidget {
     required this.max,
     required this.divisions,
     required this.onChanged,
+    this.displayValue,
   });
 
   final String title;
@@ -551,6 +843,7 @@ class _SliderTile extends StatelessWidget {
   final double max;
   final int divisions;
   final ValueChanged<double> onChanged;
+  final String Function(double)? displayValue;
 
   @override
   Widget build(BuildContext context) {
@@ -579,7 +872,9 @@ class _SliderTile extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${(value * 100).toInt()}%',
+                  displayValue != null
+                      ? displayValue!(value)
+                      : '${(value * 100).toInt()}%',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,

@@ -46,6 +46,12 @@
             "marker": true
         },
         {
+            "identifier": "longTermMemory",
+            "name": "Long Term Memory",
+            "system_prompt": true,
+            "marker": true
+        },
+        {
             "name": "Post-History Instructions",
             "system_prompt": true,
             "role": "system",
@@ -144,6 +150,10 @@
                     "enabled": true
                 },
                 {
+                    "identifier": "longTermMemory",
+                    "enabled": true
+                },
+                {
                     "identifier": "chatHistory",
                     "enabled": true
                 },
@@ -194,6 +204,10 @@
                 },
                 {
                     "identifier": "dialogueExamples",
+                    "enabled": true
+                },
+                {
+                    "identifier": "longTermMemory",
                     "enabled": true
                 },
                 {

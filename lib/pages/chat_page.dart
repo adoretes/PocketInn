@@ -16,6 +16,7 @@ import '../pages/api_config_page.dart';
 import '../pages/chat/widgets/api_selector_sheet.dart';
 import '../pages/chat/widgets/chat_input_area.dart';
 import '../pages/chat/widgets/chat_title_dialog.dart';
+import '../pages/chat/widgets/memory_edit_dialog.dart';
 import '../pages/chat/widgets/message_bubble.dart';
 import '../pages/chat/widgets/message_edit_dialog.dart';
 import '../pages/chat/utils/popup_menu_position.dart';
@@ -505,6 +506,23 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     return createdSession;
+  }
+
+  Future<void> _openMemoryManager() async {
+    final session = _activeSession;
+    if (session == null) return;
+    final pathMessageIds = _messages
+        .where((m) => m.id != null)
+        .map((m) => m.id!)
+        .toList();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MemoryEditDialog(
+          sessionId: session.id,
+          pathMessageIds: pathMessageIds,
+        ),
+      ),
+    );
   }
 
   Future<void> _refreshEnabledApiStatus() async {
@@ -1495,6 +1513,11 @@ class _ChatPageState extends State<ChatPage> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.psychology_outlined),
+            tooltip: '长期记忆',
+            onPressed: session == null ? null : _openMemoryManager,
+          ),
           ApiStatusActionButton(
             status: ApiStatusInfo(
               isChecking: _isCheckingApiStatus,
