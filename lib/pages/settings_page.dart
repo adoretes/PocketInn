@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:url_launcher/url_launcher.dart';
 import '../data/mock_user_settings.dart';
 import 'about_page.dart';
 import 'api_config_page.dart';
@@ -15,7 +15,6 @@ class SettingsPage extends StatelessWidget {
 
   Future<void> _openPage(BuildContext context, _SettingsItem item) async {
     final navigator = Navigator.of(context);
-
     switch (item.type) {
       case _SettingsItemType.general:
         await navigator.push(
@@ -26,7 +25,7 @@ class SettingsPage extends StatelessWidget {
           MaterialPageRoute(builder: (_) => const CharListPage()),
         );
       case _SettingsItemType.userSettings:
-        final result = await navigator.push<UserSettingsPageResult>(
+        final result = await navigator.push(
           MaterialPageRoute(
             builder: (_) => UserSettingsPage(
               initialSettings: userSettingsNotifier.value,
@@ -34,7 +33,6 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
         );
-
         if (result != null) {
           updateUserSettings(
             settings: result.settings,
@@ -61,6 +59,8 @@ class SettingsPage extends StatelessWidget {
         await navigator.push(
           MaterialPageRoute(builder: (_) => const AboutPage()),
         );
+      case _SettingsItemType.promptVault:
+        await launchUrl(Uri.parse('http://127.0.0.1:7432'));
     }
   }
 
@@ -97,6 +97,12 @@ class SettingsPage extends StatelessWidget {
         subtitle: '管理聊天预设与参数组合',
         icon: Icons.tune_outlined,
         type: _SettingsItemType.presets,
+      ),
+      const _SettingsItem(
+        title: 'Prompt 版本管理',
+        subtitle: 'PromptVault - 版本控制与 Arena 盲测对比',
+        icon: Icons.account_tree_outlined,
+        type: _SettingsItemType.promptVault,
       ),
       const _SettingsItem(
         title: 'API 配置',
@@ -170,7 +176,6 @@ class _SettingsItem {
     required this.icon,
     required this.type,
   });
-
   final String title;
   final String subtitle;
   final IconData icon;
@@ -183,6 +188,7 @@ enum _SettingsItemType {
   userSettings,
   worldBook,
   presets,
+  promptVault,   // ← 新增
   api,
   data,
   about,
