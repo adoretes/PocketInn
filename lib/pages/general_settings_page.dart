@@ -723,7 +723,7 @@ class _ApiConfigSelector extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: selectedConfigId,
+              initialValue: selectedConfigId,
               isExpanded: true,
               decoration: InputDecoration(
                 border: OutlineInputBorder(

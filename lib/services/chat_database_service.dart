@@ -16,7 +16,7 @@ class ChatDatabaseService {
   static final ChatDatabaseService instance = ChatDatabaseService._();
   final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
 
-  static const int _dbVersion = 2;
+  static const int _dbVersion = 3;
   static const String _dbName = 'pocket_inn_chat.db';
 
   Database? _database;
@@ -123,6 +123,9 @@ class ChatDatabaseService {
     if (oldVersion < 2 && newVersion >= 2) {
       await _createMemoriesSchema(db);
     }
+    if (oldVersion < 3 && newVersion >= 3) {
+      await _createMemoriesSchema(db);
+    }
   }
 
   Future<void> _createSchema(Database db) async {
@@ -180,6 +183,8 @@ class ChatDatabaseService {
     await db.execute(
       'CREATE INDEX idx_chat_messages_session_created ON chat_messages(session_id, created_at)',
     );
+
+    await _createMemoriesSchema(db);
   }
 
   Future<ChatSession> createSession({
