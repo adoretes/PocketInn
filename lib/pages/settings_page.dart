@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'about_page.dart';
 import 'api_config_page.dart';
@@ -12,7 +13,6 @@ class SettingsPage extends StatelessWidget {
 
   Future<void> _openPage(BuildContext context, _SettingsItem item) async {
     final navigator = Navigator.of(context);
-
     switch (item.type) {
       case _SettingsItemType.general:
         await navigator.push(
@@ -38,6 +38,8 @@ class SettingsPage extends StatelessWidget {
         await navigator.push(
           MaterialPageRoute(builder: (_) => const AboutPage()),
         );
+      case _SettingsItemType.promptVault:
+        await launchUrl(Uri.parse('http://127.0.0.1:7432'));
     }
   }
 
@@ -62,6 +64,12 @@ class SettingsPage extends StatelessWidget {
         subtitle: '配置记忆提取参数与管理记忆',
         icon: Icons.psychology_outlined,
         type: _SettingsItemType.memory,
+      ),
+      const _SettingsItem(
+        title: 'Prompt 版本管理',
+        subtitle: 'PromptVault - 版本控制与 Arena 盲测对比',
+        icon: Icons.account_tree_outlined,
+        type: _SettingsItemType.promptVault,
       ),
       const _SettingsItem(
         title: 'API 配置',
@@ -135,7 +143,6 @@ class _SettingsItem {
     required this.icon,
     required this.type,
   });
-
   final String title;
   final String subtitle;
   final IconData icon;
@@ -144,6 +151,7 @@ class _SettingsItem {
 
 enum _SettingsItemType {
   general,
+  promptVault,
   characterContent,
   memory,
   api,
