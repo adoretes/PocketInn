@@ -70,19 +70,16 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.0.16',
-                  date: '2026-06-05',
-                  changes: ['优化滚动按钮', '优化模型下拉菜单体验', '移除世界书图标', '修复一些已知问题'],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.0.15',
-                  date: '2026-06-04',
+                  version: 'v1.1.0',
+                  date: '2026-06-10',
                   changes: [
-                    '添加滚动到顶或底浮动按钮',
-                    '重构引号统一显示实现',
-                    '支持伪思维链的解析处理',
-                    '重构消息气泡组件的弹出层实现',
-                    '修复一些已知问题',
+                    '增加长期记忆功能',
+                    '拆分聊天页面，提取独立组件',
+                    '移除废弃页面',
+                    '移动聊天页长期记忆入口',
+                    '统一各服务的数据存储路径',
+                    '调整 UI 布局',
+                    '更新项目文档',
                   ],
                 ),
               ],
