@@ -230,19 +230,21 @@ void updateMemoryExtractionConfig({
   bool clearExtractionModel = false,
   String? customExtractionPrompt,
   bool clearCustomExtractionPrompt = false,
+  String? customInjectionPrompt,
+  bool clearCustomInjectionPrompt = false,
 }) {
   final current = memoryExtractionNotifier.value;
-  final next = MemoryExtractionConfig(
-    enabled: enabled ?? current.enabled,
-    interval: interval ?? current.interval,
-    recentRounds: recentRounds ?? current.recentRounds,
-    recallCount: recallCount ?? current.recallCount,
-    extractionModelId: clearExtractionModel
-        ? null
-        : (extractionModelId ?? current.extractionModelId),
-    customExtractionPrompt: clearCustomExtractionPrompt
-        ? ''
-        : (customExtractionPrompt ?? current.customExtractionPrompt),
+  final next = current.copyWith(
+    enabled: enabled,
+    interval: interval,
+    recentRounds: recentRounds,
+    recallCount: recallCount,
+    extractionModelId: clearExtractionModel ? null : extractionModelId,
+    clearExtractionModel: clearExtractionModel,
+    customExtractionPrompt: clearCustomExtractionPrompt ? '' : customExtractionPrompt,
+    clearCustomExtractionPrompt: clearCustomExtractionPrompt,
+    customInjectionPrompt: clearCustomInjectionPrompt ? '' : customInjectionPrompt,
+    clearCustomInjectionPrompt: clearCustomInjectionPrompt,
   );
   memoryExtractionNotifier.value = next;
   _persistMemoryConfig(next);
@@ -258,6 +260,9 @@ Future<void> initializeMemoryConfig() async {
   final customExtractionPrompt = storage.getString(
     'memory_custom_extraction_prompt',
   );
+  final customInjectionPrompt = storage.getString(
+    'memory_custom_injection_prompt',
+  );
   memoryExtractionNotifier.value = MemoryExtractionConfig(
     enabled: enabled ?? false,
     interval: interval ?? 5,
@@ -265,6 +270,7 @@ Future<void> initializeMemoryConfig() async {
     recallCount: recallCount ?? 3,
     extractionModelId: extractionModelId,
     customExtractionPrompt: customExtractionPrompt ?? '',
+    customInjectionPrompt: customInjectionPrompt ?? '',
   );
 }
 
@@ -283,5 +289,10 @@ void _persistMemoryConfig(MemoryExtractionConfig config) {
     unawaited(storage.setString('memory_custom_extraction_prompt', config.customExtractionPrompt));
   } else {
     unawaited(storage.remove('memory_custom_extraction_prompt'));
+  }
+  if (config.customInjectionPrompt.trim().isNotEmpty) {
+    unawaited(storage.setString('memory_custom_injection_prompt', config.customInjectionPrompt));
+  } else {
+    unawaited(storage.remove('memory_custom_injection_prompt'));
   }
 }

@@ -27,6 +27,7 @@ class MemoryExtractionConfig {
   final int recallCount;
   final String? extractionModelId;
   final String customExtractionPrompt;
+  final String customInjectionPrompt;
 
   const MemoryExtractionConfig({
     this.enabled = false,
@@ -35,10 +36,14 @@ class MemoryExtractionConfig {
     this.recallCount = 3,
     this.extractionModelId,
     this.customExtractionPrompt = '',
+    this.customInjectionPrompt = '',
   });
 
   bool get hasCustomExtractionPrompt =>
       customExtractionPrompt.trim().isNotEmpty;
+
+  bool get hasCustomInjectionPrompt =>
+      customInjectionPrompt.trim().isNotEmpty;
 
   MemoryExtractionConfig copyWith({
     bool? enabled,
@@ -49,6 +54,8 @@ class MemoryExtractionConfig {
     bool clearExtractionModel = false,
     Object? customExtractionPrompt,
     bool clearCustomExtractionPrompt = false,
+    Object? customInjectionPrompt,
+    bool clearCustomInjectionPrompt = false,
   }) {
     return MemoryExtractionConfig(
       enabled: enabled ?? this.enabled,
@@ -65,6 +72,11 @@ class MemoryExtractionConfig {
           : (customExtractionPrompt == _unset
               ? this.customExtractionPrompt
               : (customExtractionPrompt as String?) ?? this.customExtractionPrompt),
+      customInjectionPrompt: clearCustomInjectionPrompt
+          ? ''
+          : (customInjectionPrompt == _unset
+              ? this.customInjectionPrompt
+              : (customInjectionPrompt as String?) ?? this.customInjectionPrompt),
     );
   }
 }

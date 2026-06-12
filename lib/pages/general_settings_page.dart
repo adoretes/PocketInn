@@ -552,6 +552,14 @@ class MemorySettingsCard extends StatelessWidget {
                 clearCustomExtractionPrompt: value.isEmpty,
               ),
             ),
+            const SizedBox(height: 12),
+            _CustomInjectionPromptTile(
+              prompt: memoryConfig.customInjectionPrompt,
+              onChanged: (value) => updateMemoryExtractionConfig(
+                customInjectionPrompt: value,
+                clearCustomInjectionPrompt: value.isEmpty,
+              ),
+            ),
           ],
         ],
       ),
@@ -653,6 +661,131 @@ class _CustomExtractionPromptTile extends StatelessWidget {
             maxLines: 10,
             decoration: const InputDecoration(
               hintText: '输入 System Prompt，指导 AI 如何提取记忆...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              onChanged('');
+              Navigator.of(context).pop();
+            },
+            child: const Text('恢复默认'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && context.mounted) {
+      onChanged(result.trim());
+    }
+  }
+}
+
+class _CustomInjectionPromptTile extends StatelessWidget {
+  const _CustomInjectionPromptTile({
+    required this.prompt,
+    required this.onChanged,
+  });
+
+  final String prompt;
+  final ValueChanged<String> onChanged;
+
+  static const String _defaultInjectionPrompt = '以下是角色记得的关于过去事件的信息：';
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasCustom = prompt.trim().isNotEmpty;
+
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: () => _showEditDialog(context),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: hasCustom
+                      ? colorScheme.primary.withValues(alpha: 0.12)
+                      : colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.input_outlined,
+                  size: 20,
+                  color: hasCustom
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '注入提示词',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasCustom ? '已使用自定义注入提示词' : '点击编辑记忆注入时的提示词',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEditDialog(BuildContext context) async {
+    final initialText = prompt.isNotEmpty ? prompt : _defaultInjectionPrompt;
+    final controller = TextEditingController(text: initialText);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑注入提示词'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              hintText: '输入记忆注入时使用的引导语...',
               border: OutlineInputBorder(),
             ),
           ),

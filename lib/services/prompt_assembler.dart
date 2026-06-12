@@ -3,6 +3,7 @@ import '../models/chat_message.dart';
 import '../models/prompt_assembly.dart';
 import '../models/preset.dart';
 import '../models/world_book.dart';
+import 'chat_memory_service.dart';
 import 'chat_variable_service.dart';
 
 class PromptAssembler {
@@ -275,7 +276,11 @@ class PromptAssembler {
   static String _formatMemoryContext(PromptAssemblyContext context) {
     final memories = context.memoryContext;
     if (memories.isEmpty) return '';
-    return '以下是角色记得的关于过去事件的信息：\n${memories.map((m) => '- $m').join('\n')}';
+    final config = memoryExtractionNotifier.value;
+    final header = config.hasCustomInjectionPrompt
+        ? config.customInjectionPrompt.trim()
+        : '以下是角色记得的关于过去事件的信息：';
+    return '$header\n${memories.map((m) => '- $m').join('\n')}';
   }
 
   static String _formatChatHistory(

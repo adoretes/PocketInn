@@ -1,3 +1,5 @@
+import 'chat_memory_service.dart';
+
 class PromptMacroState {
   PromptMacroState({
     required this.characterName,
@@ -146,7 +148,11 @@ class ChatVariableService {
 
   static String _formatMemoryContext(List<String> memories) {
     if (memories.isEmpty) return '';
-    return '以下是角色记得的关于过去事件的信息：\n${memories.map((m) => '- $m').join('\n')}';
+    final config = memoryExtractionNotifier.value;
+    final header = config.hasCustomInjectionPrompt
+        ? config.customInjectionPrompt.trim()
+        : '以下是角色记得的关于过去事件的信息：';
+    return '$header\n${memories.map((m) => '- $m').join('\n')}';
   }
 
   static String _replaceBasicPlaceholders(
