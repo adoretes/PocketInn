@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'about_page.dart';
 import 'api_config_page.dart';
 import 'character_content_page.dart';
+import 'companion_tools_page.dart';
 import 'data_management_page.dart';
 import 'general_settings_page.dart';
 import 'memory_settings_page.dart';
@@ -38,8 +38,10 @@ class SettingsPage extends StatelessWidget {
         await navigator.push(
           MaterialPageRoute(builder: (_) => const AboutPage()),
         );
-      case _SettingsItemType.promptVault:
-        await launchUrl(Uri.parse('http://127.0.0.1:7432'));
+      case _SettingsItemType.companionTools:
+        await navigator.push(
+          MaterialPageRoute(builder: (_) => const CompanionToolsPage()),
+        );
     }
   }
 
@@ -66,10 +68,10 @@ class SettingsPage extends StatelessWidget {
         type: _SettingsItemType.memory,
       ),
       const _SettingsItem(
-        title: 'Prompt 版本管理',
-        subtitle: 'PromptVault - 版本控制与 Arena 盲测对比',
-        icon: Icons.account_tree_outlined,
-        type: _SettingsItemType.promptVault,
+        title: '配套工具',
+        subtitle: 'Prompt 版本管理、角色卡生成器等',
+        icon: Icons.extension_outlined,
+        type: _SettingsItemType.companionTools,
       ),
       const _SettingsItem(
         title: 'API 配置',
@@ -151,7 +153,7 @@ class _SettingsItem {
 
 enum _SettingsItemType {
   general,
-  promptVault,
+  companionTools,
   characterContent,
   memory,
   api,
