@@ -296,7 +296,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.my_location),
-                title: const Text('跳转到该节点'),
+                // TODO: 暂时将“跳转到该节点”文案改为“切换到该分支”，
+                // 后续如需恢复或调整文案再行修改。
+                title: const Text('切换到该分支'),
                 onTap: () {
                   Navigator.of(sheetCtx).pop();
                   _jumpTo(n.id);
@@ -578,7 +580,6 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
               : Column(
                   children: [
                     if (_roots.length > 1) _buildTabBar(context),
-                    if (_roots.length > 1) const Divider(height: 1),
                     Expanded(child: _buildTreeArea(context)),
                   ],
                 ),
@@ -587,35 +588,111 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
 
   Widget _buildTabBar(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 44,
+    final primary = colorScheme.primary;
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+            width: 0.6,
+          ),
+        ),
+      ),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         itemCount: _roots.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final selected = index == _selectedRootIndex;
           final root = _roots[index];
+          final onPath = _activePathIds.contains(root.id);
           final label = _summaryLabel(root.text, index);
-          return ChoiceChip(
-            label: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            selected: selected,
-            onSelected: (_) {
-              setState(() => _selectedRootIndex = index);
-            },
-            avatar: Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _activePathIds.contains(root.id)
-                    ? _kAssistantActive
-                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          final dotColor = onPath
+              ? primary
+              : colorScheme.onSurfaceVariant.withValues(alpha: 0.45);
+
+          final Color bgColor = selected
+              ? primary.withValues(alpha: 0.12)
+              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+          final Color borderColor = selected
+              ? primary.withValues(alpha: 0.6)
+              : colorScheme.outlineVariant.withValues(alpha: 0.5);
+          final Color textColor = selected
+              ? primary
+              : colorScheme.onSurface.withValues(alpha: 0.78);
+
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                setState(() => _selectedRootIndex = index);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: borderColor, width: 1),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: primary.withValues(alpha: 0.18),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : const [],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: dotColor,
+                        boxShadow: onPath
+                            ? [
+                                BoxShadow(
+                                  color: primary.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                  blurRadius: 4,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.1,
+                          letterSpacing: 0.2,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: textColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -627,8 +704,7 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   String _summaryLabel(String text, int index) {
     final cleaned = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (cleaned.isEmpty) return '开场 ${index + 1}';
-    final preview = cleaned.length > 14 ? '${cleaned.substring(0, 14)}…' : cleaned;
-    return '开场 ${index + 1}：$preview';
+    return cleaned.length > 14 ? '${cleaned.substring(0, 14)}…' : cleaned;
   }
 
   Widget _buildTreeArea(BuildContext context) {
