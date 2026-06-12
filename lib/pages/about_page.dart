@@ -70,6 +70,13 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.1.2',
+                  date: '2026-06-13',
+                  changes: [
+                    '移除独立记忆节点，优化记忆展示方式',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.1.1',
                   date: '2026-06-13',
                   changes: [
