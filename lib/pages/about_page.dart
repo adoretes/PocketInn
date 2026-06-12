@@ -70,6 +70,18 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.1.1',
+                  date: '2026-06-13',
+                  changes: [
+                    '添加配套工具页面，整合 Prompt 版本管理和角色卡生成器',
+                    '重构记忆管理功能，替换为可视化消息树',
+                    '优化消息树页面标签栏样式',
+                    '添加自定义注入提示词功能',
+                    '修复新生成消息无法弹出操作的问题',
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _UpdateLogItem(
                   version: 'v1.1.0',
                   date: '2026-06-10',
                   changes: [
