@@ -185,6 +185,54 @@ class ChatMemoryService {
     );
   }
 
+  Future<MemoryNode> addMemory({
+    required String sessionId,
+    required String branchLeafId,
+    required String content,
+    List<String> sourceMessageIds = const [],
+  }) async {
+    final now = DateTime.now();
+    final memory = MemoryNode(
+      id: _generateMemoryId(),
+      sessionId: sessionId,
+      branchLeafId: branchLeafId,
+      content: content,
+      sourceMessageIds: sourceMessageIds,
+      isUserEdited: true,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await ChatDatabaseService.instance.insertMemory(memory);
+    return memory;
+  }
+
+  Future<void> replaceBranchMemories({
+    required String sessionId,
+    required String branchLeafId,
+    required List<String> contents,
+  }) async {
+    final db = ChatDatabaseService.instance;
+    final all = await db.loadAllSessionMemories(sessionId);
+    for (final memory in all.where((m) => m.branchLeafId == branchLeafId)) {
+      await db.deleteMemory(memory.id);
+    }
+    final now = DateTime.now();
+    for (final content in contents) {
+      final trimmed = content.trim();
+      if (trimmed.isEmpty) continue;
+      final memory = MemoryNode(
+        id: _generateMemoryId(),
+        sessionId: sessionId,
+        branchLeafId: branchLeafId,
+        content: trimmed,
+        isUserEdited: true,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await db.insertMemory(memory);
+    }
+  }
+
   Future<void> deleteMemory(String memoryId) async {
     await ChatDatabaseService.instance.deleteMemory(memoryId);
   }

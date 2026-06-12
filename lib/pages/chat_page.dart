@@ -16,7 +16,7 @@ import '../pages/api_config_page.dart';
 import '../pages/chat/widgets/api_selector_sheet.dart';
 import '../pages/chat/widgets/chat_input_area.dart';
 import '../pages/chat/widgets/chat_title_dialog.dart';
-import '../pages/chat/widgets/memory_edit_dialog.dart';
+import '../pages/chat/widgets/memory_tree_page.dart';
 import '../pages/chat/widgets/message_bubble.dart';
 import '../pages/chat/widgets/message_edit_dialog.dart';
 import '../pages/chat/utils/popup_menu_position.dart';
@@ -511,18 +511,19 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _openMemoryManager() async {
     final session = _activeSession;
     if (session == null) return;
-    final pathMessageIds = _messages
-        .where((m) => m.id != null)
-        .map((m) => m.id!)
-        .toList();
-    await Navigator.of(context).push(
+    final activeLeafId = _messages.isNotEmpty ? _messages.last.id : null;
+    final jumpedTo = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => MemoryEditDialog(
+        builder: (_) => MemoryTreePage(
           sessionId: session.id,
-          pathMessageIds: pathMessageIds,
+          activeLeafMessageId: activeLeafId,
         ),
       ),
     );
+    if (!mounted) return;
+    if (jumpedTo != null || _activeSession?.id == session.id) {
+      await _loadSession(preferredSessionId: session.id);
+    }
   }
 
   Future<void> _refreshEnabledApiStatus() async {

@@ -928,6 +928,27 @@ class ChatDatabaseService {
     return rows.map(_memoryFromMap).toList();
   }
 
+  Future<List<ChatNode>> loadAllSessionNodes(String sessionId) async {
+    final rows = await _db.query(
+      'chat_messages',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'created_at ASC, sibling_order ASC',
+    );
+    return rows.map(_nodeFromMap).toList(growable: false);
+  }
+
+  Future<String> resolveLeafFromMessage({
+    required String sessionId,
+    required String messageId,
+  }) async {
+    return _resolveLeafFromNode(
+      _db,
+      sessionId: sessionId,
+      startMessageId: messageId,
+    );
+  }
+
   Future<void> insertMemory(MemoryNode memory) async {
     await _db.insert('chat_memories', _memoryToMap(memory));
     _notifyChanged();
