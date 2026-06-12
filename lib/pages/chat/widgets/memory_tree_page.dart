@@ -8,7 +8,7 @@ import '../../../services/chat_database_service.dart';
 import '../../../services/chat_memory_service.dart';
 import '../../memory_settings_page.dart';
 
-enum _NodeKind { user, assistant, memory }
+enum _NodeKind { user, assistant }
 
 class _TreeNode {
   _TreeNode({
@@ -32,7 +32,7 @@ class _TreeNode {
   int depth = 0;
   int subtreeWidth = 1;
 
-  bool get isMemory => kind == _NodeKind.memory;
+  bool get hasMemory => memoryEntries.isNotEmpty;
 }
 
 class MemoryTreePage extends StatefulWidget {
@@ -128,27 +128,8 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
       sortChildren(r);
     }
 
-    // 把记忆点作为子节点挂入（位于真实子节点后面）。
-    void attachMemories(_TreeNode n) {
-      for (final c in List<_TreeNode>.from(n.children)) {
-        attachMemories(c);
-      }
-      for (final mem in n.memoryEntries) {
-        n.children.add(_TreeNode(
-          id: 'memory:${mem.branchLeafId}', // 同一消息只挂一个记忆汇总节点
-          kind: _NodeKind.memory,
-          parentId: n.id,
-          text: mem.content,
-          memoryEntries: n.memoryEntries,
-        ));
-        // 同一记忆点只挂一次
-        break;
-      }
-    }
-
-    for (final r in roots) {
-      attachMemories(r);
-    }
+    // 记忆点不再作为独立子节点存在，
+    // 它会以"持有记忆"的特殊样式呈现在消息节点本身上。
 
     // 计算活跃路径：从 activeLeafMessageId 沿 parentId 回溯到根。
     final activeIds = <String>{};
@@ -240,9 +221,6 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   }
 
   bool _isNodeActive(_TreeNode n) {
-    if (n.isMemory) {
-      return _activePathIds.contains(n.parentId);
-    }
     return _activePathIds.contains(n.id);
   }
 
@@ -251,16 +229,13 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   }
 
   void _onTapNode(_TreeNode n) {
-    if (n.isMemory) {
-      _showMemoryActions(n);
-    } else {
-      _showMessageActions(n);
-    }
+    _showMessageActions(n);
   }
 
   Future<void> _showMessageActions(_TreeNode n) async {
     final isUser = n.kind == _NodeKind.user;
     final preview = n.text.trim();
+    final hasMemory = n.hasMemory;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -275,13 +250,41 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      isUser ? '用户消息' : '角色消息',
-                      style: Theme.of(sheetCtx).textTheme.labelMedium?.copyWith(
-                            color: Theme.of(sheetCtx)
-                                .colorScheme
-                                .onSurfaceVariant,
+                    Row(
+                      children: [
+                        Text(
+                          isUser ? '用户消息' : '角色消息',
+                          style: Theme.of(sheetCtx)
+                              .textTheme
+                              .labelMedium
+                              ?.copyWith(
+                                color: Theme.of(sheetCtx)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                        if (hasMemory) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _kMemoryActive.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '记忆点 · ${n.memoryEntries.length} 条',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: _kMemoryActive,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -290,104 +293,55 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(sheetCtx).textTheme.bodyMedium,
                     ),
+                    if (hasMemory) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        n.memoryEntries
+                            .map((m) => '• ${m.content}')
+                            .join('\n'),
+                        maxLines: 5,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(sheetCtx)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                              color: Theme.of(sheetCtx)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.my_location),
-                // TODO: 暂时将“跳转到该节点”文案改为“切换到该分支”，
-                // 后续如需恢复或调整文案再行修改。
                 title: const Text('切换到该分支'),
                 onTap: () {
                   Navigator.of(sheetCtx).pop();
                   _jumpTo(n.id);
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.bookmark_add_outlined),
-                title: const Text('在此处添加记忆'),
-                onTap: () {
-                  Navigator.of(sheetCtx).pop();
-                  _addMemoryAt(n.id);
-                },
-              ),
-              if (n.memoryEntries.isNotEmpty)
+              if (hasMemory)
                 ListTile(
                   leading: const Icon(Icons.edit_note_outlined),
                   title: const Text('编辑该节点的记忆'),
+                  subtitle: const Text('每行一条，可在此添加或删除'),
                   onTap: () {
                     Navigator.of(sheetCtx).pop();
                     _editMemoriesAt(n.id, n.memoryEntries);
                   },
+                )
+              else
+                ListTile(
+                  leading: const Icon(Icons.bookmark_add_outlined),
+                  title: const Text('在此处添加记忆'),
+                  onTap: () {
+                    Navigator.of(sheetCtx).pop();
+                    _addMemoryAt(n.id);
+                  },
                 ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _showMemoryActions(_TreeNode n) async {
-    final messageId = n.parentId;
-    if (messageId == null) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetCtx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '记忆点（${n.memoryEntries.length} 条）',
-                      style: Theme.of(sheetCtx).textTheme.labelMedium?.copyWith(
-                            color: Theme.of(sheetCtx)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      n.memoryEntries.map((m) => '• ${m.content}').join('\n'),
-                      maxLines: 5,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(sheetCtx).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.my_location),
-                title: const Text('跳转到所属消息'),
-                onTap: () {
-                  Navigator.of(sheetCtx).pop();
-                  _jumpTo(messageId);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_note_outlined),
-                title: const Text('编辑记忆'),
-                onTap: () {
-                  Navigator.of(sheetCtx).pop();
-                  _editMemoriesAt(messageId, n.memoryEntries);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.bookmark_add_outlined),
-                title: const Text('追加新记忆'),
-                onTap: () {
-                  Navigator.of(sheetCtx).pop();
-                  _addMemoryAt(messageId);
-                },
-              ),
             ],
           ),
         );
@@ -877,13 +831,14 @@ class _NodeDot extends StatelessWidget {
   final VoidCallback onTap;
 
   Color get _color {
+    if (node.hasMemory) {
+      return isActive ? _kMemoryActive : _kMemoryInactive;
+    }
     switch (node.kind) {
       case _NodeKind.user:
         return isActive ? _kUserActive : _kUserInactive;
       case _NodeKind.assistant:
         return isActive ? _kAssistantActive : _kAssistantInactive;
-      case _NodeKind.memory:
-        return isActive ? _kMemoryActive : _kMemoryInactive;
     }
   }
 
@@ -920,6 +875,7 @@ class _NodePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
+
     if (showRing) {
       final ringPaint = Paint()
         ..style = PaintingStyle.stroke
@@ -927,6 +883,7 @@ class _NodePainter extends CustomPainter {
         ..color = color;
       canvas.drawCircle(center, ringRadius - 1, ringPaint);
     }
+
     final fill = Paint()
       ..style = PaintingStyle.fill
       ..color = color;
