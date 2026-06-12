@@ -62,6 +62,9 @@ class _MessageBubbleState extends State<MessageBubble> {
   @override
   void dispose() {
     _hideActionPopup();
+    if (_currentPopupOwner == this) {
+      _currentPopupOwner = null;
+    }
     super.dispose();
   }
 
@@ -74,6 +77,9 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   void _showActionPopup() {
+    if (_currentPopupOwner != null && !_currentPopupOwner!.mounted) {
+      _currentPopupOwner = null;
+    }
     _currentPopupOwner?._hideActionPopup();
     _hideActionPopup();
     if (!mounted) return;

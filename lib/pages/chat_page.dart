@@ -1615,6 +1615,7 @@ class _ChatPageState extends State<ChatPage> {
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
                                   child: MessageBubble(
+                                    key: ValueKey(msg.id ?? messageIndex),
                                     message: msg,
                                     userSetting: _currentUserSetting(),
                                     character: _activeCharacter,
