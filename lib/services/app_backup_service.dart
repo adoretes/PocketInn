@@ -127,6 +127,8 @@ class AppBackupService {
       }
     }
 
+    await _migrateRestoredData(dataDir);
+    _migrateRestoredPreferences(preferences);
     await StorageService.instance.importPreferences(preferences);
     await AppDataService.instance.reloadAppState();
   }
@@ -204,6 +206,94 @@ class AppBackupService {
     final month = now.month.toString().padLeft(2, '0');
     final day = now.day.toString().padLeft(2, '0');
     return '${now.year}$month$day';
+  }
+
+  /// 恢复后迁移旧版角色卡中的绝对路径为相对路径
+  Future<void> _migrateRestoredData(String dataDir) async {
+    await _migrateCharacterIndex(dataDir);
+    await _migrateCharacterCards(dataDir);
+  }
+
+  Future<void> _migrateCharacterIndex(String dataDir) async {
+    final file = File(p.join(dataDir, 'characters_index.json'));
+    if (!await file.exists()) return;
+
+    try {
+      final content = await file.readAsString();
+      final data = jsonDecode(content);
+      if (data is! Map<String, dynamic>) return;
+      final characters = data['characters'] as List<dynamic>?;
+      if (characters == null) return;
+
+      var changed = false;
+      for (final item in characters) {
+        if (item is! Map<String, dynamic>) continue;
+        final rel = _relativizePath(item, 'thumbnailPath', dataDir);
+        if (rel) changed = true;
+      }
+      if (changed) {
+        await file.writeAsString(
+          const JsonEncoder.withIndent('  ').convert(data),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _migrateCharacterCards(String dataDir) async {
+    final dir = Directory(p.join(dataDir, 'characters', 'data'));
+    if (!await dir.exists()) return;
+
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.json')) continue;
+      try {
+        final content = await entity.readAsString();
+        final data = jsonDecode(content);
+        if (data is! Map<String, dynamic>) continue;
+
+        var changed = false;
+        if (_relativizePath(data, 'originalImagePath', dataDir)) changed = true;
+        if (_relativizePath(data, 'thumbnailPath', dataDir)) changed = true;
+        if (changed) {
+          await entity.writeAsString(
+            const JsonEncoder.withIndent('  ').convert(data),
+          );
+        }
+      } catch (_) {}
+    }
+  }
+
+  /// 将 Map 中指定 key 的路径从绝对路径转为相对路径
+  /// 旧格式：/data/user/0/.../pocket_inn_data/characters/images/xxx.png
+  /// 新格式：characters/images/xxx.png
+  bool _relativizePath(
+    Map<String, dynamic> data,
+    String key,
+    String dataDir,
+  ) {
+    final path = data[key] as String?;
+    if (path == null || path.isEmpty) return false;
+
+    final idx = path.indexOf('/pocket_inn_data/');
+    if (idx < 0) return false;
+
+    final relative = path.substring(idx + '/pocket_inn_data/'.length);
+    if (relative == path) return false;
+
+    data[key] = relative;
+    return true;
+  }
+
+  /// 恢复时对旧版 preferences 做数据迁移
+  static const String _keyCustomFontFilePath = 'app_custom_font_file_path';
+
+  void _migrateRestoredPreferences(Map<String, dynamic> preferences) {
+    final fontPath = preferences[_keyCustomFontFilePath] as String?;
+    if (fontPath != null && fontPath.isNotEmpty) {
+      final fileName = p.basename(fontPath.replaceAll('\\', '/'));
+      if (fileName != fontPath) {
+        preferences[_keyCustomFontFilePath] = fileName;
+      }
+    }
   }
 
   Map<String, dynamic> _readJsonFileFromArchive(

@@ -23,14 +23,15 @@ class FontService {
 
   Future<void> initializeCustomFont() async {
     final fontFamily = AppSettingsService.instance.getCustomFontFamily();
-    final filePath = AppSettingsService.instance.getCustomFontFilePath();
+    final storedPath = AppSettingsService.instance.getCustomFontFilePath();
     if (fontFamily == null ||
         fontFamily.isEmpty ||
-        filePath == null ||
-        filePath.isEmpty) {
+        storedPath == null ||
+        storedPath.isEmpty) {
       return;
     }
 
+    final filePath = await _resolveFontPath(storedPath);
     final file = File(filePath);
     if (!await file.exists()) {
       return;
@@ -51,7 +52,8 @@ class FontService {
 
     final fontsPath = await fontsDir;
     final extension = sourcePath.split('.').last;
-    final destPath = '$fontsPath/${fontFamily.hashCode}.$extension';
+    final fileName = '${fontFamily.hashCode}.$extension';
+    final destPath = '$fontsPath/$fileName';
     await sourceFile.copy(destPath);
 
     final loader = FontLoader(fontFamily);
@@ -59,12 +61,21 @@ class FontService {
     loader.addFont(Future<ByteData>.value(ByteData.view(bytes.buffer)));
     await loader.load();
 
-    return destPath;
+    return fileName;
+  }
+
+  Future<String> _resolveFontPath(String path) async {
+    final fontsPath = await fontsDir;
+    if (path.startsWith(fontsPath)) {
+      return path;
+    }
+    return '$fontsPath/$path';
   }
 
   Future<void> removeCustomFont() async {
-    final filePath = AppSettingsService.instance.getCustomFontFilePath();
-    if (filePath != null && filePath.isNotEmpty) {
+    final storedPath = AppSettingsService.instance.getCustomFontFilePath();
+    if (storedPath != null && storedPath.isNotEmpty) {
+      final filePath = await _resolveFontPath(storedPath);
       final file = File(filePath);
       if (await file.exists()) {
         await file.delete();
