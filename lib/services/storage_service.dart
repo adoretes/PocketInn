@@ -25,7 +25,7 @@ class StorageService {
 
     _prefs = await SharedPreferences.getInstance();
 
-    final appDir = await getApplicationDocumentsDirectory();
+    final appDir = await getApplicationSupportDirectory();
     _dataDir = '${appDir.path}/pocket_inn_data';
 
     // 确保数据目录存在

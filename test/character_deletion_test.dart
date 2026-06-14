@@ -23,9 +23,6 @@ void main() {
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_pathProviderChannel, (methodCall) async {
-          if (methodCall.method == 'getApplicationDocumentsDirectory') {
-            return tempDir.path;
-          }
           return tempDir.path;
         });
 

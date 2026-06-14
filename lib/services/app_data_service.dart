@@ -17,6 +17,9 @@ class AppDataService {
   static final AppDataService instance = AppDataService._();
 
   Future<void> clearAllData() async {
+    // 先关闭数据库，释放文件锁，避免 Windows 上删除目录时文件被占用
+    await ChatDatabaseService.instance.close();
+
     await StorageService.instance.clearAllData();
     await CharacterService.instance.clearAllData();
     await WorldBookService.instance.clearAllData();
@@ -24,7 +27,10 @@ class AppDataService {
     await ApiConfigService.instance.resetToDefaults();
     await UserSettingsService.instance.resetToDefault();
     await ApiRequestLogService.instance.clear();
-    await ChatDatabaseService.instance.clearAllData();
+
+    ChatDatabaseService.instance.resetIdSequence();
+    await ChatDatabaseService.instance.initialize();
+    ChatDatabaseService.instance.notifyDataChanged();
 
     await reloadAppState();
   }

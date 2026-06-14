@@ -34,8 +34,8 @@ class ChatDatabaseService {
       databaseFactory = databaseFactoryFfi;
     }
 
-    final appDir = await getApplicationDocumentsDirectory();
-    final dbPath = p.join(appDir.path, _dbName);
+    final appDir = await getApplicationSupportDirectory();
+    final dbPath = p.join(appDir.path, 'pocket_inn_data', _dbName);
     _dbPath = dbPath;
 
     _database = await databaseFactory.openDatabase(
@@ -69,6 +69,10 @@ class ChatDatabaseService {
     }
     await db.close();
     _database = null;
+  }
+
+  void resetIdSequence() {
+    _idSequence = 0;
   }
 
   String? get databasePath => _dbPath;
@@ -998,8 +1002,12 @@ class ChatDatabaseService {
     );
   }
 
-  void _notifyChanged() {
+  void notifyDataChanged() {
     changeNotifier.value++;
+  }
+
+  void _notifyChanged() {
+    notifyDataChanged();
   }
 
   Future<List<String>> _loadSessionWorldBookIds(String sessionId) async {

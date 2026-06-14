@@ -92,7 +92,6 @@ class AppBackupService {
     await StorageService.instance.clearAllData();
 
     final dataDir = StorageService.instance.dataDir;
-    final appDir = Directory(dataDir).parent.path;
     for (final file in archive.files) {
       if (!file.isFile) {
         continue;
@@ -113,7 +112,7 @@ class AppBackupService {
 
       if (p.posix.isWithin(_databaseRoot, archivePath)) {
         final relativePath = p.posix.relative(archivePath, from: _databaseRoot);
-        final targetFile = File(p.join(appDir, relativePath));
+        final targetFile = File(p.join(dataDir, relativePath));
         await targetFile.parent.create(recursive: true);
         await targetFile.writeAsBytes(bytes, flush: true);
         continue;
@@ -155,7 +154,6 @@ class AppBackupService {
     );
 
     await _addDataFilesToArchive(archive);
-    await _addDatabaseFilesToArchive(archive);
     await _addFontFilesToArchive(archive);
     return ZipEncoder().encodeBytes(archive);
   }
@@ -177,26 +175,6 @@ class AppBackupService {
         final bytes = await entity.readAsBytes();
         archive.add(
           ArchiveFile('$_dataRoot/$relativePath', bytes.length, bytes),
-        );
-      }
-    }
-  }
-
-  Future<void> _addDatabaseFilesToArchive(Archive archive) async {
-    final dbPath = ChatDatabaseService.instance.databasePath;
-    if (dbPath != null && dbPath.isNotEmpty) {
-      for (final path in [dbPath, '$dbPath-wal', '$dbPath-shm']) {
-        final dbFile = File(path);
-        if (!await dbFile.exists()) {
-          continue;
-        }
-        final bytes = await dbFile.readAsBytes();
-        archive.add(
-          ArchiveFile(
-            '$_databaseRoot/${p.basename(path)}',
-            bytes.length,
-            bytes,
-          ),
         );
       }
     }
