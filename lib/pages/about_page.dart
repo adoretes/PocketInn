@@ -70,6 +70,17 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.1.3',
+                  date: '2026-06-14',
+                  changes: [
+                    '实现旧版数据迁移功能',
+                    '规范化数据存储路径，使用应用支持目录替代文档目录',
+                    '将角色卡持久化的图片路径改为相对路径',
+                    '把自定义字体加入到备份中',
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _UpdateLogItem(
                   version: 'v1.1.2',
                   date: '2026-06-13',
                   changes: [
