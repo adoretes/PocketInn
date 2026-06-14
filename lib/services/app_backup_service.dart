@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 
 import 'app_data_service.dart';
 import 'chat_database_service.dart';
+import 'font_service.dart';
 import 'storage_service.dart';
 
 class AppBackupService {
@@ -20,6 +21,7 @@ class AppBackupService {
   static const String _preferencesPath = 'preferences.json';
   static const String _dataRoot = 'data';
   static const String _databaseRoot = 'database';
+  static const String _fontsRoot = 'fonts';
 
   Future<String?> exportBackup() async {
     final defaultName = 'pocketinn-backup-${_dateStamp()}.zip';
@@ -114,6 +116,15 @@ class AppBackupService {
         final targetFile = File(p.join(appDir, relativePath));
         await targetFile.parent.create(recursive: true);
         await targetFile.writeAsBytes(bytes, flush: true);
+        continue;
+      }
+
+      if (p.posix.isWithin(_fontsRoot, archivePath)) {
+        final relativePath = p.posix.relative(archivePath, from: _fontsRoot);
+        final fontsDir = await FontService.instance.fontsDir;
+        final targetFile = File(p.join(fontsDir, relativePath));
+        await targetFile.parent.create(recursive: true);
+        await targetFile.writeAsBytes(bytes, flush: true);
       }
     }
 
@@ -145,6 +156,7 @@ class AppBackupService {
 
     await _addDataFilesToArchive(archive);
     await _addDatabaseFilesToArchive(archive);
+    await _addFontFilesToArchive(archive);
     return ZipEncoder().encodeBytes(archive);
   }
 
@@ -185,6 +197,25 @@ class AppBackupService {
             bytes.length,
             bytes,
           ),
+        );
+      }
+    }
+  }
+
+  Future<void> _addFontFilesToArchive(Archive archive) async {
+    final fontsDir = await FontService.instance.fontsDir;
+    final root = Directory(fontsDir);
+    if (await root.exists()) {
+      await for (final entity in root.list(
+        recursive: false,
+        followLinks: false,
+      )) {
+        if (entity is! File) {
+          continue;
+        }
+        final bytes = await entity.readAsBytes();
+        archive.add(
+          ArchiveFile('$_fontsRoot/${p.basename(entity.path)}', bytes.length, bytes),
         );
       }
     }

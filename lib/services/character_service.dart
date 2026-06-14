@@ -71,13 +71,28 @@ class CharacterService {
       return [];
     }
 
+    final dataDir = StorageService.instance.dataDir;
     final items = data['characters'] as List<dynamic>? ?? const [];
     final summaries =
         items
             .map(
-              (item) => CharacterSummary.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ),
+              (item) {
+                final parsed = CharacterSummary.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                );
+                if (parsed.thumbnailPath.isNotEmpty &&
+                    !parsed.thumbnailPath.startsWith(dataDir)) {
+                  return CharacterSummary(
+                    id: parsed.id,
+                    name: parsed.name,
+                    thumbnailPath: '$dataDir/${parsed.thumbnailPath}',
+                    description: parsed.description,
+                    cardColorValue: parsed.cardColorValue,
+                    updatedAt: parsed.updatedAt,
+                  );
+                }
+                return parsed;
+              },
             )
             .toList()
           ..sort((a, b) {
@@ -532,9 +547,18 @@ class CharacterService {
   }
 
   Future<void> _saveSummaries(List<CharacterSummary> summaries) async {
+    final dataDir = StorageService.instance.dataDir;
+    final items = summaries.map((item) {
+      final json = item.toJson();
+      final path = json['thumbnailPath'] as String;
+      if (path.isNotEmpty && path.startsWith(dataDir)) {
+        json['thumbnailPath'] = path.substring(dataDir.length + 1);
+      }
+      return json;
+    }).toList();
     final data = {
       'version': _dataVersion,
-      'characters': summaries.map((item) => item.toJson()).toList(),
+      'characters': items,
     };
     await StorageService.instance.writeJsonMap(_indexFilename, data);
   }

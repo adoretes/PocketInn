@@ -12,7 +12,7 @@ class FontService {
 
   static const String _fontsDirName = 'custom_fonts';
 
-  Future<String> get _fontsDir async {
+  Future<String> get fontsDir async {
     final dir = await getApplicationSupportDirectory();
     final fontsDir = Directory('${dir.path}/$_fontsDirName');
     if (!await fontsDir.exists()) {
@@ -49,9 +49,9 @@ class FontService {
       return null;
     }
 
-    final fontsDir = await _fontsDir;
+    final fontsPath = await fontsDir;
     final extension = sourcePath.split('.').last;
-    final destPath = '$fontsDir/${fontFamily.hashCode}.$extension';
+    final destPath = '$fontsPath/${fontFamily.hashCode}.$extension';
     await sourceFile.copy(destPath);
 
     final loader = FontLoader(fontFamily);
