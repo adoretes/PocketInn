@@ -58,6 +58,20 @@ class CharacterService {
     }
   }
 
+  String _relativizePath(String path) {
+    if (path.isEmpty) return path;
+    final dataDir = StorageService.instance.dataDir;
+    if (path.startsWith('$dataDir/')) return path.substring(dataDir.length + 1);
+    return path;
+  }
+
+  String _resolvePath(String path) {
+    if (path.isEmpty) return path;
+    final dataDir = StorageService.instance.dataDir;
+    if (path.startsWith(dataDir)) return path;
+    return '$dataDir/$path';
+  }
+
   Future<List<CharacterSummary>> loadAllSummaries() async {
     _checkInitialized();
 
@@ -143,7 +157,11 @@ class CharacterService {
       if (json is! Map<String, dynamic>) {
         return null;
       }
-      return CharacterCardRecord.fromJson(json);
+      final parsed = CharacterCardRecord.fromJson(json);
+      return parsed.copyWith(
+        originalImagePath: _resolvePath(parsed.originalImagePath),
+        thumbnailPath: _resolvePath(parsed.thumbnailPath),
+      );
     } catch (_) {
       return null;
     }
@@ -234,7 +252,10 @@ class CharacterService {
     );
 
     await save(record);
-    return record;
+    return record.copyWith(
+      originalImagePath: _resolvePath(record.originalImagePath),
+      thumbnailPath: _resolvePath(record.thumbnailPath),
+    );
   }
 
   Future<void> clearAllData() async {
@@ -266,14 +287,19 @@ class CharacterService {
       updatedAt: DateTime.now(),
     );
 
+    final toStore = storedRecord.copyWith(
+      originalImagePath: _relativizePath(storedRecord.originalImagePath),
+      thumbnailPath: _relativizePath(storedRecord.thumbnailPath),
+    );
+
     final file = File('$_dataPath/${record.id}.json');
     final content = const JsonEncoder.withIndent(
       '  ',
-    ).convert(storedRecord.toJson());
+    ).convert(toStore.toJson());
     await file.writeAsString(content);
 
     final summaries = await loadAllSummaries();
-    final summary = storedRecord.toSummary();
+    final summary = toStore.toSummary();
     final index = summaries.indexWhere((item) => item.id == record.id);
     if (index >= 0) {
       summaries[index] = summary;
@@ -395,7 +421,12 @@ class CharacterService {
     );
 
     await save(record);
-    return CharacterImportResult(record: record);
+    return CharacterImportResult(
+      record: record.copyWith(
+        originalImagePath: _resolvePath(record.originalImagePath),
+        thumbnailPath: _resolvePath(record.thumbnailPath),
+      ),
+    );
   }
 
   Future<String?> exportToJsonFile(CharacterCardRecord record) async {
@@ -837,10 +868,11 @@ class CharacterService {
   }
 
   Future<String> _storeOriginalImage(String id, Uint8List imageBytes) async {
-    final path = '$_imagesPath/$id.png';
-    await File(path).writeAsBytes(imageBytes);
-    await _evictCachedFileImage(path);
-    return path;
+    final relPath = '$_charactersDir/images/$id.png';
+    final absPath = '$_imagesPath/$id.png';
+    await File(absPath).writeAsBytes(imageBytes);
+    await _evictCachedFileImage(absPath);
+    return relPath;
   }
 
   Future<String> _storeThumbnail(String id, Uint8List imageBytes) async {
@@ -851,10 +883,11 @@ class CharacterService {
 
     final resized = img.copyResizeCropSquare(decoded, size: 256);
     final encoded = img.encodePng(resized, level: 6);
-    final path = '$_thumbnailsPath/$id.png';
-    await File(path).writeAsBytes(encoded);
-    await _evictCachedFileImage(path);
-    return path;
+    final relPath = '$_charactersDir/thumbnails/$id.png';
+    final absPath = '$_thumbnailsPath/$id.png';
+    await File(absPath).writeAsBytes(encoded);
+    await _evictCachedFileImage(absPath);
+    return relPath;
   }
 
   Future<_PreparedImageAssets> _prepareImageAssets({
@@ -907,8 +940,9 @@ class CharacterService {
   }
 
   Future<Uint8List> _loadExportImage(CharacterCardRecord record) async {
-    if (record.originalImagePath.isNotEmpty) {
-      final file = File(record.originalImagePath);
+    final exportImagePath = _resolvePath(record.originalImagePath);
+    if (exportImagePath.isNotEmpty) {
+      final file = File(exportImagePath);
       if (await file.exists()) {
         return file.readAsBytes();
       }
@@ -938,9 +972,10 @@ class CharacterService {
       return null;
     }
 
-    final provider = imagePath.startsWith('assets/')
-        ? AssetImage(imagePath) as ImageProvider
-        : FileImage(File(imagePath));
+    final absPath = _resolvePath(imagePath);
+    final provider = absPath.startsWith('assets/')
+        ? AssetImage(absPath) as ImageProvider
+        : FileImage(File(absPath));
 
     try {
       final scheme = await ColorScheme.fromImageProvider(
