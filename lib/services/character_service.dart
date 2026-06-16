@@ -324,6 +324,9 @@ class CharacterService {
       if (record.thumbnailPath.isNotEmpty) {
         await _deleteIfExists(File(record.thumbnailPath));
       }
+      if (record.worldBookId != null && record.worldBookId!.isNotEmpty) {
+        await WorldBookService.instance.delete(record.worldBookId!);
+      }
     }
 
     final summaries = await loadAllSummaries();

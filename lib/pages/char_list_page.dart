@@ -222,6 +222,9 @@ class _CharListPageState extends State<CharListPage> {
       characterName: summary.name,
       userName: userName,
     );
+    final worldBookIds = record.worldBookId != null
+        ? [record.worldBookId!]
+        : const <String>[];
     if (!mounted) {
       return;
     }
@@ -232,6 +235,7 @@ class _CharListPageState extends State<CharListPage> {
           title: summary.name,
           selectedUserSettingId: selectedUserSettingIdNotifier.value,
           selectedPresetId: selectedPresetIdNotifier.value,
+          selectedWorldBookIds: worldBookIds,
           openingAssistantMessages: openingMessages,
         ),
       ),

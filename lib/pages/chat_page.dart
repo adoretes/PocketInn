@@ -41,6 +41,7 @@ class ChatPage extends StatefulWidget {
   final String? draftTitle;
   final String? draftSelectedUserSettingId;
   final String? draftSelectedPresetId;
+  final List<String> draftSelectedWorldBookIds;
   final List<String> draftOpeningAssistantMessages;
 
   const ChatPage({super.key, this.sessionId})
@@ -48,6 +49,7 @@ class ChatPage extends StatefulWidget {
       draftTitle = null,
       draftSelectedUserSettingId = null,
       draftSelectedPresetId = null,
+      draftSelectedWorldBookIds = const [],
       draftOpeningAssistantMessages = const [];
 
   const ChatPage.draft({
@@ -56,12 +58,14 @@ class ChatPage extends StatefulWidget {
     required String title,
     String? selectedUserSettingId,
     String? selectedPresetId,
+    List<String> selectedWorldBookIds = const [],
     List<String> openingAssistantMessages = const [],
   }) : sessionId = null,
        draftCharacterId = characterId,
        draftTitle = title,
        draftSelectedUserSettingId = selectedUserSettingId,
        draftSelectedPresetId = selectedPresetId,
+       draftSelectedWorldBookIds = selectedWorldBookIds,
        draftOpeningAssistantMessages = openingAssistantMessages;
 
   @override
@@ -184,13 +188,16 @@ class _ChatPageState extends State<ChatPage> {
         ? widget.draftTitle!.trim()
         : resolvedCharacter.name;
 
+    final initialWorldBookIds = List<String>.from(
+      widget.draftSelectedWorldBookIds,
+    );
     setState(() {
       _activeSession = ChatSession(
         id: '__draft_chat__${resolvedCharacter.id}',
         title: title,
         characterId: resolvedCharacter.id,
         selectedUserSettingId: widget.draftSelectedUserSettingId,
-        selectedWorldBookIds: const [],
+        selectedWorldBookIds: initialWorldBookIds,
         selectedPresetId: widget.draftSelectedPresetId,
         currentLeafMessageId: null,
         lastMessagePreview: openingMessages.isNotEmpty
@@ -204,7 +211,9 @@ class _ChatPageState extends State<ChatPage> {
       _messages = _buildDraftOpeningMessages(openingMessages);
       _selectedUserSettingId = widget.draftSelectedUserSettingId;
       _selectedPresetId = widget.draftSelectedPresetId;
-      _selectedWorldBookIds.clear();
+      _selectedWorldBookIds
+        ..clear()
+        ..addAll(initialWorldBookIds);
       _isDraftSession = true;
       _draftOpeningAssistantMessages = openingMessages;
       _isLoading = false;
