@@ -138,20 +138,20 @@ class PresetService {
   Future<Preset> buildEditableTemplate() async {
     _checkInitialized();
 
-    final defaultPreset = await loadDefaultPreset();
-    if (defaultPreset != null) {
-      return defaultPreset.copyWith(
-        id: generateId(),
-        name: '新预设',
-        isBuiltin: false,
-        updatedAt: DateTime.now(),
-      );
+    final defaultJson = await rootBundle.loadString('assets/Default.json');
+    final decoded = jsonDecode(defaultJson);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Default.json 不是有效的预设对象');
     }
 
-    return Preset(
+    return Preset.fromSillyTavernJson(
+      decoded,
       id: generateId(),
+      fallbackName: '新预设',
+      isBuiltin: false,
+    ).copyWith(
       name: '新预设',
-      prompts: [],
+      isBuiltin: false,
       updatedAt: DateTime.now(),
     );
   }
