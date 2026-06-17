@@ -70,6 +70,19 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.1.4',
+                  date: '2026-06-17',
+                  changes: [
+                    '添加在新建对话和删除角色时与世界书的联动',
+                    '增强主题设置，支持深色模式下的文本颜色配置',
+                    '锁定默认预设，防止误修改',
+                    '重构新建预设方法',
+                    '优化记忆树在深色模式下的显示效果',
+                    '优化整体显示效果',
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _UpdateLogItem(
                   version: 'v1.1.3',
                   date: '2026-06-14',
                   changes: [
