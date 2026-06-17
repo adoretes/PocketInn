@@ -236,6 +236,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     final isUser = n.kind == _NodeKind.user;
     final preview = n.text.trim();
     final hasMemory = n.hasMemory;
+    final isDark =
+        Theme.of(context).colorScheme.brightness == Brightness.dark;
+    final tc = isDark ? _TreeColors.dark : _TreeColors.light;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -271,14 +274,14 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: _kMemoryActive.withValues(alpha: 0.16),
+                              color: tc.memoryActive.withValues(alpha: 0.16),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               '记忆点 · ${n.memoryEntries.length} 条',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: _kMemoryActive,
+                                color: tc.memoryActive,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -485,6 +488,8 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final treeColors = isDark ? _TreeColors.dark : _TreeColors.light;
     return Scaffold(
       appBar: AppBar(
         title: const Text('记忆树'),
@@ -534,7 +539,7 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
               : Column(
                   children: [
                     if (_roots.length > 1) _buildTabBar(context),
-                    Expanded(child: _buildTreeArea(context)),
+                    Expanded(child: _buildTreeArea(context, treeColors)),
                   ],
                 ),
     );
@@ -661,7 +666,7 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     return cleaned.length > 14 ? '${cleaned.substring(0, 14)}…' : cleaned;
   }
 
-  Widget _buildTreeArea(BuildContext context) {
+  Widget _buildTreeArea(BuildContext context, _TreeColors treeColors) {
     final root = _roots[_selectedRootIndex];
     final canvas = _rootCanvasSizes[_selectedRootIndex];
     return Stack(
@@ -680,6 +685,7 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
               height: math.max(canvas.height, 200),
               child: _MemoryTreeStack(
                 root: root,
+                treeColors: treeColors,
                 nodeRadius: _nodeRadius,
                 ringRadius: _ringRadius,
                 onTapNode: _onTapNode,
@@ -700,6 +706,8 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
 
   Widget _buildLegend(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final tc = isDark ? _TreeColors.dark : _TreeColors.light;
     Widget dot(Color c, String label) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -733,9 +741,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            dot(_kUserActive, '用户'),
-            dot(_kAssistantActive, '角色'),
-            dot(_kMemoryActive, '记忆'),
+            dot(tc.userActive, '用户'),
+            dot(tc.assistantActive, '角色'),
+            dot(tc.memoryActive, '记忆'),
           ],
         ),
       ),
@@ -743,20 +751,58 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   }
 }
 
-const Color _kUserActive = Color(0xFF2F80ED);
-const Color _kAssistantActive = Color(0xFF27AE60);
-const Color _kMemoryActive = Color(0xFFF2994A);
+class _TreeColors {
+  const _TreeColors({
+    required this.userActive,
+    required this.assistantActive,
+    required this.memoryActive,
+    required this.userInactive,
+    required this.assistantInactive,
+    required this.memoryInactive,
+    required this.edgeActive,
+    required this.edgeInactive,
+  });
 
-const Color _kUserInactive = Color(0xFFB7CDEC);
-const Color _kAssistantInactive = Color(0xFFBFE3CC);
-const Color _kMemoryInactive = Color(0xFFF6D6B7);
+  final Color userActive;
+  final Color assistantActive;
+  final Color memoryActive;
+  final Color userInactive;
+  final Color assistantInactive;
+  final Color memoryInactive;
+  final Color edgeActive;
+  final Color edgeInactive;
 
-const Color _kEdgeActive = Color(0xFF3D2A6B);
-final Color _kEdgeInactive = const Color(0xFF3D2A6B).withValues(alpha: 0.18);
+  static const _TreeColors light = _TreeColors(
+    userActive: Color(0xFF2F80ED),
+    assistantActive: Color(0xFF27AE60),
+    memoryActive: Color(0xFFF2994A),
+    userInactive: Color(0xFFB7CDEC),
+    assistantInactive: Color(0xFFBFE3CC),
+    memoryInactive: Color(0xFFF6D6B7),
+    edgeActive: Color(0xFF3D2A6B),
+    edgeInactive: Color(0xFF3D2A6B),
+  );
+
+  static const _TreeColors dark = _TreeColors(
+    userActive: Color(0xFF4A90D9),
+    assistantActive: Color(0xFF3DBD73),
+    memoryActive: Color(0xFFE8A84A),
+    userInactive: Color(0xFF3A567A),
+    assistantInactive: Color(0xFF2D5E3E),
+    memoryInactive: Color(0xFF6B4D24),
+    edgeActive: Color(0xFFB392E0),
+    edgeInactive: Color(0xFFB392E0),
+  );
+
+  Color get edgeActivePaint => edgeActive;
+  Color edgeInactivePaint(double opacity) =>
+      edgeInactive.withValues(alpha: opacity);
+}
 
 class _MemoryTreeStack extends StatelessWidget {
   const _MemoryTreeStack({
     required this.root,
+    required this.treeColors,
     required this.nodeRadius,
     required this.ringRadius,
     required this.onTapNode,
@@ -765,6 +811,7 @@ class _MemoryTreeStack extends StatelessWidget {
   });
 
   final _TreeNode root;
+  final _TreeColors treeColors;
   final double nodeRadius;
   final double ringRadius;
   final void Function(_TreeNode) onTapNode;
@@ -789,6 +836,7 @@ class _MemoryTreeStack extends StatelessWidget {
           child: CustomPaint(
             painter: _TreeEdgePainter(
               root: root,
+              treeColors: treeColors,
               isEdgeActive: isEdgeActive,
               isNodeActive: isNodeActive,
               nodeRadius: nodeRadius,
@@ -804,6 +852,7 @@ class _MemoryTreeStack extends StatelessWidget {
             height: ringRadius * 2,
             child: _NodeDot(
               node: n,
+              treeColors: treeColors,
               isActive: isNodeActive(n),
               nodeRadius: nodeRadius,
               ringRadius: ringRadius,
@@ -818,6 +867,7 @@ class _MemoryTreeStack extends StatelessWidget {
 class _NodeDot extends StatelessWidget {
   const _NodeDot({
     required this.node,
+    required this.treeColors,
     required this.isActive,
     required this.nodeRadius,
     required this.ringRadius,
@@ -825,6 +875,7 @@ class _NodeDot extends StatelessWidget {
   });
 
   final _TreeNode node;
+  final _TreeColors treeColors;
   final bool isActive;
   final double nodeRadius;
   final double ringRadius;
@@ -832,13 +883,13 @@ class _NodeDot extends StatelessWidget {
 
   Color get _color {
     if (node.hasMemory) {
-      return isActive ? _kMemoryActive : _kMemoryInactive;
+      return isActive ? treeColors.memoryActive : treeColors.memoryInactive;
     }
     switch (node.kind) {
       case _NodeKind.user:
-        return isActive ? _kUserActive : _kUserInactive;
+        return isActive ? treeColors.userActive : treeColors.userInactive;
       case _NodeKind.assistant:
-        return isActive ? _kAssistantActive : _kAssistantInactive;
+        return isActive ? treeColors.assistantActive : treeColors.assistantInactive;
     }
   }
 
@@ -902,6 +953,7 @@ class _NodePainter extends CustomPainter {
 class _TreeEdgePainter extends CustomPainter {
   _TreeEdgePainter({
     required this.root,
+    required this.treeColors,
     required this.isEdgeActive,
     required this.isNodeActive,
     required this.nodeRadius,
@@ -909,6 +961,7 @@ class _TreeEdgePainter extends CustomPainter {
   });
 
   final _TreeNode root;
+  final _TreeColors treeColors;
   final bool Function(_TreeNode parent, _TreeNode child) isEdgeActive;
   final bool Function(_TreeNode) isNodeActive;
   final double nodeRadius;
@@ -926,7 +979,9 @@ class _TreeEdgePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeWidth = active ? 2.6 : 1.2
-        ..color = active ? _kEdgeActive : _kEdgeInactive;
+        ..color = active
+            ? treeColors.edgeActivePaint
+            : treeColors.edgeInactivePaint(0.2);
 
       // 端点固定在节点的正下方/正上方，保证连接点居中。
       final start = Offset(parent.x, parent.y + _outerRadius(parent));
@@ -958,6 +1013,7 @@ class _TreeEdgePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TreeEdgePainter old) {
     return old.root != root ||
+        old.treeColors != treeColors ||
         old.isEdgeActive != isEdgeActive ||
         old.isNodeActive != isNodeActive ||
         old.nodeRadius != nodeRadius ||
