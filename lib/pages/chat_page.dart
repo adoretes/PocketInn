@@ -988,17 +988,21 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                   const SizedBox(width: 4),
                   InkWell(
-                    onTap: () {
-                      Navigator.pop(context);
-                      _onPresetEditPressed(preset.id);
-                    },
+                    onTap: preset.isBuiltin
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            _onPresetEditPressed(preset.id);
+                          },
                     borderRadius: BorderRadius.circular(16),
                     child: Padding(
                       padding: const EdgeInsets.all(4),
                       child: Icon(
                         Icons.edit_outlined,
                         size: 18,
-                        color: Colors.grey.shade600,
+                        color: preset.isBuiltin
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade600,
                       ),
                     ),
                   ),

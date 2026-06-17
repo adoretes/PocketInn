@@ -67,6 +67,32 @@ class _PresetPageState extends State<PresetPage> {
   }
 
   Future<void> _onPresetTap(PresetSummary summary) async {
+    if (summary.isBuiltin) {
+      final create = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('默认预设'),
+            content: const Text('默认预设不可编辑，是否新建一个预设？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('新建'),
+              ),
+            ],
+          );
+        },
+      );
+      if (create == true) {
+        await _onCreate();
+      }
+      return;
+    }
+
     final preset = await PresetService.instance.loadById(summary.id);
     if (preset == null || !mounted) return;
 
