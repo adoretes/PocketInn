@@ -106,21 +106,33 @@ enum ChatTextFontStyleMode {
 class ChatTextStyleConfig {
   const ChatTextStyleConfig({
     this.paletteIndex = 0,
+    this.darkPaletteIndex,
     this.fontStyleMode = ChatTextFontStyleMode.platform,
     this.opacity = 1.0,
   });
 
   final int paletteIndex;
+  final int? darkPaletteIndex;
   final ChatTextFontStyleMode fontStyleMode;
   final double opacity;
 
+  int resolvePaletteIndex(Brightness brightness) {
+    return brightness == Brightness.dark
+        ? (darkPaletteIndex ?? paletteIndex)
+        : paletteIndex;
+  }
+
   ChatTextStyleConfig copyWith({
     int? paletteIndex,
+    Object? darkPaletteIndex = _unset,
     ChatTextFontStyleMode? fontStyleMode,
     double? opacity,
   }) {
     return ChatTextStyleConfig(
       paletteIndex: paletteIndex ?? this.paletteIndex,
+      darkPaletteIndex: darkPaletteIndex == _unset
+          ? this.darkPaletteIndex
+          : darkPaletteIndex as int?,
       fontStyleMode: fontStyleMode ?? this.fontStyleMode,
       opacity: opacity ?? this.opacity,
     );
@@ -133,6 +145,7 @@ class ChatTextThemeSettings {
     this.quoteStyle = AppQuoteStyle.curlyDouble,
     this.enableMessageTextShadow = false,
     this.bodyTextColorPaletteIndex,
+    this.bodyTextColorDarkPaletteIndex,
     this.quotedTextStyle = const ChatTextStyleConfig(
       paletteIndex: 0,
       fontStyleMode: ChatTextFontStyleMode.bold,
@@ -158,15 +171,23 @@ class ChatTextThemeSettings {
   final AppQuoteStyle quoteStyle;
   final bool enableMessageTextShadow;
   final int? bodyTextColorPaletteIndex;
+  final int? bodyTextColorDarkPaletteIndex;
   final ChatTextStyleConfig quotedTextStyle;
   final ChatTextStyleConfig bracketTextStyle;
   final ChatTextStyleConfig italicTextStyle;
   final ChatTextStyleConfig boldTextStyle;
 
+  int? resolveBodyTextColorPaletteIndex(Brightness brightness) {
+    return brightness == Brightness.dark
+        ? (bodyTextColorDarkPaletteIndex ?? bodyTextColorPaletteIndex)
+        : bodyTextColorPaletteIndex;
+  }
+
   ChatTextThemeSettings copyWith({
     AppQuoteStyle? quoteStyle,
     bool? enableMessageTextShadow,
     Object? bodyTextColorPaletteIndex = _unset,
+    Object? bodyTextColorDarkPaletteIndex = _unset,
     ChatTextStyleConfig? quotedTextStyle,
     ChatTextStyleConfig? bracketTextStyle,
     ChatTextStyleConfig? italicTextStyle,
@@ -179,6 +200,9 @@ class ChatTextThemeSettings {
       bodyTextColorPaletteIndex: bodyTextColorPaletteIndex == _unset
           ? this.bodyTextColorPaletteIndex
           : bodyTextColorPaletteIndex as int?,
+      bodyTextColorDarkPaletteIndex: bodyTextColorDarkPaletteIndex == _unset
+          ? this.bodyTextColorDarkPaletteIndex
+          : bodyTextColorDarkPaletteIndex as int?,
       quotedTextStyle: quotedTextStyle ?? this.quotedTextStyle,
       bracketTextStyle: bracketTextStyle ?? this.bracketTextStyle,
       italicTextStyle: italicTextStyle ?? this.italicTextStyle,
@@ -442,6 +466,7 @@ void updateThemeConfig({
   AppQuoteStyle? quoteStyle,
   bool? enableMessageTextShadow,
   Object? bodyTextColorPaletteIndex = _unset,
+  Object? bodyTextColorDarkPaletteIndex = _unset,
   ChatTextStyleConfig? quotedTextStyle,
   ChatTextStyleConfig? bracketTextStyle,
   ChatTextStyleConfig? italicTextStyle,
@@ -461,6 +486,7 @@ void updateThemeConfig({
       quoteStyle: quoteStyle,
       enableMessageTextShadow: enableMessageTextShadow,
       bodyTextColorPaletteIndex: bodyTextColorPaletteIndex,
+      bodyTextColorDarkPaletteIndex: bodyTextColorDarkPaletteIndex,
       quotedTextStyle: quotedTextStyle,
       bracketTextStyle: bracketTextStyle,
       italicTextStyle: italicTextStyle,
@@ -479,6 +505,7 @@ void updateChatTextThemeSettings({
   AppQuoteStyle? quoteStyle,
   bool? enableMessageTextShadow,
   Object? bodyTextColorPaletteIndex = _unset,
+  Object? bodyTextColorDarkPaletteIndex = _unset,
   ChatTextStyleConfig? quotedTextStyle,
   ChatTextStyleConfig? bracketTextStyle,
   ChatTextStyleConfig? italicTextStyle,
@@ -488,6 +515,7 @@ void updateChatTextThemeSettings({
     quoteStyle: quoteStyle,
     enableMessageTextShadow: enableMessageTextShadow,
     bodyTextColorPaletteIndex: bodyTextColorPaletteIndex,
+    bodyTextColorDarkPaletteIndex: bodyTextColorDarkPaletteIndex,
     quotedTextStyle: quotedTextStyle,
     bracketTextStyle: bracketTextStyle,
     italicTextStyle: italicTextStyle,

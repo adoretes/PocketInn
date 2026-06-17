@@ -260,6 +260,9 @@ class AppSettingsService {
       bodyTextColorPaletteIndex: _normalizeNullablePaletteIndex(
         _asInt(data['bodyTextColorPaletteIndex']),
       ),
+      bodyTextColorDarkPaletteIndex: _normalizeNullablePaletteIndex(
+        _asInt(data['bodyTextColorDarkPaletteIndex']),
+      ),
       quotedTextStyle: _decodeTextStyleConfig(
         _asMap(data['quotedTextStyle']),
         fallback: fallback.quotedTextStyle,
@@ -291,6 +294,9 @@ class AppSettingsService {
       paletteIndex: _normalizePaletteIndex(
         _asInt(data['paletteIndex']),
         fallback.paletteIndex,
+      ),
+      darkPaletteIndex: _normalizeNullablePaletteIndex(
+        _asInt(data['darkPaletteIndex']),
       ),
       fontStyleMode: _enumValueOrDefault(
         ChatTextFontStyleMode.values,
@@ -418,6 +424,7 @@ class AppSettingsService {
       'quoteStyle': settings.quoteStyle.index,
       'enableMessageTextShadow': settings.enableMessageTextShadow,
       'bodyTextColorPaletteIndex': settings.bodyTextColorPaletteIndex,
+      'bodyTextColorDarkPaletteIndex': settings.bodyTextColorDarkPaletteIndex,
       'quotedTextStyle': _encodeTextStyleConfig(settings.quotedTextStyle),
       'bracketTextStyle': _encodeTextStyleConfig(settings.bracketTextStyle),
       'italicTextStyle': _encodeTextStyleConfig(settings.italicTextStyle),
@@ -428,6 +435,7 @@ class AppSettingsService {
   Map<String, dynamic> _encodeTextStyleConfig(ChatTextStyleConfig config) {
     return <String, dynamic>{
       'paletteIndex': _normalizePaletteIndex(config.paletteIndex, 0),
+      'darkPaletteIndex': _normalizeNullablePaletteIndex(config.darkPaletteIndex),
       'fontStyleMode': config.fontStyleMode.index,
       'opacity': _normalizeOpacity(config.opacity, 1.0),
     };

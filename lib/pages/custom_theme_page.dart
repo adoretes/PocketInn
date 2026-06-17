@@ -122,9 +122,11 @@ class CustomThemePage extends StatelessWidget {
                   children: [
                     _BodyTextColorConfigTile(
                       settings: settings,
-                      value: chatTextTheme.bodyTextColorPaletteIndex,
-                      onChanged: (value) => updateChatTextThemeSettings(
-                        bodyTextColorPaletteIndex: value,
+                      lightValue: chatTextTheme.bodyTextColorPaletteIndex,
+                      darkValue: chatTextTheme.bodyTextColorDarkPaletteIndex,
+                      onChanged: (light, dark) => updateChatTextThemeSettings(
+                        bodyTextColorPaletteIndex: light,
+                        bodyTextColorDarkPaletteIndex: dark,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -469,23 +471,40 @@ class _ThemeColorPaletteTile extends StatelessWidget {
 class _BodyTextColorConfigTile extends StatelessWidget {
   const _BodyTextColorConfigTile({
     required this.settings,
-    required this.value,
+    required this.lightValue,
+    required this.darkValue,
     required this.onChanged,
   });
 
   final AppSettings settings;
-  final int? value;
-  final ValueChanged<int?> onChanged;
+  final int? lightValue;
+  final int? darkValue;
+  final void Function(int? light, int? dark) onChanged;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final chatTextTheme = resolveActiveChatTextTheme(settings);
-    final customEnabled = value != null;
-    final selectedIndex =
-        value ?? _defaultBodyTextColorPaletteIndex(colorScheme.brightness);
+    final seedColor = resolveThemeColor(settings);
+    final lightColorScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.light,
+    );
+    final darkColorScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.dark,
+    );
+    final lightBackground = lightColorScheme.surfaceContainerLow;
+    final darkBackground = darkColorScheme.surfaceContainerLow;
+    final customEnabled = lightValue != null || darkValue != null;
+    final effectiveLightIndex =
+        lightValue ?? _defaultBodyTextColorPaletteIndex(Brightness.light);
+    final effectiveDarkIndex =
+        darkValue ?? _defaultBodyTextColorPaletteIndex(Brightness.dark);
     final effectiveTextColor = customEnabled
-        ? _paletteColorAt(selectedIndex)
+        ? (colorScheme.brightness == Brightness.dark
+            ? _paletteColorAt(effectiveDarkIndex)
+            : _paletteColorAt(effectiveLightIndex))
         : colorScheme.onSurface;
     final previewStyle = buildBaseMessageTextStyle(
       textColor: effectiveTextColor,
@@ -533,7 +552,14 @@ class _BodyTextColorConfigTile extends StatelessWidget {
                 Switch(
                   value: customEnabled,
                   onChanged: (enabled) {
-                    onChanged(enabled ? selectedIndex : null);
+                    if (enabled) {
+                      onChanged(
+                        _defaultBodyTextColorPaletteIndex(Brightness.light),
+                        _defaultBodyTextColorPaletteIndex(Brightness.dark),
+                      );
+                    } else {
+                      onChanged(null, null);
+                    }
                   },
                 ),
               ],
@@ -545,10 +571,14 @@ class _BodyTextColorConfigTile extends StatelessWidget {
                 Expanded(child: Text('示例正文', style: previewStyle)),
                 if (customEnabled) ...[
                   const SizedBox(width: 12),
-                  _PalettePickerButton(
-                    selectedIndex: selectedIndex,
-                    onChanged: onChanged,
-                    swatchSize: 22,
+                  _DualPalettePickerButton(
+                    lightIndex: effectiveLightIndex,
+                    darkIndex: effectiveDarkIndex,
+                    onChanged: (light, dark) =>
+                        onChanged(light, dark),
+                    swatchSize: 20,
+                    lightBackground: lightBackground,
+                    darkBackground: darkBackground,
                   ),
                 ],
               ],
@@ -577,6 +607,17 @@ class _TextStyleConfigTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final chatTextTheme = resolveActiveChatTextTheme(settings);
+    final seedColor = resolveThemeColor(settings);
+    final lightColorScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.light,
+    );
+    final darkColorScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.dark,
+    );
+    final lightBackground = lightColorScheme.surfaceContainerLow;
+    final darkBackground = darkColorScheme.surfaceContainerLow;
     final previewBaseStyle = buildBaseMessageTextStyle(
       textColor: colorScheme.onSurface,
       brightness: colorScheme.brightness,
@@ -585,6 +626,7 @@ class _TextStyleConfigTile extends StatelessWidget {
     final previewStyle = buildDecoratedChatTextStyle(
       baseStyle: previewBaseStyle,
       config: value,
+      brightness: colorScheme.brightness,
     );
 
     return Material(
@@ -609,11 +651,17 @@ class _TextStyleConfigTile extends StatelessWidget {
               children: [
                 Expanded(child: Text('示例文本', style: previewStyle)),
                 const SizedBox(width: 12),
-                _PalettePickerButton(
-                  selectedIndex: value.paletteIndex,
-                  onChanged: (index) =>
-                      onChanged(value.copyWith(paletteIndex: index)),
-                  swatchSize: 22,
+                _DualPalettePickerButton(
+                  lightIndex: value.paletteIndex,
+                  darkIndex: value.darkPaletteIndex ?? value.paletteIndex,
+                  onChanged: (light, dark) =>
+                      onChanged(value.copyWith(
+                        paletteIndex: light,
+                        darkPaletteIndex: dark,
+                      )),
+                  swatchSize: 20,
+                  lightBackground: lightBackground,
+                  darkBackground: darkBackground,
                 ),
               ],
             ),
@@ -755,6 +803,142 @@ class _PalettePickerButton extends StatelessWidget {
   }
 }
 
+class _DualPalettePickerButton extends StatelessWidget {
+  const _DualPalettePickerButton({
+    required this.lightIndex,
+    required this.darkIndex,
+    required this.onChanged,
+    required this.swatchSize,
+    required this.lightBackground,
+    required this.darkBackground,
+  });
+
+  final int lightIndex;
+  final int darkIndex;
+  final void Function(int lightIndex, int darkIndex) onChanged;
+  final double swatchSize;
+  final Color lightBackground;
+  final Color darkBackground;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final lightColor = _paletteColorAt(lightIndex);
+    final darkColor = _paletteColorAt(darkIndex);
+
+    Future<void> openDualPicker({required bool initialDark}) async {
+      final result = await showModalBottomSheet<_PaletteDualSelection>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (sheetContext) {
+          final sheetColorScheme = Theme.of(sheetContext).colorScheme;
+          return _DualPalettePickerSheet(
+            lightIndex: lightIndex,
+            darkIndex: darkIndex,
+            colorScheme: sheetColorScheme,
+            lightBackground: lightBackground,
+            darkBackground: darkBackground,
+            initialDark: initialDark,
+          );
+        },
+      );
+      if (result != null &&
+          (result.lightIndex != lightIndex || result.darkIndex != darkIndex)) {
+        onChanged(result.lightIndex, result.darkIndex);
+      }
+    }
+
+    final dotSize = swatchSize * 0.85;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHalf(
+            color: lightColor,
+            background: lightBackground,
+            onTap: () => openDualPicker(initialDark: false),
+            colorScheme: colorScheme,
+            dotSize: dotSize,
+            isLeft: true,
+          ),
+          Container(
+            width: 1,
+            height: dotSize + 12,
+            color: colorScheme.outlineVariant,
+          ),
+          _buildHalf(
+            color: darkColor,
+            background: darkBackground,
+            onTap: () => openDualPicker(initialDark: true),
+            colorScheme: colorScheme,
+            dotSize: dotSize,
+            isLeft: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHalf({
+    required Color color,
+    required Color background,
+    required VoidCallback onTap,
+    required ColorScheme colorScheme,
+    required double dotSize,
+    required bool isLeft,
+  }) {
+    return Semantics(
+      button: true,
+      label: isLeft ? '选择浅色颜色' : '选择深色颜色',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.horizontal(
+            left: Radius.circular(isLeft ? 20 : 0),
+            right: Radius.circular(isLeft ? 0 : 20),
+          ),
+          child: Container(
+            padding: isLeft
+                ? const EdgeInsets.only(left: 5, right: 10, top: 6, bottom: 6)
+                : const EdgeInsets.only(left: 10, right: 5, top: 6, bottom: 6),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.horizontal(
+                left: Radius.circular(isLeft ? 20 : 0),
+                right: Radius.circular(isLeft ? 0 : 20),
+              ),
+            ),
+            child: Container(
+              width: dotSize,
+              height: dotSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaletteDualSelection {
+  const _PaletteDualSelection({
+    required this.lightIndex,
+    required this.darkIndex,
+  });
+  final int lightIndex;
+  final int darkIndex;
+}
+
 class _PalettePickerSheet extends StatelessWidget {
   const _PalettePickerSheet({
     required this.selectedIndex,
@@ -814,6 +998,186 @@ class _PalettePickerSheet extends StatelessWidget {
               onChanged: (index) => Navigator.of(context).pop(index),
               activeBorderColor: colorScheme.primary,
               size: 32,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DualPalettePickerSheet extends StatefulWidget {
+  const _DualPalettePickerSheet({
+    required this.lightIndex,
+    required this.darkIndex,
+    required this.colorScheme,
+    required this.lightBackground,
+    required this.darkBackground,
+    this.initialDark = false,
+  });
+
+  final int lightIndex;
+  final int darkIndex;
+  final ColorScheme colorScheme;
+  final Color lightBackground;
+  final Color darkBackground;
+  final bool initialDark;
+
+  @override
+  State<_DualPalettePickerSheet> createState() => _DualPalettePickerSheetState();
+}
+
+class _DualPalettePickerSheetState extends State<_DualPalettePickerSheet> {
+  late int _lightIndex;
+  late int _darkIndex;
+  late bool _activeIsDark;
+
+  @override
+  void initState() {
+    super.initState();
+    _lightIndex = widget.lightIndex;
+    _darkIndex = widget.darkIndex;
+    _activeIsDark = widget.initialDark;
+  }
+
+  int get _activeIndex => _activeIsDark ? _darkIndex : _lightIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = widget.colorScheme;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Text(
+                  '选择颜色',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                _buildModeSwitcher(),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _ColorPaletteWrap(
+              selectedIndex: _activeIndex,
+              onChanged: (index) {
+                setState(() {
+                  if (_activeIsDark) {
+                    _darkIndex = index;
+                  } else {
+                    _lightIndex = index;
+                  }
+                });
+              },
+              activeBorderColor: colorScheme.primary,
+              size: 32,
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(
+                  _PaletteDualSelection(
+                    lightIndex: _lightIndex,
+                    darkIndex: _darkIndex,
+                  ),
+                ),
+                child: const Text('确认'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeSwitcher() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildSwatch(
+          label: '浅色',
+          background: widget.lightBackground,
+          color: _paletteColorAt(_lightIndex),
+          active: !_activeIsDark,
+          onTap: () => setState(() => _activeIsDark = false),
+        ),
+        const SizedBox(width: 8),
+        _buildSwatch(
+          label: '深色',
+          background: widget.darkBackground,
+          color: _paletteColorAt(_darkIndex),
+          active: _activeIsDark,
+          onTap: () => setState(() => _activeIsDark = true),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSwatch({
+    required String label,
+    required Color background,
+    required Color color,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = widget.colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: background,
+          border: Border.all(
+            color: active ? colorScheme.primary : colorScheme.outlineVariant,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                color: color,
+              ),
             ),
           ],
         ),

@@ -34,7 +34,11 @@ class ChatMarkdownBody extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final chatTextTheme = resolveActiveChatTextTheme(settings);
     final effectiveTextColor = applyBodyTextColor
-        ? resolveBodyMessageTextColor(chatTextTheme, fallback: textColor)
+        ? resolveBodyMessageTextColor(
+            chatTextTheme,
+            fallback: textColor,
+            brightness: colorScheme.brightness,
+          )
         : textColor;
 
     final body = MarkdownBody(
@@ -137,10 +141,12 @@ MarkdownStyleSheet buildChatMarkdownStyleSheet({
     em: buildDecoratedChatTextStyle(
       baseStyle: baseTextStyle,
       config: chatTextTheme.italicTextStyle,
+      brightness: colorScheme.brightness,
     ),
     strong: buildDecoratedChatTextStyle(
       baseStyle: baseTextStyle,
       config: chatTextTheme.boldTextStyle,
+      brightness: colorScheme.brightness,
     ),
     del: baseTextStyle.copyWith(decoration: TextDecoration.lineThrough),
     code: TextStyle(
@@ -172,6 +178,7 @@ String _buildChatMarkdownThemeKey(AppSettings settings) {
     chatTextTheme.quoteStyle.name,
     chatTextTheme.enableMessageTextShadow ? 'shadow' : 'plain',
     chatTextTheme.bodyTextColorPaletteIndex?.toString() ?? 'body-auto',
+    chatTextTheme.bodyTextColorDarkPaletteIndex?.toString() ?? 'body-dark-auto',
     _buildTextStyleConfigKey(chatTextTheme.quotedTextStyle),
     _buildTextStyleConfigKey(chatTextTheme.bracketTextStyle),
     _buildTextStyleConfigKey(chatTextTheme.italicTextStyle),
@@ -182,6 +189,7 @@ String _buildChatMarkdownThemeKey(AppSettings settings) {
 String _buildTextStyleConfigKey(ChatTextStyleConfig config) {
   return <String>[
     config.paletteIndex.toString(),
+    config.darkPaletteIndex?.toString() ?? 'same',
     config.fontStyleMode.name,
     config.opacity.toStringAsFixed(3),
   ].join(':');
@@ -203,8 +211,9 @@ TextStyle buildBaseMessageTextStyle({
 Color resolveBodyMessageTextColor(
   ChatTextThemeSettings chatTextTheme, {
   required Color fallback,
+  Brightness brightness = Brightness.light,
 }) {
-  final paletteIndex = chatTextTheme.bodyTextColorPaletteIndex;
+  final paletteIndex = chatTextTheme.resolveBodyTextColorPaletteIndex(brightness);
   if (paletteIndex == null ||
       paletteIndex < 0 ||
       paletteIndex >= customThemePalette.length) {
@@ -216,8 +225,9 @@ Color resolveBodyMessageTextColor(
 TextStyle buildDecoratedChatTextStyle({
   required TextStyle baseStyle,
   required ChatTextStyleConfig config,
+  Brightness brightness = Brightness.light,
 }) {
-  final paletteIndex = config.paletteIndex.clamp(
+  final paletteIndex = config.resolvePaletteIndex(brightness).clamp(
     0,
     customThemePalette.length - 1,
   );
@@ -410,6 +420,7 @@ class _QuoteTokenBuilder extends MarkdownElementBuilder {
     final contentStyle = buildDecoratedChatTextStyle(
       baseStyle: baseStyle,
       config: chatTextTheme.quotedTextStyle,
+      brightness: colorScheme.brightness,
     );
     final quoteStyle = baseStyle.copyWith(
       color: contentStyle.color,
@@ -478,6 +489,7 @@ class _SingleQuoteTokenBuilder extends MarkdownElementBuilder {
     final contentStyle = buildDecoratedChatTextStyle(
       baseStyle: baseStyle,
       config: chatTextTheme.quotedTextStyle,
+      brightness: colorScheme.brightness,
     );
     final quoteStyle = baseStyle.copyWith(
       color: contentStyle.color,
@@ -532,6 +544,7 @@ class _BracketTokenBuilder extends MarkdownElementBuilder {
     final contentStyle = buildDecoratedChatTextStyle(
       baseStyle: baseStyle,
       config: chatTextTheme.bracketTextStyle,
+      brightness: colorScheme.brightness,
     );
 
     return Text.rich(TextSpan(text: element.textContent, style: contentStyle));
