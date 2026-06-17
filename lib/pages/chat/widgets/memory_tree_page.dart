@@ -669,6 +669,10 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   Widget _buildTreeArea(BuildContext context, _TreeColors treeColors) {
     final root = _roots[_selectedRootIndex];
     final canvas = _rootCanvasSizes[_selectedRootIndex];
+    final screenWidth = MediaQuery.of(context).size.width;
+    final hPadding = screenWidth > canvas.width
+        ? (screenWidth - canvas.width) / 2
+        : 0.0;
     return Stack(
       children: [
         Positioned.fill(
@@ -678,19 +682,19 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
             maxScale: 2.5,
             boundaryMargin: const EdgeInsets.all(200),
             child: SizedBox(
-              width: math.max(
-                canvas.width,
-                MediaQuery.of(context).size.width,
-              ),
+              width: math.max(canvas.width, screenWidth),
               height: math.max(canvas.height, 200),
-              child: _MemoryTreeStack(
-                root: root,
-                treeColors: treeColors,
-                nodeRadius: _nodeRadius,
-                ringRadius: _ringRadius,
-                onTapNode: _onTapNode,
-                isEdgeActive: _isEdgeActive,
-                isNodeActive: _isNodeActive,
+              child: Transform.translate(
+                offset: Offset(hPadding, 0),
+                child: _MemoryTreeStack(
+                  root: root,
+                  treeColors: treeColors,
+                  nodeRadius: _nodeRadius,
+                  ringRadius: _ringRadius,
+                  onTapNode: _onTapNode,
+                  isEdgeActive: _isEdgeActive,
+                  isNodeActive: _isNodeActive,
+                ),
               ),
             ),
           ),
