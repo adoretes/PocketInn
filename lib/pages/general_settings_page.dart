@@ -731,7 +731,7 @@ class _CustomInjectionPromptTile extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Icon(
-                  Icons.input_outlined,
+                  Icons.input,
                   size: 20,
                   color: hasCustom
                       ? colorScheme.primary
