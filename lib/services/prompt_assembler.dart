@@ -264,23 +264,13 @@ class PromptAssembler {
       case 'worldInfoAfter':
         return worldInfoAfter;
       case 'longTermMemory':
-        return _formatMemoryContext(context);
+        return ChatMemoryService.formatMemoryContext(context.memoryContext);
       case 'main':
       case 'jailbreak':
       case 'post_history_instructions':
       default:
         return prompt.content;
     }
-  }
-
-  static String _formatMemoryContext(PromptAssemblyContext context) {
-    final memories = context.memoryContext;
-    if (memories.isEmpty) return '';
-    final config = memoryExtractionNotifier.value;
-    final header = config.hasCustomInjectionPrompt
-        ? config.customInjectionPrompt.trim()
-        : '以下是角色记得的关于过去事件的信息：';
-    return '$header\n${memories.map((m) => '- $m').join('\n')}';
   }
 
   static String _formatChatHistory(

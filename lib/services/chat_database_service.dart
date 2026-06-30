@@ -125,11 +125,11 @@ class ChatDatabaseService {
     int newVersion,
   ) async {
     if (oldVersion < 2 && newVersion >= 2) {
+      // v2: 引入 chat_memories 表与索引
       await _createMemoriesSchema(db);
     }
-    if (oldVersion < 3 && newVersion >= 3) {
-      await _createMemoriesSchema(db);
-    }
+    // v3: 仅调整 _dbVersion 占位，无 schema 变更。
+    // 若未来需要在 v3 引入列/索引，请在此处添加 oldVersion < 3 分支。
   }
 
   Future<void> _createSchema(Database db) async {
@@ -958,6 +958,34 @@ class ChatDatabaseService {
     _notifyChanged();
   }
 
+  Future<void> insertMemoriesInTx(List<MemoryNode> memories) async {
+    if (memories.isEmpty) return;
+    await _db.transaction((tx) async {
+      for (final m in memories) {
+        await tx.insert('chat_memories', _memoryToMap(m));
+      }
+    });
+    _notifyChanged();
+  }
+
+  Future<void> replaceBranchMemoriesInTx({
+    required String sessionId,
+    required String branchLeafId,
+    required List<MemoryNode> memories,
+  }) async {
+    await _db.transaction((tx) async {
+      await tx.delete(
+        'chat_memories',
+        where: 'session_id = ? AND branch_leaf_id = ?',
+        whereArgs: [sessionId, branchLeafId],
+      );
+      for (final m in memories) {
+        await tx.insert('chat_memories', _memoryToMap(m));
+      }
+    });
+    _notifyChanged();
+  }
+
   Future<void> updateMemoryContent({
     required String memoryId,
     required String content,
@@ -976,30 +1004,8 @@ class ChatDatabaseService {
   }
 
   Future<void> deleteMemory(String memoryId) async {
-    await _db.delete(
-      'chat_memories',
-      where: 'id = ?',
-      whereArgs: [memoryId],
-    );
+    await _db.delete('chat_memories', where: 'id = ?', whereArgs: [memoryId]);
     _notifyChanged();
-  }
-
-  Future<void> deleteSessionMemories(String sessionId) async {
-    await _db.delete(
-      'chat_memories',
-      where: 'session_id = ?',
-      whereArgs: [sessionId],
-    );
-  }
-
-  Future<void> deleteBranchMemoriesByLeafIds(List<String> leafIds) async {
-    if (leafIds.isEmpty) return;
-    final placeholders = List.filled(leafIds.length, '?').join(',');
-    await _db.delete(
-      'chat_memories',
-      where: 'branch_leaf_id IN ($placeholders)',
-      whereArgs: leafIds,
-    );
   }
 
   void notifyDataChanged() {

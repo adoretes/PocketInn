@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -6,7 +7,9 @@ import '../data/api_configs.dart';
 import '../models/api_config.dart';
 import '../models/chat_memory.dart';
 import '../models/chat_message.dart';
+import 'api_request_log_service.dart';
 import 'chat_database_service.dart';
+import 'chat_variable_service.dart';
 import 'openai_compatible_api_service.dart';
 import 'storage_service.dart';
 
@@ -26,11 +29,50 @@ class ChatMemoryService {
 
 请以简洁的中文输出记忆点，每条记忆点用 `- ` 开头。不要添加编号。
 如果对话中没有值得记忆的信息，输出空字符串。
+
+以下是已存在的记忆，请勿提取与之语义重复或高度相近的内容：
+{{memory}}
 ''';
 
   String _resolveExtractionPrompt() {
     final custom = memoryExtractionNotifier.value.customExtractionPrompt.trim();
     return custom.isNotEmpty ? custom : memoryExtractionPrompt;
+  }
+
+  /// 将记忆列表格式化为注入到 Prompt 中的字符串。
+  ///
+  /// 同时服务于段标识 `longTermMemory` 与宏 `{{memory}}`，避免两处实现重复。
+  static String formatMemoryContext(List<String> memories) {
+    if (memories.isEmpty) return '';
+    final config = memoryExtractionNotifier.value;
+    final header = config.hasCustomInjectionPrompt
+        ? config.customInjectionPrompt.trim()
+        : '以下是角色记得的关于过去事件的信息：';
+    return '$header\n${memories.map((m) => '- $m').join('\n')}';
+  }
+
+  /// 按 `recentRounds` 截断消息列表，保留最后 N 轮对话（1 个用户消息 + 1 个助手回复）。
+  ///
+  /// 从末尾向前数 `recentRounds` 个助手消息，包含其前导用户消息。
+  /// `recentRounds <= 0` 视为不截断。
+  @visibleForTesting
+  static List<ChatMessage> truncateToRecentRounds(
+    List<ChatMessage> messages,
+    int recentRounds,
+  ) {
+    if (recentRounds <= 0) return messages;
+    int assistantCount = 0;
+    for (int i = messages.length - 1; i >= 0; i--) {
+      if (!messages[i].isMe) {
+        assistantCount++;
+        if (assistantCount == recentRounds) {
+          // 包含此助手回复前导的用户消息（如果有）
+          final cutIndex = (i > 0 && messages[i - 1].isMe) ? i - 1 : i;
+          return cutIndex == 0 ? messages : messages.sublist(cutIndex);
+        }
+      }
+    }
+    return messages;
   }
 
   ApiConfig? get _extractionConfig {
@@ -51,15 +93,39 @@ class ChatMemoryService {
     required List<ChatMessage> messages,
     required String characterName,
     required String userName,
+    List<String> existingMemories = const [],
   }) async {
     if (messages.isEmpty) return null;
 
     final config = _extractionConfig?.copyWith();
     if (config == null) return null;
 
-    final extractionPrompt = _resolveExtractionPrompt();
+    final rawPrompt = _resolveExtractionPrompt();
+    final lastUser = messages.reversed.cast<ChatMessage?>().firstWhere(
+      (m) => m?.isMe == true,
+      orElse: () => null,
+    );
+    final lastChar = messages.reversed.cast<ChatMessage?>().firstWhere(
+      (m) => m?.isMe == false,
+      orElse: () => null,
+    );
+    final macroState = PromptMacroState(
+      characterName: characterName,
+      userName: userName,
+      lastUserMessage: lastUser?.text ?? '',
+      lastCharMessage: lastChar?.text ?? '',
+      memoryContext: existingMemories,
+    );
+    final extractionPrompt = ChatVariableService.resolveMacros(
+      rawPrompt,
+      state: macroState,
+    );
 
-    final chatLog = messages
+    final truncated = truncateToRecentRounds(
+      messages,
+      memoryExtractionNotifier.value.recentRounds,
+    );
+    final chatLog = truncated
         .map((m) => '${m.isMe ? userName : characterName}: ${m.text}')
         .join('\n');
 
@@ -72,7 +138,19 @@ class ChatMemoryService {
       final result = await OpenAICompatibleApiService.instance
           .createChatCompletion(config, messages: requestMessages);
       return result.text.trim();
-    } catch (_) {
+    } catch (error, stack) {
+      debugPrint('extractMemories failed: $error\n$stack');
+      unawaited(
+        ApiRequestLogService.instance.append(
+          configName: config.name,
+          model: config.model,
+          method: 'POST',
+          endpoint: config.baseUrl,
+          success: false,
+          durationMs: 0,
+          errorMessage: error.toString(),
+        ),
+      );
       return null;
     }
   }
@@ -108,20 +186,30 @@ class ChatMemoryService {
     required String characterName,
     required String userName,
   }) async {
+    final pathIds = messages
+        .where((m) => m.id != null)
+        .map((m) => m.id!)
+        .toList();
+    final existingMemories = await getBranchMemories(
+      sessionId: sessionId,
+      pathMessageIds: pathIds,
+    );
+    final existingContents = existingMemories.map((m) => m.content).toSet();
+    final injectionMemories = existingMemories
+        .take(memoryExtractionNotifier.value.recallCount)
+        .map((m) => m.content)
+        .toList();
+
     final extracted = await extractMemories(
       messages: messages,
       characterName: characterName,
       userName: userName,
+      existingMemories: injectionMemories,
     );
     if (extracted == null || extracted.isEmpty) return false;
 
-    final memoryLines = _parseMemoryPoints(extracted);
+    final memoryLines = parseMemoryPoints(extracted);
     if (memoryLines.isEmpty) return false;
-
-    final existingContents = await _loadBranchMemoryContents(
-      sessionId: sessionId,
-      branchLeafId: branchLeafId,
-    );
 
     final now = DateTime.now();
     final sourceIds = messages
@@ -129,45 +217,39 @@ class ChatMemoryService {
         .map((m) => m.id!)
         .toList();
 
+    final toInsert = <MemoryNode>[];
     for (final line in memoryLines) {
-      if (_isDuplicate(line, existingContents)) continue;
-      final memory = MemoryNode(
-        id: _generateMemoryId(),
-        sessionId: sessionId,
-        branchLeafId: branchLeafId,
-        content: line,
-        sourceMessageIds: sourceIds,
-        createdAt: now,
-        updatedAt: now,
+      if (isDuplicate(line, existingContents)) continue;
+      toInsert.add(
+        MemoryNode(
+          id: _generateMemoryId(),
+          sessionId: sessionId,
+          branchLeafId: branchLeafId,
+          content: line,
+          sourceMessageIds: sourceIds,
+          createdAt: now,
+          updatedAt: now,
+        ),
       );
-      await ChatDatabaseService.instance.insertMemory(memory);
     }
+    if (toInsert.isEmpty) return false;
+    await ChatDatabaseService.instance.insertMemoriesInTx(toInsert);
     return true;
   }
 
-  Future<Set<String>> _loadBranchMemoryContents({
-    required String sessionId,
-    required String branchLeafId,
-  }) async {
-    final rows = await ChatDatabaseService.instance.loadAllSessionMemories(
-      sessionId,
-    );
-    return rows
-        .where((m) => m.branchLeafId == branchLeafId)
-        .map((m) => m.content)
-        .toSet();
-  }
-
-  bool _isDuplicate(String newContent, Set<String> existingContents) {
+  @visibleForTesting
+  static bool isDuplicate(String newContent, Set<String> existingContents) {
     final normalized = newContent.trim().toLowerCase();
     if (existingContents.any((e) => e.trim().toLowerCase() == normalized)) {
       return true;
     }
     final newWords = normalized.split(RegExp(r'\s+')).toSet();
     for (final existing in existingContents) {
-      final existingWords = existing.trim().toLowerCase().split(
-        RegExp(r'\s+'),
-      ).toSet();
+      final existingWords = existing
+          .trim()
+          .toLowerCase()
+          .split(RegExp(r'\s+'))
+          .toSet();
       final intersection = newWords.intersection(existingWords).length;
       final union = newWords.union(existingWords).length;
       if (union > 0 && intersection / union > 0.7) return true;
@@ -211,26 +293,28 @@ class ChatMemoryService {
     required String branchLeafId,
     required List<String> contents,
   }) async {
-    final db = ChatDatabaseService.instance;
-    final all = await db.loadAllSessionMemories(sessionId);
-    for (final memory in all.where((m) => m.branchLeafId == branchLeafId)) {
-      await db.deleteMemory(memory.id);
-    }
     final now = DateTime.now();
+    final toInsert = <MemoryNode>[];
     for (final content in contents) {
       final trimmed = content.trim();
       if (trimmed.isEmpty) continue;
-      final memory = MemoryNode(
-        id: _generateMemoryId(),
-        sessionId: sessionId,
-        branchLeafId: branchLeafId,
-        content: trimmed,
-        isUserEdited: true,
-        createdAt: now,
-        updatedAt: now,
+      toInsert.add(
+        MemoryNode(
+          id: _generateMemoryId(),
+          sessionId: sessionId,
+          branchLeafId: branchLeafId,
+          content: trimmed,
+          isUserEdited: true,
+          createdAt: now,
+          updatedAt: now,
+        ),
       );
-      await db.insertMemory(memory);
     }
+    await ChatDatabaseService.instance.replaceBranchMemoriesInTx(
+      sessionId: sessionId,
+      branchLeafId: branchLeafId,
+      memories: toInsert,
+    );
   }
 
   Future<void> deleteMemory(String memoryId) async {
@@ -241,7 +325,8 @@ class ChatMemoryService {
     return ChatDatabaseService.instance.loadAllSessionMemories(sessionId);
   }
 
-  List<String> _parseMemoryPoints(String text) {
+  @visibleForTesting
+  static List<String> parseMemoryPoints(String text) {
     final lines = text.split('\n');
     final memories = <String>[];
     for (final line in lines) {
@@ -260,14 +345,18 @@ class ChatMemoryService {
 
   String _generateMemoryId() {
     final micros = DateTime.now().microsecondsSinceEpoch;
-    return 'memory-$micros-${_idSequence++}';
+    final seq = _idSequence++;
+    final rand = _random.nextInt(1 << 32).toRadixString(16).padLeft(8, '0');
+    return 'memory-$micros-$seq-$rand';
   }
 
   static int _idSequence = 0;
+  static final Random _random = Random();
 }
 
-ValueNotifier<MemoryExtractionConfig> memoryExtractionNotifier =
-    ValueNotifier(const MemoryExtractionConfig());
+ValueNotifier<MemoryExtractionConfig> memoryExtractionNotifier = ValueNotifier(
+  const MemoryExtractionConfig(),
+);
 
 void updateMemoryExtractionConfig({
   bool? enabled,
@@ -287,11 +376,17 @@ void updateMemoryExtractionConfig({
     interval: interval,
     recentRounds: recentRounds,
     recallCount: recallCount,
-    extractionModelId: clearExtractionModel ? null : extractionModelId,
+    extractionModelId: clearExtractionModel
+        ? null
+        : (extractionModelId ?? current.extractionModelId),
     clearExtractionModel: clearExtractionModel,
-    customExtractionPrompt: clearCustomExtractionPrompt ? '' : customExtractionPrompt,
+    customExtractionPrompt: clearCustomExtractionPrompt
+        ? ''
+        : customExtractionPrompt,
     clearCustomExtractionPrompt: clearCustomExtractionPrompt,
-    customInjectionPrompt: clearCustomInjectionPrompt ? '' : customInjectionPrompt,
+    customInjectionPrompt: clearCustomInjectionPrompt
+        ? ''
+        : customInjectionPrompt,
     clearCustomInjectionPrompt: clearCustomInjectionPrompt,
   );
   memoryExtractionNotifier.value = next;
@@ -328,18 +423,34 @@ void _persistMemoryConfig(MemoryExtractionConfig config) {
   unawaited(storage.setInt('memory_interval', config.interval));
   unawaited(storage.setInt('memory_recent_rounds', config.recentRounds));
   unawaited(storage.setInt('memory_recall_count', config.recallCount));
-  if (config.extractionModelId != null && config.extractionModelId!.isNotEmpty) {
-    unawaited(storage.setString('memory_extraction_model_id', config.extractionModelId!));
+  if (config.extractionModelId != null &&
+      config.extractionModelId!.isNotEmpty) {
+    unawaited(
+      storage.setString(
+        'memory_extraction_model_id',
+        config.extractionModelId!,
+      ),
+    );
   } else {
     unawaited(storage.remove('memory_extraction_model_id'));
   }
   if (config.customExtractionPrompt.trim().isNotEmpty) {
-    unawaited(storage.setString('memory_custom_extraction_prompt', config.customExtractionPrompt));
+    unawaited(
+      storage.setString(
+        'memory_custom_extraction_prompt',
+        config.customExtractionPrompt,
+      ),
+    );
   } else {
     unawaited(storage.remove('memory_custom_extraction_prompt'));
   }
   if (config.customInjectionPrompt.trim().isNotEmpty) {
-    unawaited(storage.setString('memory_custom_injection_prompt', config.customInjectionPrompt));
+    unawaited(
+      storage.setString(
+        'memory_custom_injection_prompt',
+        config.customInjectionPrompt,
+      ),
+    );
   } else {
     unawaited(storage.remove('memory_custom_injection_prompt'));
   }

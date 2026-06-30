@@ -85,7 +85,12 @@ class OpenAICompatibleApiService {
   static final OpenAICompatibleApiService instance =
       OpenAICompatibleApiService._();
 
-  static const Duration _timeout = Duration(seconds: 12);
+  // 建立连接 / 短请求（models、连通性测试）的超时。
+  static const Duration _connectionTimeout = Duration(seconds: 12);
+  // 聊天补全请求等待响应头的超时，推理类模型首字节可能需要较长时间。
+  static const Duration _chatCompletionTimeout = Duration(seconds: 120);
+  // 流式响应中相邻两次数据之间的空闲超时，超过则视为卡住。
+  static const Duration _streamIdleTimeout = Duration(seconds: 60);
 
   Future<List<String>> fetchModels(ApiConfig config) async {
     _validateConfig(config);
@@ -195,6 +200,7 @@ class OpenAICompatibleApiService {
         headers: _buildHeaders(config),
         body: requestBody,
         cancellationToken: cancellationToken,
+        responseTimeout: _chatCompletionTimeout,
       );
     } on ChatCompletionCancelledException {
       rethrow;
@@ -302,13 +308,15 @@ class OpenAICompatibleApiService {
     var failureLogged = false;
     try {
       cancellationToken?.throwIfCancelled();
-      final request = await client.openUrl('POST', endpoint).timeout(_timeout);
+      final request = await client
+          .openUrl('POST', endpoint)
+          .timeout(_connectionTimeout);
       _buildHeaders(config).forEach(request.headers.set);
       request.headers.set('Content-Type', 'application/json; charset=utf-8');
       request.add(utf8.encode(jsonEncode(sanitizedBody)));
 
       cancellationToken?.throwIfCancelled();
-      final response = await request.close().timeout(_timeout);
+      final response = await request.close().timeout(_chatCompletionTimeout);
       statusCode = response.statusCode;
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final responseBody = await response.transform(utf8.decoder).join();
@@ -335,7 +343,7 @@ class OpenAICompatibleApiService {
           .transform(utf8.decoder)
           .transform(const LineSplitter());
       final dataLines = <String>[];
-      await for (final line in lineStream) {
+      await for (final line in lineStream.timeout(_streamIdleTimeout)) {
         cancellationToken?.throwIfCancelled();
         final trimmedLine = line.trimRight();
         if (trimmedLine.isEmpty) {
@@ -504,12 +512,15 @@ class OpenAICompatibleApiService {
     required Map<String, String> headers,
     Map<String, dynamic>? body,
     ChatCompletionCancelToken? cancellationToken,
+    Duration responseTimeout = _connectionTimeout,
   }) async {
     final client = HttpClient();
     cancellationToken?._attach(client);
     try {
       cancellationToken?.throwIfCancelled();
-      final request = await client.openUrl(method, uri).timeout(_timeout);
+      final request = await client
+          .openUrl(method, uri)
+          .timeout(_connectionTimeout);
       headers.forEach(request.headers.set);
       if (body != null) {
         final sanitizedBody = _sanitizeJsonValue(body) as Map<String, dynamic>;
@@ -517,7 +528,7 @@ class OpenAICompatibleApiService {
         request.add(utf8.encode(jsonEncode(sanitizedBody)));
       }
       cancellationToken?.throwIfCancelled();
-      final response = await request.close().timeout(_timeout);
+      final response = await request.close().timeout(responseTimeout);
       final responseBody = await response.transform(utf8.decoder).join();
       return _HttpTextResponse(
         statusCode: response.statusCode,

@@ -122,23 +122,25 @@ class ChatService {
             thinkingChain: completion.thinkingChain,
           );
 
-      unawaited(_tryAutoExtractMemories(
-        sessionId: activeSession.id,
-        branchLeafId: assistantNode.id,
-        chatMessages: chatMessages,
-        userMessage: ChatMessage(
-          id: userNode.id,
-          text: userNode.text,
-          isMe: true,
+      unawaited(
+        _tryAutoExtractMemories(
+          sessionId: activeSession.id,
+          branchLeafId: assistantNode.id,
+          chatMessages: chatMessages,
+          userMessage: ChatMessage(
+            id: userNode.id,
+            text: userNode.text,
+            isMe: true,
+          ),
+          assistantMessage: ChatMessage(
+            id: assistantNode.id,
+            text: assistantNode.text,
+            isMe: false,
+          ),
+          characterName: character.name,
+          userName: userSetting.name,
         ),
-        assistantMessage: ChatMessage(
-          id: assistantNode.id,
-          text: assistantNode.text,
-          isMe: false,
-        ),
-        characterName: character.name,
-        userName: userSetting.name,
-      ));
+      );
 
       return ChatSendResult(
         userNode: userNode,
@@ -237,6 +239,26 @@ class ChatService {
             text: completion.text,
             thinkingChain: completion.thinkingChain,
           );
+
+      unawaited(
+        _tryAutoExtractMemories(
+          sessionId: session.id,
+          branchLeafId: assistantNode.id,
+          chatMessages: historyBeforeUserMessage,
+          userMessage: ChatMessage(
+            id: userMessage.id,
+            text: userMessage.text,
+            isMe: true,
+          ),
+          assistantMessage: ChatMessage(
+            id: assistantNode.id,
+            text: assistantNode.text,
+            isMe: false,
+          ),
+          characterName: character.name,
+          userName: userSetting.name,
+        ),
+      );
 
       return ChatSendResult(
         userNode: ChatNode(
@@ -411,21 +433,16 @@ class ChatService {
     if (!memoryConfig.enabled) return;
     if (memoryConfig.interval <= 0) return;
 
-    final allMessages = [
-      ...chatMessages,
-      userMessage,
-      assistantMessage,
-    ];
+    final allMessages = [...chatMessages, userMessage, assistantMessage];
     final pathIds = chatMessages
         .where((m) => m.id != null)
         .map((m) => m.id!)
         .toList();
-    final newAssistantCount =
-        await _countNewAssistantSinceLastExtraction(
-          sessionId: sessionId,
-          allMessages: allMessages,
-          pathIds: pathIds,
-        );
+    final newAssistantCount = await _countNewAssistantSinceLastExtraction(
+      sessionId: sessionId,
+      allMessages: allMessages,
+      pathIds: pathIds,
+    );
     if (newAssistantCount < memoryConfig.interval) return;
 
     await ChatMemoryService.instance.tryExtractAndSave(

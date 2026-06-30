@@ -122,7 +122,7 @@ class ChatVariableService {
       case 'lastcharmessage':
         return state.lastCharMessage;
       case 'memory':
-        return _formatMemoryContext(state.memoryContext);
+        return ChatMemoryService.formatMemoryContext(state.memoryContext);
       case 'trim':
         return _trimMarker;
       case 'noop':
@@ -144,15 +144,6 @@ class ChatVariableService {
       default:
         return fullMatch;
     }
-  }
-
-  static String _formatMemoryContext(List<String> memories) {
-    if (memories.isEmpty) return '';
-    final config = memoryExtractionNotifier.value;
-    final header = config.hasCustomInjectionPrompt
-        ? config.customInjectionPrompt.trim()
-        : '以下是角色记得的关于过去事件的信息：';
-    return '$header\n${memories.map((m) => '- $m').join('\n')}';
   }
 
   static String _replaceBasicPlaceholders(

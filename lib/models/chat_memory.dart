@@ -42,19 +42,18 @@ class MemoryExtractionConfig {
   bool get hasCustomExtractionPrompt =>
       customExtractionPrompt.trim().isNotEmpty;
 
-  bool get hasCustomInjectionPrompt =>
-      customInjectionPrompt.trim().isNotEmpty;
+  bool get hasCustomInjectionPrompt => customInjectionPrompt.trim().isNotEmpty;
 
   MemoryExtractionConfig copyWith({
     bool? enabled,
     int? interval,
     int? recentRounds,
     int? recallCount,
-    Object? extractionModelId,
+    Object? extractionModelId = _unset,
     bool clearExtractionModel = false,
-    Object? customExtractionPrompt,
+    Object? customExtractionPrompt = _unset,
     bool clearCustomExtractionPrompt = false,
-    Object? customInjectionPrompt,
+    Object? customInjectionPrompt = _unset,
     bool clearCustomInjectionPrompt = false,
   }) {
     return MemoryExtractionConfig(
@@ -65,18 +64,20 @@ class MemoryExtractionConfig {
       extractionModelId: clearExtractionModel
           ? null
           : (extractionModelId == _unset
-              ? this.extractionModelId
-              : extractionModelId as String?),
+                ? this.extractionModelId
+                : extractionModelId as String?),
       customExtractionPrompt: clearCustomExtractionPrompt
           ? ''
           : (customExtractionPrompt == _unset
-              ? this.customExtractionPrompt
-              : (customExtractionPrompt as String?) ?? this.customExtractionPrompt),
+                ? this.customExtractionPrompt
+                : (customExtractionPrompt as String?) ??
+                      this.customExtractionPrompt),
       customInjectionPrompt: clearCustomInjectionPrompt
           ? ''
           : (customInjectionPrompt == _unset
-              ? this.customInjectionPrompt
-              : (customInjectionPrompt as String?) ?? this.customInjectionPrompt),
+                ? this.customInjectionPrompt
+                : (customInjectionPrompt as String?) ??
+                      this.customInjectionPrompt),
     );
   }
 }
