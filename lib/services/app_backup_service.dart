@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import 'app_data_service.dart';
@@ -195,7 +195,11 @@ class AppBackupService {
         }
         final bytes = await entity.readAsBytes();
         archive.add(
-          ArchiveFile('$_fontsRoot/${p.basename(entity.path)}', bytes.length, bytes),
+          ArchiveFile(
+            '$_fontsRoot/${p.basename(entity.path)}',
+            bytes.length,
+            bytes,
+          ),
         );
       }
     }
@@ -236,7 +240,13 @@ class AppBackupService {
           const JsonEncoder.withIndent('  ').convert(data),
         );
       }
-    } catch (_) {}
+    } on Object catch (error, stack) {
+      // 迁移失败不应中断恢复主流程，仅记录日志便于事后排查。
+      debugPrint(
+        'app_backup_service: _migrateCharacterIndex failed: '
+        '$error\n$stack',
+      );
+    }
   }
 
   Future<void> _migrateCharacterCards(String dataDir) async {
@@ -258,18 +268,20 @@ class AppBackupService {
             const JsonEncoder.withIndent('  ').convert(data),
           );
         }
-      } catch (_) {}
+      } on Object catch (error, stack) {
+        // 单个角色卡迁移失败不应影响其他卡片，仅记录日志。
+        debugPrint(
+          'app_backup_service: _migrateCharacterCards failed for '
+          '${entity.path}: $error\n$stack',
+        );
+      }
     }
   }
 
   /// 将 Map 中指定 key 的路径从绝对路径转为相对路径
   /// 旧格式：/data/user/0/.../pocket_inn_data/characters/images/xxx.png
   /// 新格式：characters/images/xxx.png
-  bool _relativizePath(
-    Map<String, dynamic> data,
-    String key,
-    String dataDir,
-  ) {
+  bool _relativizePath(Map<String, dynamic> data, String key, String dataDir) {
     final path = data[key] as String?;
     if (path == null || path.isEmpty) return false;
 

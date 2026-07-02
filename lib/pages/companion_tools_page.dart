@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/error_handler.dart';
+
 class CompanionToolsPage extends StatelessWidget {
   const CompanionToolsPage({super.key});
 
   Future<void> _openTool(BuildContext context, _ToolItem item) async {
-    final messenger = ScaffoldMessenger.of(context);
     var launched = false;
     try {
-      launched = await launchUrl(
-        Uri.parse(item.url),
-        mode: item.launchMode,
-      );
-    } catch (_) {
+      launched = await launchUrl(Uri.parse(item.url), mode: item.launchMode);
+    } on Object catch (error) {
+      debugPrint('companion_tools_page: launchUrl failed: $error');
       launched = false;
     }
-    if (!launched) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('无法打开 ${item.title}')),
+    if (!launched && context.mounted) {
+      handleAppException(
+        context,
+        toAppException(
+          StateError('launchUrl returned false'),
+          fallbackMessage: '无法打开 ${item.title}',
+        ),
       );
     }
   }

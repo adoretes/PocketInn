@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../data/app_settings.dart';
 import 'storage_service.dart';
 
@@ -188,8 +190,12 @@ class AppSettingsService {
             legacyCustomFontFamily: legacyCustomFontFamily,
           );
         }
-      } catch (_) {
-        // Ignore malformed persisted theme configs and fall back to legacy keys.
+      } on Object catch (error, stack) {
+        // 持久化主题配置损坏时回退到 legacy keys，仅记录日志。
+        debugPrint(
+          'app_settings_service: theme configs parse failed: '
+          '$error\n$stack',
+        );
       }
     }
 
@@ -439,7 +445,9 @@ class AppSettingsService {
   Map<String, dynamic> _encodeTextStyleConfig(ChatTextStyleConfig config) {
     return <String, dynamic>{
       'paletteIndex': _normalizePaletteIndex(config.paletteIndex, 0),
-      'darkPaletteIndex': _normalizeNullablePaletteIndex(config.darkPaletteIndex),
+      'darkPaletteIndex': _normalizeNullablePaletteIndex(
+        config.darkPaletteIndex,
+      ),
       'fontStyleMode': config.fontStyleMode.index,
       'opacity': _normalizeOpacity(config.opacity, 1.0),
     };

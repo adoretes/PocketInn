@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../models/api/openai_chat_completion_chunk.dart';
+import '../models/api/openai_chat_completion_response.dart';
+import '../models/api/openai_models_response.dart';
 import '../models/api_config.dart';
 import 'api_request_log_service.dart';
 
@@ -110,21 +113,23 @@ class OpenAICompatibleApiService {
       );
     }
 
-    final decoded = jsonDecode(bodyText);
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('模型接口返回不是合法 JSON 对象');
-    }
-
-    final data = decoded['data'];
-    if (data is! List) {
-      return <String>[];
+    final OpenAIModelsResponse modelsResponse;
+    try {
+      final decoded = jsonDecode(bodyText);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('模型接口返回不是合法 JSON 对象');
+      }
+      modelsResponse = OpenAIModelsResponse.fromJson(decoded);
+    } on FormatException {
+      rethrow;
+    } on Object catch (error) {
+      throw FormatException('模型接口返回解析失败: $error');
     }
 
     final models =
-        data
-            .whereType<Map>()
-            .map((item) => item['id']?.toString().trim() ?? '')
-            .where((item) => item.isNotEmpty)
+        modelsResponse.data
+            .map((item) => item.id.trim())
+            .where((id) => id.isNotEmpty)
             .toSet()
             .toList()
           ..sort();
@@ -237,33 +242,30 @@ class OpenAICompatibleApiService {
       );
     }
 
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('聊天接口返回不是合法 JSON 对象');
+    final OpenAIChatCompletionResponse completionResponse;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('聊天接口返回不是合法 JSON 对象');
+      }
+      completionResponse = OpenAIChatCompletionResponse.fromJson(decoded);
+    } on FormatException {
+      rethrow;
+    } on Object catch (error) {
+      throw FormatException('聊天接口返回解析失败: $error');
     }
 
-    final choices = decoded['choices'];
-    if (choices is! List || choices.isEmpty) {
+    if (completionResponse.choices.isEmpty) {
       throw const FormatException('聊天接口返回缺少 choices');
     }
 
-    final firstChoice = choices.first;
-    if (firstChoice is! Map) {
-      throw const FormatException('聊天接口返回的 choice 格式不正确');
-    }
-
-    final choice = Map<String, dynamic>.from(firstChoice);
-    final message = choice['message'];
-    final messageMap = message is Map<String, dynamic>
-        ? message
-        : (message is Map ? Map<String, dynamic>.from(message) : null);
-
-    final text = _extractResponseText(messageMap, choice).trim();
+    final firstChoice = completionResponse.choices.first;
+    final text = firstChoice.resolvedText.trim();
     if (text.isEmpty) {
       throw const FormatException('聊天接口返回了空回复');
     }
 
-    final thinkingChain = _extractReasoning(messageMap, choice).trim();
+    final thinkingChain = firstChoice.resolvedReasoning.trim();
     await ApiRequestLogService.instance.append(
       configName: config.name,
       model: config.model,
@@ -580,52 +582,6 @@ class OpenAICompatibleApiService {
     return '${value.substring(0, maxLength)}...';
   }
 
-  String _extractResponseText(
-    Map<String, dynamic>? message,
-    Map<String, dynamic> choice,
-  ) {
-    final candidates = [
-      message?['content'],
-      message?['text'],
-      message?['refusal'],
-      choice['text'],
-      choice['content'],
-    ];
-
-    for (final candidate in candidates) {
-      final text = _extractStructuredText(candidate).trim();
-      if (text.isNotEmpty) {
-        return text;
-      }
-    }
-
-    return '';
-  }
-
-  String _extractReasoning(
-    Map<String, dynamic>? message,
-    Map<String, dynamic> choice,
-  ) {
-    final candidates = [
-      message?['reasoning_content'],
-      message?['reasoning'],
-      message?['thinking'],
-      message?['reasoning_text'],
-      choice['reasoning_content'],
-      choice['reasoning'],
-      choice['thinking'],
-    ];
-
-    for (final candidate in candidates) {
-      final text = _extractStructuredText(candidate).trim();
-      if (text.isNotEmpty) {
-        return text;
-      }
-    }
-
-    return '';
-  }
-
   ChatCompletionProgress? _parseStreamingEvent(String data) {
     if (data.isEmpty) {
       return null;
@@ -634,113 +590,35 @@ class OpenAICompatibleApiService {
       return const ChatCompletionProgress(done: true);
     }
 
-    final decoded = jsonDecode(data);
-    if (decoded is! Map<String, dynamic>) {
-      return null;
-    }
-    final choices = decoded['choices'];
-    if (choices is! List || choices.isEmpty) {
+    final OpenAIChatCompletionChunk chunk;
+    try {
+      final decoded = jsonDecode(data);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      chunk = OpenAIChatCompletionChunk.fromJson(decoded);
+    } on Object {
       return null;
     }
 
-    final firstChoice = choices.first;
-    if (firstChoice is! Map) {
+    if (chunk.choices.isEmpty) {
       return null;
     }
-    final choice = Map<String, dynamic>.from(firstChoice);
-    final delta = choice['delta'];
-    final deltaMap = delta is Map<String, dynamic>
-        ? delta
-        : (delta is Map ? Map<String, dynamic>.from(delta) : null);
 
-    final textDelta = _extractStreamingText(deltaMap, choice);
-    final thinkingDelta = _extractStreamingReasoning(deltaMap, choice);
-    final finishReason = choice['finish_reason']?.toString();
+    final choice = chunk.choices.first;
+    final textDelta = choice.textDelta;
+    final thinkingDelta = choice.reasoningDelta;
+    final isDone = choice.isDone;
 
-    if (textDelta.isEmpty && thinkingDelta.isEmpty && finishReason == null) {
+    if (textDelta.isEmpty && thinkingDelta.isEmpty && !isDone) {
       return null;
     }
 
     return ChatCompletionProgress(
       textDelta: textDelta,
       thinkingDelta: thinkingDelta,
-      done: finishReason != null,
+      done: isDone,
     );
-  }
-
-  String _extractStreamingText(
-    Map<String, dynamic>? delta,
-    Map<String, dynamic> choice,
-  ) {
-    final candidates = [
-      delta?['content'],
-      delta?['text'],
-      choice['text'],
-      choice['content'],
-    ];
-    for (final candidate in candidates) {
-      final text = _extractStructuredText(candidate);
-      if (text.isNotEmpty) {
-        return text;
-      }
-    }
-    return '';
-  }
-
-  String _extractStreamingReasoning(
-    Map<String, dynamic>? delta,
-    Map<String, dynamic> choice,
-  ) {
-    final candidates = [
-      delta?['reasoning_content'],
-      delta?['reasoning'],
-      delta?['thinking'],
-      choice['reasoning_content'],
-      choice['reasoning'],
-      choice['thinking'],
-    ];
-    for (final candidate in candidates) {
-      final text = _extractStructuredText(candidate);
-      if (text.isNotEmpty) {
-        return text;
-      }
-    }
-    return '';
-  }
-
-  String _extractStructuredText(Object? value) {
-    if (value == null) {
-      return '';
-    }
-    if (value is String) {
-      return value;
-    }
-    if (value is List) {
-      final buffer = <String>[];
-      for (final item in value) {
-        final text = _extractStructuredText(item).trim();
-        if (text.isNotEmpty) {
-          buffer.add(text);
-        }
-      }
-      return buffer.join('\n');
-    }
-    if (value is Map) {
-      final map = Map<String, dynamic>.from(value);
-      final candidates = [
-        map['text'],
-        map['content'],
-        map['value'],
-        map['output_text'],
-      ];
-      for (final candidate in candidates) {
-        final text = _extractStructuredText(candidate).trim();
-        if (text.isNotEmpty) {
-          return text;
-        }
-      }
-    }
-    return '';
   }
 
   Object? _sanitizeJsonValue(Object? value) {

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/error_handler.dart';
+
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
 
@@ -72,9 +74,7 @@ class _AboutPageState extends State<AboutPage> {
                 _UpdateLogItem(
                   version: 'v1.1.5',
                   date: '2026-06-30',
-                  changes: [
-                    '优化记忆系统',
-                  ],
+                  changes: ['优化记忆系统'],
                 ),
                 _UpdateLogItem(
                   version: 'v1.1.4',
@@ -103,9 +103,7 @@ class _AboutPageState extends State<AboutPage> {
                 _UpdateLogItem(
                   version: 'v1.1.2',
                   date: '2026-06-13',
-                  changes: [
-                    '移除独立记忆节点，优化记忆展示方式',
-                  ],
+                  changes: ['移除独立记忆节点，优化记忆展示方式'],
                 ),
                 _UpdateLogItem(
                   version: 'v1.1.1',
@@ -223,14 +221,19 @@ class _AboutPageState extends State<AboutPage> {
         _githubUri,
         mode: LaunchMode.externalApplication,
       );
-    } catch (_) {
+    } on Object catch (error) {
+      debugPrint('about_page: launchUrl failed: $error');
       launched = false;
     }
 
     if (!launched && mounted) {
-      ScaffoldMessenger.of(
+      handleAppException(
         context,
-      ).showSnackBar(const SnackBar(content: Text('无法打开 GitHub 链接')));
+        toAppException(
+          StateError('launchUrl returned false'),
+          fallbackMessage: '无法打开 GitHub 链接',
+        ),
+      );
     }
   }
 }

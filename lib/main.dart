@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/error_handler.dart';
 import 'data/api_configs.dart';
 import 'data/app_settings.dart';
 import 'data/mock_user_settings.dart';
@@ -18,6 +19,10 @@ import 'services/world_book_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 注册全局错误处理：避免 release 模式红屏，统一记录未捕获异常
+  ErrorWidget.builder = buildAppErrorWidget;
+  registerGlobalErrorHandlers();
 
   // 初始化储存服务
   await StorageService.instance.initialize();

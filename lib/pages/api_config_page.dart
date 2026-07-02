@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/error_handler.dart';
 import '../data/api_configs.dart';
 import '../models/api_config.dart';
 import '../services/api_config_service.dart';
@@ -128,8 +129,12 @@ class _OpenAICompatibleConfigPageState
       await _persistConfigs(successMessage: '配置 "${updated.name}" 已保存');
     } on FormatException catch (error) {
       _showError(error.message.toString());
-    } on Object catch (_) {
-      _showError('自定义 body 不是合法 JSON');
+    } on Object catch (error) {
+      if (!mounted) return;
+      handleAppException(
+        context,
+        toAppException(error, fallbackMessage: '自定义 body 不是合法 JSON'),
+      );
     }
   }
 
@@ -190,8 +195,9 @@ class _OpenAICompatibleConfigPageState
       _loadingModelIds.add(configId);
     });
     try {
-      final models =
-          await OpenAICompatibleApiService.instance.fetchModels(draft);
+      final models = await OpenAICompatibleApiService.instance.fetchModels(
+        draft,
+      );
       if (!mounted) return;
       setState(() {
         _modelsByConfigId[configId] = models;
@@ -256,14 +262,13 @@ class _OpenAICompatibleConfigPageState
                 )
               : const Icon(Icons.arrow_drop_down),
           dropdownMenuEntries: models
-              .map((model) => DropdownMenuEntry<String>(
-                    value: model,
-                    label: model,
-                    labelWidget: Text(
-                      model,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ))
+              .map(
+                (model) => DropdownMenuEntry<String>(
+                  value: model,
+                  label: model,
+                  labelWidget: Text(model, overflow: TextOverflow.ellipsis),
+                ),
+              )
               .toList(),
           onSelected: (value) {
             if (value != null) {
@@ -538,8 +543,8 @@ class _OpenAICompatibleConfigPageState
       minLines: obscureText
           ? 1
           : maxLines > 1
-              ? 4
-              : 1,
+          ? 4
+          : 1,
       style: const TextStyle(fontSize: 14),
     );
   }

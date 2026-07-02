@@ -104,7 +104,11 @@ class ApiRequestLogService {
               )
               .toList(growable: false);
         }
-      } catch (_) {
+      } on Object catch (error, stack) {
+        debugPrint(
+          'api_request_log_service: initialize parse failed: '
+          '$error\n$stack',
+        );
         logsNotifier.value = const <ApiRequestLogEntry>[];
       }
     }
@@ -174,7 +178,11 @@ class ApiRequestLogService {
       } else {
         logsNotifier.value = const <ApiRequestLogEntry>[];
       }
-    } catch (_) {
+    } on Object catch (error, stack) {
+      debugPrint(
+        'api_request_log_service: reload parse failed: '
+        '$error\n$stack',
+      );
       logsNotifier.value = const <ApiRequestLogEntry>[];
     }
     _initialized = true;
