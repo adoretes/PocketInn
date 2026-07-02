@@ -1,34 +1,31 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
+
+part 'chat_message.freezed.dart';
+part 'chat_message.g.dart';
+
 /// 聊天消息数据模型
-class ChatMessage {
-  final String? id;
-  final String? sessionId;
-  final String? parentId;
-  final String text;
-  final bool isMe;
+@freezed
+abstract class ChatMessage with _$ChatMessage {
+  const ChatMessage._();
 
-  /// 当前消息索引（从1开始）
-  final int index;
+  const factory ChatMessage({
+    String? id,
+    String? sessionId,
+    String? parentId,
+    required String text,
+    required bool isMe,
+    /// 当前消息索引（从1开始）
+    @Default(1) int index,
+    /// 该角色的总消息数
+    @Default(1) int total,
+    /// 同级消息 ID 列表，顺序与 index/total 对应
+    @Default([]) List<String> siblingIds,
+    /// 思考链内容（可选）
+    String? thinkingChain,
+  }) = _ChatMessage;
 
-  /// 该角色的总消息数
-  final int total;
-
-  /// 同级消息 ID 列表，顺序与 index/total 对应
-  final List<String> siblingIds;
-
-  /// 思考链内容（可选）
-  final String? thinkingChain;
-
-  ChatMessage({
-    this.id,
-    this.sessionId,
-    this.parentId,
-    required this.text,
-    required this.isMe,
-    this.index = 1,
-    this.total = 1,
-    this.siblingIds = const [],
-    this.thinkingChain,
-  });
+  factory ChatMessage.fromJson(Map<String, dynamic> json) =>
+      _$ChatMessageFromJson(json);
 
   /// 是否有多条消息（需要显示<1/x>按钮）
   bool get hasMultiple => total > 1;

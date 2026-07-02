@@ -187,7 +187,7 @@ void main() {
 
     test('clearExtractionModel 置为 null', () {
       const config = MemoryExtractionConfig(extractionModelId: 'model-1');
-      final next = config.copyWith(clearExtractionModel: true);
+      final next = config.copyWith(extractionModelId: null);
       expect(next.extractionModelId, isNull);
     });
 
@@ -205,7 +205,7 @@ void main() {
 
     test('clearCustomExtractionPrompt 置为空字符串', () {
       const config = MemoryExtractionConfig(customExtractionPrompt: '原提示词');
-      final next = config.copyWith(clearCustomExtractionPrompt: true);
+      final next = config.copyWith(customExtractionPrompt: '');
       expect(next.customExtractionPrompt, '');
     });
 

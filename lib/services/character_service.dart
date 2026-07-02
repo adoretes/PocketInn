@@ -510,10 +510,10 @@ class CharacterService {
         originalImagePath: imageData.originalImagePath,
         thumbnailPath: imageData.thumbnailPath,
         worldBookId: prepared.worldBookId,
-        clearWorldBookId: prepared.worldBookId == null,
         characterBookExtensions: prepared.characterBookExtensions,
-        cardColorValue: imageData.cardColorValue,
-        clearCardColorValue: imageData.clearCardColorValue,
+        cardColorValue: imageData.clearCardColorValue
+            ? null
+            : (imageData.cardColorValue ?? existing.cardColorValue),
       ),
     );
   }
@@ -569,10 +569,10 @@ class CharacterService {
       originalImagePath: imageData.originalImagePath,
       thumbnailPath: imageData.thumbnailPath,
       worldBookId: prepared.worldBookId,
-      clearWorldBookId: prepared.worldBookId == null,
       characterBookExtensions: prepared.characterBookExtensions,
-      cardColorValue: imageData.cardColorValue,
-      clearCardColorValue: imageData.clearCardColorValue,
+      cardColorValue: imageData.clearCardColorValue
+          ? null
+          : (imageData.cardColorValue ?? current.cardColorValue),
     );
     await save(merged);
 

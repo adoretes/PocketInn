@@ -1,6 +1,11 @@
+// ignore_for_file: invalid_annotation_target
+
 import 'package:flutter/material.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
 
 import '../services/app_settings_service.dart';
+
+part 'app_settings.freezed.dart';
 
 enum AppColorMode {
   system('跟随系统', ThemeMode.system),
@@ -102,145 +107,77 @@ enum ChatTextFontStyleMode {
   final String label;
 }
 
-@immutable
-class ChatTextStyleConfig {
-  const ChatTextStyleConfig({
-    this.paletteIndex = 0,
-    this.darkPaletteIndex,
-    this.fontStyleMode = ChatTextFontStyleMode.platform,
-    this.opacity = 1.0,
-  });
+@freezed
+abstract class ChatTextStyleConfig with _$ChatTextStyleConfig {
+  const ChatTextStyleConfig._();
 
-  final int paletteIndex;
-  final int? darkPaletteIndex;
-  final ChatTextFontStyleMode fontStyleMode;
-  final double opacity;
+  const factory ChatTextStyleConfig({
+    @Default(0) int paletteIndex,
+    int? darkPaletteIndex,
+    @Default(ChatTextFontStyleMode.platform)
+    ChatTextFontStyleMode fontStyleMode,
+    @Default(1.0) double opacity,
+  }) = _ChatTextStyleConfig;
 
   int resolvePaletteIndex(Brightness brightness) {
     return brightness == Brightness.dark
         ? (darkPaletteIndex ?? paletteIndex)
         : paletteIndex;
   }
-
-  ChatTextStyleConfig copyWith({
-    int? paletteIndex,
-    Object? darkPaletteIndex = _unset,
-    ChatTextFontStyleMode? fontStyleMode,
-    double? opacity,
-  }) {
-    return ChatTextStyleConfig(
-      paletteIndex: paletteIndex ?? this.paletteIndex,
-      darkPaletteIndex: darkPaletteIndex == _unset
-          ? this.darkPaletteIndex
-          : darkPaletteIndex as int?,
-      fontStyleMode: fontStyleMode ?? this.fontStyleMode,
-      opacity: opacity ?? this.opacity,
-    );
-  }
 }
 
-@immutable
-class ChatTextThemeSettings {
-  const ChatTextThemeSettings({
-    this.quoteStyle = AppQuoteStyle.curlyDouble,
-    this.enableMessageTextShadow = false,
-    this.bodyTextColorPaletteIndex,
-    this.bodyTextColorDarkPaletteIndex,
-    this.quotedTextStyle = const ChatTextStyleConfig(
+@freezed
+abstract class ChatTextThemeSettings with _$ChatTextThemeSettings {
+  const ChatTextThemeSettings._();
+
+  const factory ChatTextThemeSettings({
+    @Default(AppQuoteStyle.curlyDouble) AppQuoteStyle quoteStyle,
+    @Default(false) bool enableMessageTextShadow,
+    int? bodyTextColorPaletteIndex,
+    int? bodyTextColorDarkPaletteIndex,
+    @Default(ChatTextStyleConfig(
       paletteIndex: 0,
       fontStyleMode: ChatTextFontStyleMode.bold,
       opacity: 1.0,
-    ),
-    this.bracketTextStyle = const ChatTextStyleConfig(
+    ))
+    ChatTextStyleConfig quotedTextStyle,
+    @Default(ChatTextStyleConfig(
       paletteIndex: 6,
       fontStyleMode: ChatTextFontStyleMode.platform,
       opacity: 0.9,
-    ),
-    this.italicTextStyle = const ChatTextStyleConfig(
+    ))
+    ChatTextStyleConfig bracketTextStyle,
+    @Default(ChatTextStyleConfig(
       paletteIndex: 1,
       fontStyleMode: ChatTextFontStyleMode.italic,
       opacity: 0.65,
-    ),
-    this.boldTextStyle = const ChatTextStyleConfig(
+    ))
+    ChatTextStyleConfig italicTextStyle,
+    @Default(ChatTextStyleConfig(
       paletteIndex: 4,
       fontStyleMode: ChatTextFontStyleMode.bold,
       opacity: 1.0,
-    ),
-  });
-
-  final AppQuoteStyle quoteStyle;
-  final bool enableMessageTextShadow;
-  final int? bodyTextColorPaletteIndex;
-  final int? bodyTextColorDarkPaletteIndex;
-  final ChatTextStyleConfig quotedTextStyle;
-  final ChatTextStyleConfig bracketTextStyle;
-  final ChatTextStyleConfig italicTextStyle;
-  final ChatTextStyleConfig boldTextStyle;
+    ))
+    ChatTextStyleConfig boldTextStyle,
+  }) = _ChatTextThemeSettings;
 
   int? resolveBodyTextColorPaletteIndex(Brightness brightness) {
     return brightness == Brightness.dark
         ? (bodyTextColorDarkPaletteIndex ?? bodyTextColorPaletteIndex)
         : bodyTextColorPaletteIndex;
   }
-
-  ChatTextThemeSettings copyWith({
-    AppQuoteStyle? quoteStyle,
-    bool? enableMessageTextShadow,
-    Object? bodyTextColorPaletteIndex = _unset,
-    Object? bodyTextColorDarkPaletteIndex = _unset,
-    ChatTextStyleConfig? quotedTextStyle,
-    ChatTextStyleConfig? bracketTextStyle,
-    ChatTextStyleConfig? italicTextStyle,
-    ChatTextStyleConfig? boldTextStyle,
-  }) {
-    return ChatTextThemeSettings(
-      quoteStyle: quoteStyle ?? this.quoteStyle,
-      enableMessageTextShadow:
-          enableMessageTextShadow ?? this.enableMessageTextShadow,
-      bodyTextColorPaletteIndex: bodyTextColorPaletteIndex == _unset
-          ? this.bodyTextColorPaletteIndex
-          : bodyTextColorPaletteIndex as int?,
-      bodyTextColorDarkPaletteIndex: bodyTextColorDarkPaletteIndex == _unset
-          ? this.bodyTextColorDarkPaletteIndex
-          : bodyTextColorDarkPaletteIndex as int?,
-      quotedTextStyle: quotedTextStyle ?? this.quotedTextStyle,
-      bracketTextStyle: bracketTextStyle ?? this.bracketTextStyle,
-      italicTextStyle: italicTextStyle ?? this.italicTextStyle,
-      boldTextStyle: boldTextStyle ?? this.boldTextStyle,
-    );
-  }
 }
 
-const Object _unset = Object();
+@freezed
+abstract class AppThemeConfig with _$AppThemeConfig {
+  const AppThemeConfig._();
 
-@immutable
-class AppThemeConfig {
-  const AppThemeConfig({
-    required this.themeColorIndex,
-    this.customFontFamily,
-    this.chatTextTheme = const ChatTextThemeSettings(),
-  });
-
-  final int themeColorIndex;
-
-  /// 用户自定义字体族名称，null 表示使用系统默认字体
-  final String? customFontFamily;
-
-  final ChatTextThemeSettings chatTextTheme;
-
-  AppThemeConfig copyWith({
-    int? themeColorIndex,
-    Object? customFontFamily = _unset,
-    ChatTextThemeSettings? chatTextTheme,
-  }) {
-    return AppThemeConfig(
-      themeColorIndex: themeColorIndex ?? this.themeColorIndex,
-      customFontFamily: customFontFamily == _unset
-          ? this.customFontFamily
-          : customFontFamily as String?,
-      chatTextTheme: chatTextTheme ?? this.chatTextTheme,
-    );
-  }
+  const factory AppThemeConfig({
+    required int themeColorIndex,
+    /// 用户自定义字体族名称，null 表示使用系统默认字体
+    String? customFontFamily,
+    @Default(ChatTextThemeSettings()) ChatTextThemeSettings chatTextTheme,
+  }) = _AppThemeConfig;
 }
 
 const Map<AppThemePreset, AppThemeConfig> defaultAppThemeConfigs =
@@ -376,54 +313,24 @@ const Map<AppThemePreset, AppThemeConfig> defaultAppThemeConfigs =
       ),
     };
 
-@immutable
-class AppSettings {
-  const AppSettings({
-    this.colorMode = AppColorMode.system,
-    this.themePreset = AppThemePreset.sunset,
-    this.themeConfigs = defaultAppThemeConfigs,
-    this.showAvatar = true,
-    this.backgroundOpacity = 0.85,
-    this.inputGlassEffect = true,
-    this.showApiRequestLogEntry = true,
-  });
+@freezed
+abstract class AppSettings with _$AppSettings {
+  const AppSettings._();
 
-  final AppColorMode colorMode;
-  final AppThemePreset themePreset;
-  final Map<AppThemePreset, AppThemeConfig> themeConfigs;
-
-  /// 是否显示聊天头像
-  final bool showAvatar;
-
-  /// 聊天背景透明度 (0.0 - 1.0)
-  final double backgroundOpacity;
-
-  /// 输入框是否使用毛玻璃效果
-  final bool inputGlassEffect;
-
-  /// 是否在 API 状态弹窗中显示请求日志入口
-  final bool showApiRequestLogEntry;
-
-  AppSettings copyWith({
-    AppColorMode? colorMode,
-    AppThemePreset? themePreset,
-    Map<AppThemePreset, AppThemeConfig>? themeConfigs,
-    bool? showAvatar,
-    double? backgroundOpacity,
-    bool? inputGlassEffect,
-    bool? showApiRequestLogEntry,
-  }) {
-    return AppSettings(
-      colorMode: colorMode ?? this.colorMode,
-      themePreset: themePreset ?? this.themePreset,
-      themeConfigs: themeConfigs ?? this.themeConfigs,
-      showAvatar: showAvatar ?? this.showAvatar,
-      backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
-      inputGlassEffect: inputGlassEffect ?? this.inputGlassEffect,
-      showApiRequestLogEntry:
-          showApiRequestLogEntry ?? this.showApiRequestLogEntry,
-    );
-  }
+  const factory AppSettings({
+    @Default(AppColorMode.system) AppColorMode colorMode,
+    @Default(AppThemePreset.sunset) AppThemePreset themePreset,
+    @Default(defaultAppThemeConfigs)
+    Map<AppThemePreset, AppThemeConfig> themeConfigs,
+    /// 是否显示聊天头像
+    @Default(true) bool showAvatar,
+    /// 聊天背景透明度 (0.0 - 1.0)
+    @Default(0.85) double backgroundOpacity,
+    /// 输入框是否使用毛玻璃效果
+    @Default(true) bool inputGlassEffect,
+    /// 是否在 API 状态弹窗中显示请求日志入口
+    @Default(true) bool showApiRequestLogEntry,
+  }) = _AppSettings;
 }
 
 final ValueNotifier<AppSettings> appSettingsNotifier = ValueNotifier(
@@ -445,19 +352,37 @@ void updateAppSettings({
   bool? inputGlassEffect,
   bool? showApiRequestLogEntry,
 }) {
-  appSettingsNotifier.value = appSettingsNotifier.value.copyWith(
-    colorMode: colorMode,
-    themePreset: themePreset,
-    themeConfigs: themeConfigs,
-    showAvatar: showAvatar,
-    backgroundOpacity: backgroundOpacity,
-    inputGlassEffect: inputGlassEffect,
-    showApiRequestLogEntry: showApiRequestLogEntry,
-  );
+  var newSettings = appSettingsNotifier.value;
+  if (colorMode != null) {
+    newSettings = newSettings.copyWith(colorMode: colorMode);
+  }
+  if (themePreset != null) {
+    newSettings = newSettings.copyWith(themePreset: themePreset);
+  }
+  if (themeConfigs != null) {
+    newSettings = newSettings.copyWith(themeConfigs: themeConfigs);
+  }
+  if (showAvatar != null) {
+    newSettings = newSettings.copyWith(showAvatar: showAvatar);
+  }
+  if (backgroundOpacity != null) {
+    newSettings = newSettings.copyWith(backgroundOpacity: backgroundOpacity);
+  }
+  if (inputGlassEffect != null) {
+    newSettings = newSettings.copyWith(inputGlassEffect: inputGlassEffect);
+  }
+  if (showApiRequestLogEntry != null) {
+    newSettings = newSettings.copyWith(
+      showApiRequestLogEntry: showApiRequestLogEntry,
+    );
+  }
+  appSettingsNotifier.value = newSettings;
 
   // 持久化保存
   AppSettingsService.instance.save(appSettingsNotifier.value);
 }
+
+const Object _unset = Object();
 
 void updateThemeConfig({
   AppThemePreset? preset,
@@ -479,20 +404,55 @@ void updateThemeConfig({
     current.themeConfigs,
   );
 
-  nextThemeConfigs[targetPreset] = currentConfig.copyWith(
-    themeColorIndex: themeColorIndex,
-    customFontFamily: customFontFamily,
-    chatTextTheme: currentConfig.chatTextTheme.copyWith(
-      quoteStyle: quoteStyle,
+  var newChatTextTheme = currentConfig.chatTextTheme;
+  if (quoteStyle != null) {
+    newChatTextTheme = newChatTextTheme.copyWith(quoteStyle: quoteStyle);
+  }
+  if (enableMessageTextShadow != null) {
+    newChatTextTheme = newChatTextTheme.copyWith(
       enableMessageTextShadow: enableMessageTextShadow,
-      bodyTextColorPaletteIndex: bodyTextColorPaletteIndex,
-      bodyTextColorDarkPaletteIndex: bodyTextColorDarkPaletteIndex,
+    );
+  }
+  if (quotedTextStyle != null) {
+    newChatTextTheme = newChatTextTheme.copyWith(
       quotedTextStyle: quotedTextStyle,
+    );
+  }
+  if (bracketTextStyle != null) {
+    newChatTextTheme = newChatTextTheme.copyWith(
       bracketTextStyle: bracketTextStyle,
+    );
+  }
+  if (italicTextStyle != null) {
+    newChatTextTheme = newChatTextTheme.copyWith(
       italicTextStyle: italicTextStyle,
-      boldTextStyle: boldTextStyle,
-    ),
-  );
+    );
+  }
+  if (boldTextStyle != null) {
+    newChatTextTheme = newChatTextTheme.copyWith(boldTextStyle: boldTextStyle);
+  }
+  if (bodyTextColorPaletteIndex != _unset) {
+    newChatTextTheme = newChatTextTheme.copyWith(
+      bodyTextColorPaletteIndex: bodyTextColorPaletteIndex as int?,
+    );
+  }
+  if (bodyTextColorDarkPaletteIndex != _unset) {
+    newChatTextTheme = newChatTextTheme.copyWith(
+      bodyTextColorDarkPaletteIndex: bodyTextColorDarkPaletteIndex as int?,
+    );
+  }
+
+  var newConfig = currentConfig.copyWith(chatTextTheme: newChatTextTheme);
+  if (themeColorIndex != null) {
+    newConfig = newConfig.copyWith(themeColorIndex: themeColorIndex);
+  }
+  if (customFontFamily != _unset) {
+    newConfig = newConfig.copyWith(
+      customFontFamily: customFontFamily as String?,
+    );
+  }
+
+  nextThemeConfigs[targetPreset] = newConfig;
 
   updateAppSettings(
     themeConfigs: Map<AppThemePreset, AppThemeConfig>.unmodifiable(

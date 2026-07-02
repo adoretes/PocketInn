@@ -540,7 +540,6 @@ class MemorySettingsCard extends StatelessWidget {
                 selectedConfigId: memoryConfig.extractionModelId,
                 onChanged: (id) => updateMemoryExtractionConfig(
                   extractionModelId: id,
-                  clearExtractionModel: id == null,
                 ),
               ),
             ],
@@ -549,7 +548,6 @@ class MemorySettingsCard extends StatelessWidget {
               prompt: memoryConfig.customExtractionPrompt,
               onChanged: (value) => updateMemoryExtractionConfig(
                 customExtractionPrompt: value,
-                clearCustomExtractionPrompt: value.isEmpty,
               ),
             ),
             const SizedBox(height: 12),
@@ -557,7 +555,6 @@ class MemorySettingsCard extends StatelessWidget {
               prompt: memoryConfig.customInjectionPrompt,
               onChanged: (value) => updateMemoryExtractionConfig(
                 customInjectionPrompt: value,
-                clearCustomInjectionPrompt: value.isEmpty,
               ),
             ),
           ],

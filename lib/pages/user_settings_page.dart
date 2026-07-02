@@ -454,11 +454,12 @@ Future<UserSettingEditDialogResult?> showEditUserSettingDialog(
               FilledButton(
                 onPressed: () {
                   if (formKey.currentState?.validate() ?? false) {
-                    final updatedSetting = setting.copyWith(
-                      name: nameController.text.trim(),
-                      prompt: descriptionController.text.trim(),
-                      color: selectedColor,
-                    );
+                    final updatedSetting = setting
+                        .copyWith(
+                          name: nameController.text.trim(),
+                          prompt: descriptionController.text.trim(),
+                        )
+                        .copyWithColor(selectedColor);
                     Navigator.of(
                       context,
                     ).pop(UserSettingEditDialogResult(setting: updatedSetting));

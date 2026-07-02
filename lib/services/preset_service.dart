@@ -162,7 +162,6 @@ class PresetService {
     final normalized = preset.copyWith(
       name: preset.name.trim().isEmpty ? '未命名预设' : preset.name.trim(),
       updatedAt: DateTime.now(),
-      prompts: preset.prompts.map((item) => item.copy()).toList(),
     );
 
     final file = File('$_presetsPath/${normalized.id}.json');

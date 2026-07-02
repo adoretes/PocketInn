@@ -1,85 +1,37 @@
-class MemoryNode {
-  final String id;
-  final String sessionId;
-  final String branchLeafId;
-  final String content;
-  final List<String> sourceMessageIds;
-  final bool isUserEdited;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  MemoryNode({
-    required this.id,
-    required this.sessionId,
-    required this.branchLeafId,
-    required this.content,
-    this.sourceMessageIds = const [],
-    this.isUserEdited = false,
-    required this.createdAt,
-    required this.updatedAt,
-  });
+part 'chat_memory.freezed.dart';
+
+@freezed
+abstract class MemoryNode with _$MemoryNode {
+  const factory MemoryNode({
+    required String id,
+    required String sessionId,
+    required String branchLeafId,
+    required String content,
+    @Default([]) List<String> sourceMessageIds,
+    @Default(false) bool isUserEdited,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) = _MemoryNode;
 }
 
-class MemoryExtractionConfig {
-  final bool enabled;
-  final int interval;
-  final int recentRounds;
-  final int recallCount;
-  final String? extractionModelId;
-  final String customExtractionPrompt;
-  final String customInjectionPrompt;
+@freezed
+abstract class MemoryExtractionConfig with _$MemoryExtractionConfig {
+  const MemoryExtractionConfig._();
 
-  const MemoryExtractionConfig({
-    this.enabled = false,
-    this.interval = 5,
-    this.recentRounds = 10,
-    this.recallCount = 3,
-    this.extractionModelId,
-    this.customExtractionPrompt = '',
-    this.customInjectionPrompt = '',
-  });
+  const factory MemoryExtractionConfig({
+    @Default(false) bool enabled,
+    @Default(5) int interval,
+    @Default(10) int recentRounds,
+    @Default(3) int recallCount,
+    String? extractionModelId,
+    @Default('') String customExtractionPrompt,
+    @Default('') String customInjectionPrompt,
+  }) = _MemoryExtractionConfig;
 
   bool get hasCustomExtractionPrompt =>
       customExtractionPrompt.trim().isNotEmpty;
 
   bool get hasCustomInjectionPrompt => customInjectionPrompt.trim().isNotEmpty;
-
-  MemoryExtractionConfig copyWith({
-    bool? enabled,
-    int? interval,
-    int? recentRounds,
-    int? recallCount,
-    Object? extractionModelId = _unset,
-    bool clearExtractionModel = false,
-    Object? customExtractionPrompt = _unset,
-    bool clearCustomExtractionPrompt = false,
-    Object? customInjectionPrompt = _unset,
-    bool clearCustomInjectionPrompt = false,
-  }) {
-    return MemoryExtractionConfig(
-      enabled: enabled ?? this.enabled,
-      interval: interval ?? this.interval,
-      recentRounds: recentRounds ?? this.recentRounds,
-      recallCount: recallCount ?? this.recallCount,
-      extractionModelId: clearExtractionModel
-          ? null
-          : (extractionModelId == _unset
-                ? this.extractionModelId
-                : extractionModelId as String?),
-      customExtractionPrompt: clearCustomExtractionPrompt
-          ? ''
-          : (customExtractionPrompt == _unset
-                ? this.customExtractionPrompt
-                : (customExtractionPrompt as String?) ??
-                      this.customExtractionPrompt),
-      customInjectionPrompt: clearCustomInjectionPrompt
-          ? ''
-          : (customInjectionPrompt == _unset
-                ? this.customInjectionPrompt
-                : (customInjectionPrompt as String?) ??
-                      this.customInjectionPrompt),
-    );
-  }
 }
-
-const Object _unset = Object();

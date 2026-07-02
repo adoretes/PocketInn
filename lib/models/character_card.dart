@@ -1,83 +1,46 @@
 import 'dart:convert';
 
-class CharacterSummary {
-  const CharacterSummary({
-    required this.id,
-    required this.name,
-    required this.thumbnailPath,
-    this.description = '',
-    this.cardColorValue,
-    this.updatedAt,
-  });
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  final String id;
-  final String name;
-  final String thumbnailPath;
-  final String description;
-  final int? cardColorValue;
-  final DateTime? updatedAt;
+import 'date_time_converters.dart';
 
-  factory CharacterSummary.fromJson(Map<String, dynamic> json) {
-    return CharacterSummary(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      thumbnailPath: json['thumbnailPath'] as String? ?? '',
-      description: json['description'] as String? ?? '',
-      cardColorValue: json['cardColorValue'] as int?,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.tryParse(json['updatedAt'] as String)
-          : null,
-    );
-  }
+part 'character_card.freezed.dart';
+part 'character_card.g.dart';
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'thumbnailPath': thumbnailPath,
-      'description': description,
-      'cardColorValue': cardColorValue,
-      'updatedAt': updatedAt?.toIso8601String(),
-    };
-  }
+@freezed
+abstract class CharacterSummary with _$CharacterSummary {
+  const factory CharacterSummary({
+    @JsonKey(defaultValue: '') required String id,
+    @JsonKey(defaultValue: '') required String name,
+    @JsonKey(defaultValue: '') required String thumbnailPath,
+    @JsonKey(defaultValue: '') @Default('') String description,
+    int? cardColorValue,
+    @NullableDateTimeConverter() DateTime? updatedAt,
+  }) = _CharacterSummary;
+
+  factory CharacterSummary.fromJson(Map<String, dynamic> json) =>
+      _$CharacterSummaryFromJson(json);
 }
 
-class CharacterCardRecord {
-  const CharacterCardRecord({
-    required this.id,
-    required this.cardJson,
-    required this.originalImagePath,
-    required this.thumbnailPath,
-    this.worldBookId,
-    this.characterBookExtensions = const {},
-    this.cardColorValue,
-    this.updatedAt,
-  });
+// ignore_for_file: invalid_annotation_target
+@freezed
+abstract class CharacterCardRecord with _$CharacterCardRecord {
+  const CharacterCardRecord._();
 
-  final String id;
-  final Map<String, dynamic> cardJson;
-  final String originalImagePath;
-  final String thumbnailPath;
-  final String? worldBookId;
-  final Map<String, dynamic> characterBookExtensions;
-  final int? cardColorValue;
-  final DateTime? updatedAt;
+  @JsonSerializable(explicitToJson: true)
+  const factory CharacterCardRecord({
+    @JsonKey(defaultValue: '') required String id,
+    @JsonKey(defaultValue: {}) @Default({}) Map<String, dynamic> cardJson,
+    @JsonKey(defaultValue: '') required String originalImagePath,
+    @JsonKey(defaultValue: '') required String thumbnailPath,
+    String? worldBookId,
+    @JsonKey(defaultValue: {}) @Default({}) Map<String, dynamic> characterBookExtensions,
+    int? cardColorValue,
+    @NullableDateTimeConverter() DateTime? updatedAt,
+  }) = _CharacterCardRecord;
 
-  factory CharacterCardRecord.fromJson(Map<String, dynamic> json) {
-    return CharacterCardRecord(
-      id: json['id'] as String? ?? '',
-      cardJson: _asStringMap(json['cardJson']) ?? const {},
-      originalImagePath: json['originalImagePath'] as String? ?? '',
-      thumbnailPath: json['thumbnailPath'] as String? ?? '',
-      worldBookId: json['worldBookId'] as String?,
-      characterBookExtensions:
-          _asStringMap(json['characterBookExtensions']) ?? const {},
-      cardColorValue: json['cardColorValue'] as int?,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.tryParse(json['updatedAt'] as String)
-          : null,
-    );
-  }
+  factory CharacterCardRecord.fromJson(Map<String, dynamic> json) =>
+      _$CharacterCardRecordFromJson(json);
 
   String get name => cardData['name'] as String? ?? '';
 
@@ -94,46 +57,6 @@ class CharacterCardRecord {
       description: description,
       cardColorValue: cardColorValue,
       updatedAt: updatedAt,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'cardJson': cardJson,
-      'originalImagePath': originalImagePath,
-      'thumbnailPath': thumbnailPath,
-      'worldBookId': worldBookId,
-      'characterBookExtensions': characterBookExtensions,
-      'cardColorValue': cardColorValue,
-      'updatedAt': updatedAt?.toIso8601String(),
-    };
-  }
-
-  CharacterCardRecord copyWith({
-    String? id,
-    Map<String, dynamic>? cardJson,
-    String? originalImagePath,
-    String? thumbnailPath,
-    String? worldBookId,
-    bool clearWorldBookId = false,
-    Map<String, dynamic>? characterBookExtensions,
-    int? cardColorValue,
-    bool clearCardColorValue = false,
-    DateTime? updatedAt,
-  }) {
-    return CharacterCardRecord(
-      id: id ?? this.id,
-      cardJson: cardJson ?? this.cardJson,
-      originalImagePath: originalImagePath ?? this.originalImagePath,
-      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
-      worldBookId: clearWorldBookId ? null : (worldBookId ?? this.worldBookId),
-      characterBookExtensions:
-          characterBookExtensions ?? this.characterBookExtensions,
-      cardColorValue: clearCardColorValue
-          ? null
-          : (cardColorValue ?? this.cardColorValue),
-      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 

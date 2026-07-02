@@ -1,4 +1,8 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
+
 import 'chat_message.dart';
+
+part 'chat_session.freezed.dart';
 
 enum ChatNodeRole {
   user,
@@ -14,111 +18,51 @@ enum ChatNodeRole {
   }
 }
 
-class ChatSession {
-  const ChatSession({
-    required this.id,
-    required this.title,
-    required this.characterId,
-    required this.selectedWorldBookIds,
-    this.selectedUserSettingId,
-    this.selectedPresetId,
-    this.currentLeafMessageId,
-    this.lastMessagePreview = '',
-    required this.createdAt,
-    required this.updatedAt,
-  });
-
-  final String id;
-  final String title;
-  final String characterId;
-  final String? selectedUserSettingId;
-  final List<String> selectedWorldBookIds;
-  final String? selectedPresetId;
-  final String? currentLeafMessageId;
-  final String lastMessagePreview;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-
-  ChatSession copyWith({
-    String? id,
-    String? title,
-    String? characterId,
+@freezed
+abstract class ChatSession with _$ChatSession {
+  const factory ChatSession({
+    required String id,
+    required String title,
+    required String characterId,
     String? selectedUserSettingId,
-    bool clearSelectedUserSettingId = false,
-    List<String>? selectedWorldBookIds,
+    required List<String> selectedWorldBookIds,
     String? selectedPresetId,
-    bool clearSelectedPresetId = false,
     String? currentLeafMessageId,
-    bool clearCurrentLeafMessageId = false,
-    String? lastMessagePreview,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return ChatSession(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      characterId: characterId ?? this.characterId,
-      selectedUserSettingId: clearSelectedUserSettingId
-          ? null
-          : (selectedUserSettingId ?? this.selectedUserSettingId),
-      selectedWorldBookIds: selectedWorldBookIds ?? this.selectedWorldBookIds,
-      selectedPresetId: clearSelectedPresetId
-          ? null
-          : (selectedPresetId ?? this.selectedPresetId),
-      currentLeafMessageId: clearCurrentLeafMessageId
-          ? null
-          : (currentLeafMessageId ?? this.currentLeafMessageId),
-      lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
+    @Default('') String lastMessagePreview,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) = _ChatSession;
 }
 
-class ChatNode {
-  const ChatNode({
-    required this.id,
-    required this.sessionId,
-    required this.parentId,
-    required this.role,
-    required this.text,
-    this.thinkingChain,
-    required this.createdAt,
-    required this.siblingOrder,
-  });
-
-  final String id;
-  final String sessionId;
-  final String? parentId;
-  final ChatNodeRole role;
-  final String text;
-  final String? thinkingChain;
-  final DateTime createdAt;
-  final int siblingOrder;
+@freezed
+abstract class ChatNode with _$ChatNode {
+  const factory ChatNode({
+    required String id,
+    required String sessionId,
+    String? parentId,
+    required ChatNodeRole role,
+    required String text,
+    String? thinkingChain,
+    required DateTime createdAt,
+    required int siblingOrder,
+  }) = _ChatNode;
 }
 
-class ChatSessionSummary {
-  const ChatSessionSummary({
-    required this.id,
-    required this.title,
-    required this.characterId,
-    required this.lastMessagePreview,
-    required this.updatedAt,
-  });
-
-  final String id;
-  final String title;
-  final String characterId;
-  final String lastMessagePreview;
-  final DateTime updatedAt;
+@freezed
+abstract class ChatSessionSummary with _$ChatSessionSummary {
+  const factory ChatSessionSummary({
+    required String id,
+    required String title,
+    required String characterId,
+    required String lastMessagePreview,
+    required DateTime updatedAt,
+  }) = _ChatSessionSummary;
 }
 
-class ChatSessionBundle {
-  const ChatSessionBundle({
-    required this.session,
-    required this.activeMessages,
-  });
-
-  final ChatSession session;
-  final List<ChatMessage> activeMessages;
+@freezed
+abstract class ChatSessionBundle with _$ChatSessionBundle {
+  const factory ChatSessionBundle({
+    required ChatSession session,
+    required List<ChatMessage> activeMessages,
+  }) = _ChatSessionBundle;
 }

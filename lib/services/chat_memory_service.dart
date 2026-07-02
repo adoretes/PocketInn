@@ -358,36 +358,30 @@ ValueNotifier<MemoryExtractionConfig> memoryExtractionNotifier = ValueNotifier(
   const MemoryExtractionConfig(),
 );
 
+const Object _unset = Object();
+
 void updateMemoryExtractionConfig({
   bool? enabled,
   int? interval,
   int? recentRounds,
   int? recallCount,
-  String? extractionModelId,
-  bool clearExtractionModel = false,
+  Object? extractionModelId = _unset,
   String? customExtractionPrompt,
-  bool clearCustomExtractionPrompt = false,
   String? customInjectionPrompt,
-  bool clearCustomInjectionPrompt = false,
 }) {
   final current = memoryExtractionNotifier.value;
   final next = current.copyWith(
-    enabled: enabled,
-    interval: interval,
-    recentRounds: recentRounds,
-    recallCount: recallCount,
-    extractionModelId: clearExtractionModel
-        ? null
-        : (extractionModelId ?? current.extractionModelId),
-    clearExtractionModel: clearExtractionModel,
-    customExtractionPrompt: clearCustomExtractionPrompt
-        ? ''
-        : customExtractionPrompt,
-    clearCustomExtractionPrompt: clearCustomExtractionPrompt,
-    customInjectionPrompt: clearCustomInjectionPrompt
-        ? ''
-        : customInjectionPrompt,
-    clearCustomInjectionPrompt: clearCustomInjectionPrompt,
+    enabled: enabled ?? current.enabled,
+    interval: interval ?? current.interval,
+    recentRounds: recentRounds ?? current.recentRounds,
+    recallCount: recallCount ?? current.recallCount,
+    extractionModelId: extractionModelId == _unset
+        ? current.extractionModelId
+        : extractionModelId as String?,
+    customExtractionPrompt:
+        customExtractionPrompt ?? current.customExtractionPrompt,
+    customInjectionPrompt:
+        customInjectionPrompt ?? current.customInjectionPrompt,
   );
   memoryExtractionNotifier.value = next;
   _persistMemoryConfig(next);

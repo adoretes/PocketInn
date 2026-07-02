@@ -74,14 +74,22 @@ class _OpenAICompatibleConfigPageState
 
   ApiConfig _applyControllersToItem(ApiConfig item) {
     final controllers = _controllers[item.id]!;
-    item.name = controllers['name']!.text.trim().isEmpty
-        ? item.name
-        : controllers['name']!.text.trim();
-    item.baseUrl = controllers['baseUrl']!.text.trim();
-    item.apiKey = controllers['apiKey']!.text.trim();
-    item.model = controllers['model']!.text.trim();
-    item.customBody = controllers['customBody']!.text.trim();
-    return item;
+    final nameText = controllers['name']!.text.trim();
+    return item.copyWith(
+      name: nameText.isEmpty ? item.name : nameText,
+      baseUrl: controllers['baseUrl']!.text.trim(),
+      apiKey: controllers['apiKey']!.text.trim(),
+      model: controllers['model']!.text.trim(),
+      customBody: controllers['customBody']!.text.trim(),
+    );
+  }
+
+  void _replaceConfigItem(ApiConfig updated) {
+    final index = _configItems.indexWhere((i) => i.id == updated.id);
+    if (index < 0) return;
+    setState(() {
+      _configItems[index] = updated;
+    });
   }
 
   Future<void> _persistConfigs({String? successMessage}) async {
@@ -116,7 +124,7 @@ class _OpenAICompatibleConfigPageState
     try {
       final updated = _applyControllersToItem(item);
       updated.parseCustomBody();
-      setState(() {});
+      _replaceConfigItem(updated);
       await _persistConfigs(successMessage: '配置 "${updated.name}" 已保存');
     } on FormatException catch (error) {
       _showError(error.message.toString());
@@ -259,9 +267,7 @@ class _OpenAICompatibleConfigPageState
               .toList(),
           onSelected: (value) {
             if (value != null) {
-              setState(() {
-                item.model = value;
-              });
+              _replaceConfigItem(item.copyWith(model: value));
             }
           },
           inputDecorationTheme: const InputDecorationTheme(

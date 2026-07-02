@@ -62,15 +62,16 @@ class _PresetEditPageState extends State<PresetEditPage> {
       return;
     }
 
-    _preset
-      ..name = trimmedName
-      ..temperature =
-          double.tryParse(_temperatureController.text) ?? _preset.temperature
-      ..openaiMaxContext =
-          int.tryParse(_contextController.text) ?? _preset.openaiMaxContext
-      ..openaiMaxTokens =
-          int.tryParse(_maxTokensController.text) ?? _preset.openaiMaxTokens
-      ..updatedAt = DateTime.now();
+    _preset = _preset.copyWith(
+      name: trimmedName,
+      temperature:
+          double.tryParse(_temperatureController.text) ?? _preset.temperature,
+      openaiMaxContext:
+          int.tryParse(_contextController.text) ?? _preset.openaiMaxContext,
+      openaiMaxTokens:
+          int.tryParse(_maxTokensController.text) ?? _preset.openaiMaxTokens,
+      updatedAt: DateTime.now(),
+    );
 
     await PresetService.instance.save(_preset);
     if (!mounted) return;
@@ -95,23 +96,33 @@ class _PresetEditPageState extends State<PresetEditPage> {
       injectionOrder: 100,
     );
     setState(() {
-      _preset.prompts = [..._preset.prompts, prompt];
+      _preset = _preset.copyWith(prompts: [..._preset.prompts, prompt]);
       _expandedPrompts.add(prompt.identifier);
     });
   }
 
   void _deletePrompt(PresetPrompt prompt) {
     setState(() {
-      _preset.prompts = _preset.prompts
-          .where((item) => item.identifier != prompt.identifier)
-          .toList();
+      _preset = _preset.copyWith(
+        prompts: _preset.prompts
+            .where((item) => item.identifier != prompt.identifier)
+            .toList(),
+      );
       _expandedPrompts.remove(prompt.identifier);
     });
   }
 
   void _togglePromptEnabled(PresetPrompt prompt, bool value) {
+    _updatePrompt(prompt.copyWith(enabled: value));
+  }
+
+  void _updatePrompt(PresetPrompt updated) {
     setState(() {
-      prompt.enabled = value;
+      _preset = _preset.copyWith(
+        prompts: _preset.prompts
+            .map((p) => p.identifier == updated.identifier ? updated : p)
+            .toList(),
+      );
     });
   }
 
@@ -133,7 +144,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
       final items = [..._preset.prompts];
       final prompt = items.removeAt(oldIndex);
       items.insert(newIndex, prompt);
-      _preset.prompts = items;
+      _preset = _preset.copyWith(prompts: items);
     });
   }
 
@@ -179,7 +190,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
             ),
             onChanged: (value) {
               setState(() {
-                _preset.name = value;
+                _preset = _preset.copyWith(name: value);
               });
             },
           ),
@@ -254,6 +265,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
                       onDelete: prompt.isDefault
                           ? null
                           : () => _deletePrompt(prompt),
+                      onUpdatePrompt: _updatePrompt,
                     );
                   },
                 ),
@@ -303,6 +315,7 @@ class _PromptCard extends StatefulWidget {
     required this.onToggleExpanded,
     required this.onToggleEnabled,
     required this.onDelete,
+    required this.onUpdatePrompt,
   });
 
   final PresetPrompt prompt;
@@ -311,6 +324,7 @@ class _PromptCard extends StatefulWidget {
   final VoidCallback onToggleExpanded;
   final ValueChanged<bool> onToggleEnabled;
   final VoidCallback? onDelete;
+  final ValueChanged<PresetPrompt> onUpdatePrompt;
 
   @override
   State<_PromptCard> createState() => _PromptCardState();
@@ -338,16 +352,20 @@ class _PromptCardState extends State<_PromptCard> {
   @override
   void didUpdateWidget(covariant _PromptCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.prompt.name != widget.prompt.name) {
+    if (oldWidget.prompt.name != widget.prompt.name &&
+        _nameController.text != widget.prompt.name) {
       _nameController.text = widget.prompt.name;
     }
-    if (oldWidget.prompt.content != widget.prompt.content) {
+    if (oldWidget.prompt.content != widget.prompt.content &&
+        _contentController.text != widget.prompt.content) {
       _contentController.text = widget.prompt.content;
     }
-    if (oldWidget.prompt.injectionDepth != widget.prompt.injectionDepth) {
+    if (oldWidget.prompt.injectionDepth != widget.prompt.injectionDepth &&
+        _depthController.text != widget.prompt.injectionDepth.toString()) {
       _depthController.text = widget.prompt.injectionDepth.toString();
     }
-    if (oldWidget.prompt.injectionOrder != widget.prompt.injectionOrder) {
+    if (oldWidget.prompt.injectionOrder != widget.prompt.injectionOrder &&
+        _orderController.text != widget.prompt.injectionOrder.toString()) {
       _orderController.text = widget.prompt.injectionOrder.toString();
     }
   }
@@ -459,9 +477,7 @@ class _PromptCardState extends State<_PromptCard> {
                       ),
                     ),
                     onChanged: (value) {
-                      setState(() {
-                        prompt.name = value;
-                      });
+                      widget.onUpdatePrompt(prompt.copyWith(name: value));
                     },
                   ),
                   const SizedBox(height: 12),
@@ -478,7 +494,7 @@ class _PromptCardState extends State<_PromptCard> {
                       ),
                     ),
                     onChanged: (value) {
-                      prompt.content = value;
+                      widget.onUpdatePrompt(prompt.copyWith(content: value));
                     },
                   ),
                   const SizedBox(height: 12),
@@ -498,9 +514,9 @@ class _PromptCardState extends State<_PromptCard> {
                           ],
                           selected: {prompt.role},
                           onSelectionChanged: (selection) {
-                            setState(() {
-                              prompt.role = selection.first;
-                            });
+                            widget.onUpdatePrompt(
+                              prompt.copyWith(role: selection.first),
+                            );
                           },
                         ),
                       ),
@@ -525,9 +541,11 @@ class _PromptCardState extends State<_PromptCard> {
                           ],
                           selected: {prompt.injectionPosition},
                           onSelectionChanged: (selection) {
-                            setState(() {
-                              prompt.injectionPosition = selection.first;
-                            });
+                            widget.onUpdatePrompt(
+                              prompt.copyWith(
+                                injectionPosition: selection.first,
+                              ),
+                            );
                           },
                         ),
                       ),
@@ -547,8 +565,12 @@ class _PromptCardState extends State<_PromptCard> {
                       ),
                     ),
                     onChanged: (value) {
-                      prompt.injectionDepth =
-                          int.tryParse(value) ?? prompt.injectionDepth;
+                      widget.onUpdatePrompt(
+                        prompt.copyWith(
+                          injectionDepth:
+                              int.tryParse(value) ?? prompt.injectionDepth,
+                        ),
+                      );
                     },
                   ),
                   if (prompt.injectionPosition ==
@@ -568,8 +590,12 @@ class _PromptCardState extends State<_PromptCard> {
                         ),
                       ),
                       onChanged: (value) {
-                        prompt.injectionOrder =
-                            int.tryParse(value) ?? prompt.injectionOrder;
+                        widget.onUpdatePrompt(
+                          prompt.copyWith(
+                            injectionOrder:
+                                int.tryParse(value) ?? prompt.injectionOrder,
+                          ),
+                        );
                       },
                     ),
                   ],

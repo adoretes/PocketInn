@@ -207,11 +207,12 @@ class AppSettingsService {
     final themeConfigs = <AppThemePreset, AppThemeConfig>{};
 
     for (final preset in AppThemePreset.values) {
+      final baseFallback = defaultAppThemeConfigs[preset]!;
       themeConfigs[preset] = _decodeThemeConfig(
         _asMap(data[preset.name]),
-        fallback: defaultAppThemeConfigs[preset]!.copyWith(
-          customFontFamily: legacyCustomFontFamily,
-        ),
+        fallback: legacyCustomFontFamily == null
+            ? baseFallback
+            : baseFallback.copyWith(customFontFamily: legacyCustomFontFamily),
       );
     }
 
@@ -314,19 +315,22 @@ class AppSettingsService {
   }) {
     final themeConfigs = <AppThemePreset, AppThemeConfig>{
       for (final entry in defaultAppThemeConfigs.entries)
-        entry.key: entry.value.copyWith(
-          customFontFamily: legacyCustomFontFamily,
-        ),
+        entry.key: legacyCustomFontFamily == null
+            ? entry.value
+            : entry.value.copyWith(customFontFamily: legacyCustomFontFamily),
     };
 
     final customFallback = defaultAppThemeConfigs[AppThemePreset.custom]!;
-    themeConfigs[AppThemePreset.custom] = customFallback.copyWith(
-      themeColorIndex: _normalizePaletteIndex(
-        storage.getInt(_keyCustomThemeColorIndex),
-        customFallback.themeColorIndex,
-      ),
-      customFontFamily: legacyCustomFontFamily,
+    final customThemeColorIndex = _normalizePaletteIndex(
+      storage.getInt(_keyCustomThemeColorIndex),
+      customFallback.themeColorIndex,
     );
+    themeConfigs[AppThemePreset.custom] = legacyCustomFontFamily == null
+        ? customFallback.copyWith(themeColorIndex: customThemeColorIndex)
+        : customFallback.copyWith(
+            themeColorIndex: customThemeColorIndex,
+            customFontFamily: legacyCustomFontFamily,
+          );
 
     final activeFallback = themeConfigs[activePreset]!;
     themeConfigs[activePreset] = activeFallback.copyWith(

@@ -1,35 +1,30 @@
 import 'dart:convert';
 
-class PresetPrompt {
-  PresetPrompt({
-    required this.identifier,
-    required this.name,
-    this.content = '',
-    this.role = 'system',
-    this.systemPrompt = true,
-    this.marker = false,
-    this.enabled = true,
-    this.injectionPosition = PresetInjectionPosition.relative,
-    this.injectionDepth = 4,
-    this.injectionOrder = 100,
-    Map<String, dynamic>? extra,
-  }) : extra = extra == null
-           ? <String, dynamic>{}
-           : Map<String, dynamic>.from(extra);
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  final String identifier;
-  String name;
-  String content;
-  String role;
-  bool systemPrompt;
-  bool marker;
-  bool enabled;
-  String injectionPosition;
-  int injectionDepth;
-  int injectionOrder;
-  final Map<String, dynamic> extra;
+part 'preset.freezed.dart';
 
-  bool get isDefault => defaultPromptIdentifiers.contains(identifier);
+// ignore_for_file: invalid_annotation_target
+
+@freezed
+abstract class PresetPrompt with _$PresetPrompt {
+  const PresetPrompt._();
+
+  const factory PresetPrompt({
+    required String identifier,
+    required String name,
+    @Default('') String content,
+    @Default('system') String role,
+    @Default(true) bool systemPrompt,
+    @Default(false) bool marker,
+    @Default(true) bool enabled,
+    @Default(PresetInjectionPosition.relative) String injectionPosition,
+    @Default(4) int injectionDepth,
+    @Default(100) int injectionOrder,
+    @JsonKey(includeToJson: false, includeFromJson: false)
+    @Default({})
+    Map<String, dynamic> extra,
+  }) = _PresetPrompt;
 
   factory PresetPrompt.fromJson(Map<String, dynamic> json) {
     final map = Map<String, dynamic>.from(json);
@@ -64,21 +59,7 @@ class PresetPrompt {
     };
   }
 
-  PresetPrompt copy() {
-    return PresetPrompt(
-      identifier: identifier,
-      name: name,
-      content: content,
-      role: role,
-      systemPrompt: systemPrompt,
-      marker: marker,
-      enabled: enabled,
-      injectionPosition: injectionPosition,
-      injectionDepth: injectionDepth,
-      injectionOrder: injectionOrder,
-      extra: extra,
-    );
-  }
+  bool get isDefault => defaultPromptIdentifiers.contains(identifier);
 
   static Map<String, dynamic> _extractExtraPromptFields(
     Map<String, dynamic> map,
@@ -98,18 +79,17 @@ class PresetPrompt {
   }
 }
 
-class PresetPromptOrderEntry {
-  PresetPromptOrderEntry({
-    required this.identifier,
-    this.enabled = true,
-    Map<String, dynamic>? extra,
-  }) : extra = extra == null
-           ? <String, dynamic>{}
-           : Map<String, dynamic>.from(extra);
+@freezed
+abstract class PresetPromptOrderEntry with _$PresetPromptOrderEntry {
+  const PresetPromptOrderEntry._();
 
-  final String identifier;
-  bool enabled;
-  final Map<String, dynamic> extra;
+  const factory PresetPromptOrderEntry({
+    required String identifier,
+    @Default(true) bool enabled,
+    @JsonKey(includeToJson: false, includeFromJson: false)
+    @Default({})
+    Map<String, dynamic> extra,
+  }) = _PresetPromptOrderEntry;
 
   factory PresetPromptOrderEntry.fromJson(Map<String, dynamic> json) {
     final map = Map<String, dynamic>.from(json);
@@ -124,14 +104,6 @@ class PresetPromptOrderEntry {
     return {...extra, 'identifier': identifier, 'enabled': enabled};
   }
 
-  PresetPromptOrderEntry copy() {
-    return PresetPromptOrderEntry(
-      identifier: identifier,
-      enabled: enabled,
-      extra: extra,
-    );
-  }
-
   static Map<String, dynamic> _extractExtraPromptOrderEntryFields(
     Map<String, dynamic> map,
   ) {
@@ -142,19 +114,17 @@ class PresetPromptOrderEntry {
   }
 }
 
-class PresetPromptOrderGroup {
-  PresetPromptOrderGroup({
-    required this.characterId,
-    required List<PresetPromptOrderEntry> order,
-    Map<String, dynamic>? extra,
-  }) : order = order.map((item) => item.copy()).toList(),
-       extra = extra == null
-           ? <String, dynamic>{}
-           : Map<String, dynamic>.from(extra);
+@freezed
+abstract class PresetPromptOrderGroup with _$PresetPromptOrderGroup {
+  const PresetPromptOrderGroup._();
 
-  final String characterId;
-  List<PresetPromptOrderEntry> order;
-  final Map<String, dynamic> extra;
+  const factory PresetPromptOrderGroup({
+    required String characterId,
+    @Default([]) List<PresetPromptOrderEntry> order,
+    @JsonKey(includeToJson: false, includeFromJson: false)
+    @Default({})
+    Map<String, dynamic> extra,
+  }) = _PresetPromptOrderGroup;
 
   factory PresetPromptOrderGroup.fromJson(Map<String, dynamic> json) {
     final map = Map<String, dynamic>.from(json);
@@ -180,14 +150,6 @@ class PresetPromptOrderGroup {
     };
   }
 
-  PresetPromptOrderGroup copy() {
-    return PresetPromptOrderGroup(
-      characterId: characterId,
-      order: order,
-      extra: extra,
-    );
-  }
-
   static Map<String, dynamic> _extractExtraPromptOrderGroupFields(
     Map<String, dynamic> map,
   ) {
@@ -198,66 +160,32 @@ class PresetPromptOrderGroup {
   }
 }
 
-class Preset {
-  Preset({
-    required this.id,
-    required this.name,
-    required this.prompts,
-    required this.updatedAt,
-    this.isBuiltin = false,
-    this.temperature = 1.0,
-    this.frequencyPenalty = 0.0,
-    this.presencePenalty = 0.0,
-    this.topP = 1.0,
-    this.topK = 0,
-    this.topA = 0.0,
-    this.minP = 0.0,
-    this.repetitionPenalty = 1.0,
-    this.openaiMaxContext = 131072,
-    this.openaiMaxTokens = 32768,
-    List<PresetPromptOrderGroup>? promptOrderGroups,
-    this.activePromptOrderCharacterId,
-    Map<String, dynamic>? extra,
-  }) : promptOrderGroups =
-           promptOrderGroups?.map((item) => item.copy()).toList() ??
-           <PresetPromptOrderGroup>[],
-       extra = extra == null
-           ? <String, dynamic>{}
-           : Map<String, dynamic>.from(extra);
+@freezed
+abstract class Preset with _$Preset {
+  const Preset._();
 
-  final String id;
-  String name;
-  bool isBuiltin;
-  double temperature;
-  double frequencyPenalty;
-  double presencePenalty;
-  double topP;
-  int topK;
-  double topA;
-  double minP;
-  double repetitionPenalty;
-  int openaiMaxContext;
-  int openaiMaxTokens;
-  List<PresetPrompt> prompts;
-  List<PresetPromptOrderGroup> promptOrderGroups;
-  String? activePromptOrderCharacterId;
-  DateTime updatedAt;
-  final Map<String, dynamic> extra;
-
-  PresetPromptOrderGroup? get activePromptOrderGroup {
-    if (promptOrderGroups.isEmpty) {
-      return null;
-    }
-    final activeId = activePromptOrderCharacterId;
-    if (activeId != null) {
-      for (final group in promptOrderGroups) {
-        if (group.characterId == activeId) {
-          return group;
-        }
-      }
-    }
-    return promptOrderGroups.first;
-  }
+  const factory Preset({
+    required String id,
+    required String name,
+    @Default(false) bool isBuiltin,
+    @Default(1.0) double temperature,
+    @Default(0.0) double frequencyPenalty,
+    @Default(0.0) double presencePenalty,
+    @Default(1.0) double topP,
+    @Default(0) int topK,
+    @Default(0.0) double topA,
+    @Default(0.0) double minP,
+    @Default(1.0) double repetitionPenalty,
+    @Default(131072) int openaiMaxContext,
+    @Default(32768) int openaiMaxTokens,
+    @Default([]) List<PresetPrompt> prompts,
+    @Default([]) List<PresetPromptOrderGroup> promptOrderGroups,
+    String? activePromptOrderCharacterId,
+    required DateTime updatedAt,
+    @JsonKey(includeToJson: false, includeFromJson: false)
+    @Default({})
+    Map<String, dynamic> extra,
+  }) = _Preset;
 
   factory Preset.fromStorageJson(Map<String, dynamic> json) {
     final map = Map<String, dynamic>.from(json);
@@ -430,69 +358,37 @@ class Preset {
     return validPromptCount > 0;
   }
 
-  Preset copyWith({
-    String? id,
-    String? name,
-    bool? isBuiltin,
-    double? temperature,
-    double? frequencyPenalty,
-    double? presencePenalty,
-    double? topP,
-    int? topK,
-    double? topA,
-    double? minP,
-    double? repetitionPenalty,
-    int? openaiMaxContext,
-    int? openaiMaxTokens,
-    List<PresetPrompt>? prompts,
-    List<PresetPromptOrderGroup>? promptOrderGroups,
-    String? activePromptOrderCharacterId,
-    DateTime? updatedAt,
-    Map<String, dynamic>? extra,
-  }) {
-    return Preset(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      isBuiltin: isBuiltin ?? this.isBuiltin,
-      temperature: temperature ?? this.temperature,
-      frequencyPenalty: frequencyPenalty ?? this.frequencyPenalty,
-      presencePenalty: presencePenalty ?? this.presencePenalty,
-      topP: topP ?? this.topP,
-      topK: topK ?? this.topK,
-      topA: topA ?? this.topA,
-      minP: minP ?? this.minP,
-      repetitionPenalty: repetitionPenalty ?? this.repetitionPenalty,
-      openaiMaxContext: openaiMaxContext ?? this.openaiMaxContext,
-      openaiMaxTokens: openaiMaxTokens ?? this.openaiMaxTokens,
-      prompts:
-          prompts?.map((item) => item.copy()).toList() ??
-          this.prompts.map((item) => item.copy()).toList(),
-      promptOrderGroups:
-          promptOrderGroups?.map((item) => item.copy()).toList() ??
-          this.promptOrderGroups.map((item) => item.copy()).toList(),
-      activePromptOrderCharacterId:
-          activePromptOrderCharacterId ?? this.activePromptOrderCharacterId,
-      updatedAt: updatedAt ?? this.updatedAt,
-      extra: extra ?? this.extra,
-    );
+  PresetPromptOrderGroup? get activePromptOrderGroup {
+    if (promptOrderGroups.isEmpty) {
+      return null;
+    }
+    final activeId = activePromptOrderCharacterId;
+    if (activeId != null) {
+      for (final group in promptOrderGroups) {
+        if (group.characterId == activeId) {
+          return group;
+        }
+      }
+    }
+    return promptOrderGroups.first;
   }
 
   List<PresetPromptOrderGroup> _buildPromptOrderGroupsSnapshot() {
     final snapshot = promptOrderGroups.isEmpty
-        ? [
+        ? <PresetPromptOrderGroup>[
             PresetPromptOrderGroup(
               characterId:
                   activePromptOrderCharacterId ?? defaultPromptOrderCharacterId,
               order: const [],
             ),
           ]
-        : promptOrderGroups.map((item) => item.copy()).toList();
+        : [...promptOrderGroups];
     final activeId = _resolveActivePromptOrderCharacterId(snapshot);
     final activeIndex = snapshot.indexWhere(
       (item) => item.characterId == activeId,
     );
     final targetIndex = activeIndex == -1 ? 0 : activeIndex;
-    snapshot[targetIndex].order = prompts
+    final newOrder = prompts
         .map(
           (item) => PresetPromptOrderEntry(
             identifier: item.identifier,
@@ -500,6 +396,7 @@ class Preset {
           ),
         )
         .toList();
+    snapshot[targetIndex] = snapshot[targetIndex].copyWith(order: newOrder);
     return snapshot;
   }
 
@@ -560,8 +457,7 @@ class Preset {
       if (prompt == null) {
         continue;
       }
-      prompt.enabled = item.enabled;
-      ordered.add(prompt);
+      ordered.add(prompt.copyWith(enabled: item.enabled));
     }
 
     ordered.addAll(promptById.values);
@@ -652,18 +548,16 @@ class Preset {
   }
 }
 
-class PresetSummary {
-  const PresetSummary({
-    required this.id,
-    required this.name,
-    required this.isBuiltin,
-    required this.updatedAt,
-  });
+@freezed
+abstract class PresetSummary with _$PresetSummary {
+  const PresetSummary._();
 
-  final String id;
-  final String name;
-  final bool isBuiltin;
-  final DateTime updatedAt;
+  const factory PresetSummary({
+    required String id,
+    required String name,
+    required bool isBuiltin,
+    required DateTime updatedAt,
+  }) = _PresetSummary;
 
   factory PresetSummary.fromJson(Map<String, dynamic> json) {
     return PresetSummary(

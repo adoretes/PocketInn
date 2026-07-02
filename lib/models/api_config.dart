@@ -1,67 +1,26 @@
 import 'dart:convert';
 
-class ApiConfig {
-  ApiConfig({
-    required this.id,
-    required this.name,
-    required this.baseUrl,
-    required this.apiKey,
-    required this.model,
-    this.customBody = '',
-    this.enabled = false,
-  });
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  final String id;
-  String name;
-  String baseUrl;
-  String apiKey;
-  String model;
-  String customBody;
-  bool enabled;
+part 'api_config.freezed.dart';
+part 'api_config.g.dart';
 
-  factory ApiConfig.fromJson(Map<String, dynamic> json) {
-    return ApiConfig(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '未命名配置',
-      baseUrl: json['baseUrl'] as String? ?? '',
-      apiKey: json['apiKey'] as String? ?? '',
-      model: json['model'] as String? ?? '',
-      customBody: json['customBody'] as String? ?? '',
-      enabled: json['enabled'] as bool? ?? false,
-    );
-  }
+@freezed
+abstract class ApiConfig with _$ApiConfig {
+  const ApiConfig._();
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'baseUrl': baseUrl,
-      'apiKey': apiKey,
-      'model': model,
-      'customBody': customBody,
-      'enabled': enabled,
-    };
-  }
+  const factory ApiConfig({
+    @JsonKey(defaultValue: '') required String id,
+    @JsonKey(defaultValue: '未命名配置') required String name,
+    @JsonKey(defaultValue: '') required String baseUrl,
+    @JsonKey(defaultValue: '') required String apiKey,
+    @JsonKey(defaultValue: '') required String model,
+    @JsonKey(defaultValue: '') @Default('') String customBody,
+    @JsonKey(defaultValue: false) @Default(false) bool enabled,
+  }) = _ApiConfig;
 
-  ApiConfig copyWith({
-    String? id,
-    String? name,
-    String? baseUrl,
-    String? apiKey,
-    String? model,
-    String? customBody,
-    bool? enabled,
-  }) {
-    return ApiConfig(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      baseUrl: baseUrl ?? this.baseUrl,
-      apiKey: apiKey ?? this.apiKey,
-      model: model ?? this.model,
-      customBody: customBody ?? this.customBody,
-      enabled: enabled ?? this.enabled,
-    );
-  }
+  factory ApiConfig.fromJson(Map<String, dynamic> json) =>
+      _$ApiConfigFromJson(json);
 
   Map<String, dynamic> parseCustomBody() {
     final source = customBody.trim();
