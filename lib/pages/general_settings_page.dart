@@ -5,7 +5,7 @@ import '../data/app_settings.dart';
 import '../models/api_config.dart';
 import '../models/chat_memory.dart';
 import '../services/chat_memory_service.dart';
-import 'custom_theme_page.dart';
+import 'custom_theme/custom_theme_page.dart';
 
 class GeneralSettingsPage extends StatelessWidget {
   const GeneralSettingsPage({super.key});
