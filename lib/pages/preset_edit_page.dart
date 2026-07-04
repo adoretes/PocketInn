@@ -27,6 +27,10 @@ class _PresetEditPageState extends State<PresetEditPage> {
   late final TextEditingController _temperatureController;
   late final TextEditingController _contextController;
   late final TextEditingController _maxTokensController;
+  late final TextEditingController _continueNudgeController;
+  late final TextEditingController _impersonationController;
+  late final TextEditingController _newChatPromptController;
+  late final TextEditingController _newExampleChatController;
 
   @override
   void initState() {
@@ -42,6 +46,22 @@ class _PresetEditPageState extends State<PresetEditPage> {
     _maxTokensController = TextEditingController(
       text: _preset.openaiMaxTokens.toString(),
     );
+    _continueNudgeController = TextEditingController(
+      text: (_preset.extra['continue_nudge_prompt'] as String?) ??
+          '[Continue your last message without repeating its original content.]',
+    );
+    _impersonationController = TextEditingController(
+      text: (_preset.extra['impersonation_prompt'] as String?) ??
+          '[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don\'t write as {{char}} or system. Don\'t describe actions of {{char}}.]',
+    );
+    _newChatPromptController = TextEditingController(
+      text: (_preset.extra['new_chat_prompt'] as String?) ??
+          '[Start a new Chat]',
+    );
+    _newExampleChatController = TextEditingController(
+      text: (_preset.extra['new_example_chat_prompt'] as String?) ??
+          '[Example Chat]',
+    );
   }
 
   @override
@@ -50,7 +70,19 @@ class _PresetEditPageState extends State<PresetEditPage> {
     _temperatureController.dispose();
     _contextController.dispose();
     _maxTokensController.dispose();
+    _continueNudgeController.dispose();
+    _impersonationController.dispose();
+    _newChatPromptController.dispose();
+    _newExampleChatController.dispose();
     super.dispose();
+  }
+
+  void _updateExtraField(String key, String value) {
+    setState(() {
+      _preset = _preset.copyWith(
+        extra: {..._preset.extra, key: value},
+      );
+    });
   }
 
   Future<void> _onSave() async {
@@ -70,6 +102,13 @@ class _PresetEditPageState extends State<PresetEditPage> {
           int.tryParse(_contextController.text) ?? _preset.openaiMaxContext,
       openaiMaxTokens:
           int.tryParse(_maxTokensController.text) ?? _preset.openaiMaxTokens,
+      extra: {
+        ..._preset.extra,
+        'continue_nudge_prompt': _continueNudgeController.text,
+        'impersonation_prompt': _impersonationController.text,
+        'new_chat_prompt': _newChatPromptController.text,
+        'new_example_chat_prompt': _newExampleChatController.text,
+      },
       updatedAt: DateTime.now(),
     );
 
@@ -159,119 +198,178 @@ class _PresetEditPageState extends State<PresetEditPage> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: Text(widget.isNewPreset ? '新建预设' : _preset.name),
-        actions: [TextButton(onPressed: _onSave, child: const Text('保存'))],
-      ),
-      body: Column(
-        children: [
-          _buildBasicParams(),
-          const Divider(height: 1),
-          Expanded(child: _buildPromptList()),
+        title: TextField(
+          controller: _nameController,
+          decoration: const InputDecoration(
+            hintText: '预设名称',
+            border: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+          onChanged: (value) {
+            setState(() {
+              _preset = _preset.copyWith(name: value);
+            });
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: '高级参数',
+            onPressed: _showAdvancedSettingsSheet,
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: '新建条目',
+            onPressed: _addNewPrompt,
+          ),
+          TextButton(onPressed: _onSave, child: const Text('保存')),
         ],
       ),
+      body: _buildPromptList(),
     );
   }
 
-  Widget _buildBasicParams() {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      color: colorScheme.surfaceContainerLow,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: '预设名称',
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  void _showAdvancedSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
             ),
-            onChanged: (value) {
-              setState(() {
-                _preset = _preset.copyWith(name: value);
-              });
-            },
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _NumericField(
+                          label: '温度',
+                          controller: _temperatureController,
+                          allowDecimal: true,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _NumericField(
+                          label: '上下文',
+                          controller: _contextController,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _NumericField(
+                          label: '最大Token',
+                          controller: _maxTokensController,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _newChatPromptController,
+                    maxLines: 1,
+                    decoration: const InputDecoration(
+                      labelText: '新对话标记',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                    onChanged: (value) =>
+                        _updateExtraField('new_chat_prompt', value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _newExampleChatController,
+                    maxLines: 1,
+                    decoration: const InputDecoration(
+                      labelText: '示例对话标记',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                    onChanged: (value) =>
+                        _updateExtraField('new_example_chat_prompt', value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _continueNudgeController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: '继续推进提示',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                    onChanged: (value) =>
+                        _updateExtraField('continue_nudge_prompt', value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _impersonationController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: '助手帮答提示',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                    onChanged: (value) =>
+                        _updateExtraField('impersonation_prompt', value),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _NumericField(
-                  label: '温度',
-                  controller: _temperatureController,
-                  allowDecimal: true,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _NumericField(
-                  label: '上下文',
-                  controller: _contextController,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _NumericField(
-                  label: '最大Token',
-                  controller: _maxTokensController,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildPromptList() {
-    return Column(
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          child: ElevatedButton.icon(
-            onPressed: _addNewPrompt,
-            icon: const Icon(Icons.add),
-            label: const Text('新建条目'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-          ),
-        ),
-        Expanded(
-          child: _preset.prompts.isEmpty
-              ? const Center(child: Text('暂无条目'))
-              : ReorderableListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  itemCount: _preset.prompts.length,
-                  onReorder: _reorderPrompts,
-                  buildDefaultDragHandles: false,
-                  itemBuilder: (context, index) {
-                    final prompt = _preset.prompts[index];
-                    return _PromptCard(
-                      key: ValueKey(prompt.identifier),
-                      prompt: prompt,
-                      index: index,
-                      isExpanded: _expandedPrompts.contains(prompt.identifier),
-                      onToggleExpanded: () =>
-                          _toggleExpanded(prompt.identifier),
-                      onToggleEnabled: (value) =>
-                          _togglePromptEnabled(prompt, value),
-                      onDelete: prompt.isDefault
-                          ? null
-                          : () => _deletePrompt(prompt),
-                      onUpdatePrompt: _updatePrompt,
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
+    return _preset.prompts.isEmpty
+        ? const Center(child: Text('暂无条目，点击右上角 + 新建'))
+        : ReorderableListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: _preset.prompts.length,
+            onReorder: _reorderPrompts,
+            buildDefaultDragHandles: false,
+            itemBuilder: (context, index) {
+              final prompt = _preset.prompts[index];
+              return _PromptCard(
+                key: ValueKey(prompt.identifier),
+                prompt: prompt,
+                index: index,
+                isExpanded: _expandedPrompts.contains(prompt.identifier),
+                onToggleExpanded: () =>
+                    _toggleExpanded(prompt.identifier),
+                onToggleEnabled: (value) =>
+                    _togglePromptEnabled(prompt, value),
+                onDelete: prompt.isDefault
+                    ? null
+                    : () => _deletePrompt(prompt),
+                onUpdatePrompt: _updatePrompt,
+              );
+            },
+          );
   }
 }
 

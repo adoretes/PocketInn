@@ -17,6 +17,7 @@ class ChatMessageList extends StatelessWidget {
     required this.scrollController,
     required this.inputTapRegionGroupId,
     required this.isSending,
+    required this.isImpersonating,
     required this.regeneratingUserMessageId,
     required this.isDraftSession,
     required this.activeCharacter,
@@ -28,6 +29,8 @@ class ChatMessageList extends StatelessWidget {
     required this.onDeleteMessage,
     required this.onRegenerateFromUserMessage,
     required this.onRegenerateMessage,
+    required this.onContinueMessage,
+    required this.onImpersonate,
     required this.onSwitchMessageVariant,
   });
 
@@ -35,6 +38,7 @@ class ChatMessageList extends StatelessWidget {
   final ScrollController scrollController;
   final Object inputTapRegionGroupId;
   final bool isSending;
+  final bool isImpersonating;
   final String? regeneratingUserMessageId;
   final bool isDraftSession;
   final ResolvedChatCharacter? activeCharacter;
@@ -47,6 +51,8 @@ class ChatMessageList extends StatelessWidget {
   final void Function(int index) onDeleteMessage;
   final void Function(int index) onRegenerateFromUserMessage;
   final void Function(int index) onRegenerateMessage;
+  final void Function(int index) onContinueMessage;
+  final VoidCallback onImpersonate;
   final void Function(ChatMessage message, int delta) onSwitchMessageVariant;
 
   @override
@@ -94,6 +100,7 @@ class ChatMessageList extends StatelessWidget {
                 canEdit: canEditMessage,
                 canDelete: canDeleteMessage,
                 isBusyRegenerating: isRegeneratingUserMessage,
+                isBusyImpersonating: isImpersonating,
                 onCopy: () => onCopyMessage(msg),
                 onEdit: hasDraftOpeningActions
                     ? onEditDraftOpeningMessage
@@ -107,6 +114,12 @@ class ChatMessageList extends StatelessWidget {
                     : null,
                 onRegenerate: isLastCharacterMessage && showActions
                     ? () => onRegenerateMessage(messageIndex)
+                    : null,
+                onContinue: isLastCharacterMessage && showActions
+                    ? () => onContinueMessage(messageIndex)
+                    : null,
+                onImpersonate: isLastCharacterMessage && showActions
+                    ? onImpersonate
                     : null,
                 onSelectPreviousVariant: msg.hasMultiple
                     ? () => onSwitchMessageVariant(msg, -1)

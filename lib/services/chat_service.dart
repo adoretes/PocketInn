@@ -12,6 +12,7 @@ import '../models/world_book.dart';
 import 'chat_character_resolver.dart';
 import 'chat_database_service.dart';
 import 'chat_memory_service.dart';
+import 'chat_variable_service.dart';
 import 'openai_compatible_api_service.dart';
 import 'preset_service.dart';
 import 'prompt_assembler.dart';
@@ -289,6 +290,207 @@ class ChatService {
     }
   }
 
+  /// 继续推进：基于最后一条角色消息生成新的角色消息。
+  /// 使用预设中的 `continue_nudge_prompt` 作为继续提示。
+  Future<ChatCompletionResult> continueAssistantResponse({
+    required ChatSession session,
+    required ResolvedChatCharacter character,
+    required List<ChatMessage> chatMessages,
+    String? selectedPresetId,
+    String? selectedUserSettingId,
+    Set<String> selectedWorldBookIds = const <String>{},
+    bool useStreaming = false,
+    ChatCompletionCancelToken? cancellationToken,
+    void Function(ChatCompletionProgress progress)? onStreamProgress,
+  }) async {
+    if (chatMessages.isEmpty) {
+      throw StateError('没有可继续的消息');
+    }
+    final lastMessage = chatMessages.last;
+    if (lastMessage.isMe) {
+      throw StateError('只能继续角色消息');
+    }
+    final lastMessageId = lastMessage.id;
+    if (lastMessageId == null) {
+      throw StateError('角色消息缺少 ID，无法继续');
+    }
+
+    final config = enabledApiConfig?.copyWith();
+    if (config == null) {
+      throw StateError('当前没有启用的 API 配置');
+    }
+    if (config.model.trim().isEmpty) {
+      throw const FormatException('当前启用的 API 配置未填写 Model');
+    }
+
+    final preset = await _resolvePreset(
+      selectedPresetId ?? session.selectedPresetId,
+    );
+    final userSetting = _resolveUserSetting(
+      selectedUserSettingId ?? session.selectedUserSettingId,
+    );
+    final worldBooks = await _loadSelectedWorldBooks(
+      selectedWorldBookIds.isNotEmpty
+          ? selectedWorldBookIds
+          : session.selectedWorldBookIds.toSet(),
+    );
+
+    final memoryContext = await _buildMemoryContext(
+      sessionId: session.id,
+      chatMessages: chatMessages,
+    );
+
+    final promptAssembly = PromptAssembler.build(
+      PromptAssemblyContext(
+        characterName: character.name,
+        characterCardData: character.cardJson,
+        userName: userSetting.name,
+        userSettingPrompt: userSetting.prompt,
+        preset: preset,
+        selectedWorldBooks: worldBooks,
+        chatMessages: chatMessages,
+        currentInput: '',
+        memoryContext: memoryContext,
+      ),
+    );
+    cancellationToken?.throwIfCancelled();
+
+    final continueNudge = ChatVariableService.replacePlaceholders(
+      preset.extra['continue_nudge_prompt'] as String? ??
+          '[Continue your last message without repeating its original content.]',
+      characterName: character.name,
+      userName: userSetting.name,
+    ).trim();
+
+    final requestMessages = <Map<String, dynamic>>[
+      for (final message in promptAssembly.messages)
+        {'role': message.role, 'content': message.content},
+      if (continueNudge.isNotEmpty)
+        {'role': 'system', 'content': continueNudge},
+    ];
+
+    try {
+      final completion = await _createCompletionFromMessages(
+        config,
+        messages: requestMessages,
+        preset: preset,
+        useStreaming: useStreaming,
+        cancellationToken: cancellationToken,
+        onStreamProgress: onStreamProgress,
+      );
+
+      await ChatDatabaseService.instance.appendAssistantMessage(
+        sessionId: session.id,
+        parentMessageId: lastMessageId,
+        text: completion.text,
+        thinkingChain: completion.thinkingChain,
+      );
+
+      return completion;
+    } on SocketException catch (_) {
+      rethrow;
+    } on HttpException catch (_) {
+      rethrow;
+    } on FormatException catch (_) {
+      rethrow;
+    } on StateError catch (_) {
+      rethrow;
+    } on ChatCompletionCancelledException catch (_) {
+      rethrow;
+    } catch (error) {
+      throw StateError('继续推进失败: $error');
+    }
+  }
+
+  /// 助手帮答：基于当前对话生成一条用户回复，填入输入框。
+  /// 使用预设中的 `impersonation_prompt` 作为扮演提示。不写入数据库。
+  Future<String> generateUserReply({
+    required ChatSession session,
+    required ResolvedChatCharacter character,
+    required List<ChatMessage> chatMessages,
+    String? selectedPresetId,
+    String? selectedUserSettingId,
+    Set<String> selectedWorldBookIds = const <String>{},
+    ChatCompletionCancelToken? cancellationToken,
+  }) async {
+    final config = enabledApiConfig?.copyWith();
+    if (config == null) {
+      throw StateError('当前没有启用的 API 配置');
+    }
+    if (config.model.trim().isEmpty) {
+      throw const FormatException('当前启用的 API 配置未填写 Model');
+    }
+
+    final preset = await _resolvePreset(
+      selectedPresetId ?? session.selectedPresetId,
+    );
+    final userSetting = _resolveUserSetting(
+      selectedUserSettingId ?? session.selectedUserSettingId,
+    );
+    final worldBooks = await _loadSelectedWorldBooks(
+      selectedWorldBookIds.isNotEmpty
+          ? selectedWorldBookIds
+          : session.selectedWorldBookIds.toSet(),
+    );
+
+    final memoryContext = await _buildMemoryContext(
+      sessionId: session.id,
+      chatMessages: chatMessages,
+    );
+
+    final promptAssembly = PromptAssembler.build(
+      PromptAssemblyContext(
+        characterName: character.name,
+        characterCardData: character.cardJson,
+        userName: userSetting.name,
+        userSettingPrompt: userSetting.prompt,
+        preset: preset,
+        selectedWorldBooks: worldBooks,
+        chatMessages: chatMessages,
+        currentInput: '',
+        memoryContext: memoryContext,
+      ),
+    );
+    cancellationToken?.throwIfCancelled();
+
+    final impersonationPrompt = ChatVariableService.replacePlaceholders(
+      preset.extra['impersonation_prompt'] as String? ??
+          '[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don\'t write as {{char}} or system. Don\'t describe actions of {{char}}.]',
+      characterName: character.name,
+      userName: userSetting.name,
+    ).trim();
+
+    final requestMessages = <Map<String, dynamic>>[
+      for (final message in promptAssembly.messages)
+        {'role': message.role, 'content': message.content},
+      if (impersonationPrompt.isNotEmpty)
+        {'role': 'system', 'content': impersonationPrompt},
+    ];
+
+    try {
+      final completion = await _createCompletionFromMessages(
+        config,
+        messages: requestMessages,
+        preset: preset,
+        useStreaming: false,
+        cancellationToken: cancellationToken,
+      );
+      return completion.text;
+    } on SocketException catch (_) {
+      rethrow;
+    } on HttpException catch (_) {
+      rethrow;
+    } on FormatException catch (_) {
+      rethrow;
+    } on StateError catch (_) {
+      rethrow;
+    } on ChatCompletionCancelledException catch (_) {
+      rethrow;
+    } catch (error) {
+      throw StateError('助手帮答失败: $error');
+    }
+  }
+
   Future<Preset> _resolvePreset(String? presetId) async {
     if (presetId != null && presetId.trim().isNotEmpty) {
       final preset = await PresetService.instance.loadById(presetId);
@@ -349,10 +551,28 @@ class ChatService {
         {'role': message.role, 'content': message.content},
     ];
 
+    return _createCompletionFromMessages(
+      config,
+      messages: requestMessages,
+      preset: preset,
+      useStreaming: useStreaming,
+      cancellationToken: cancellationToken,
+      onStreamProgress: onStreamProgress,
+    );
+  }
+
+  Future<ChatCompletionResult> _createCompletionFromMessages(
+    ApiConfig config, {
+    required List<Map<String, dynamic>> messages,
+    required Preset preset,
+    required bool useStreaming,
+    ChatCompletionCancelToken? cancellationToken,
+    void Function(ChatCompletionProgress progress)? onStreamProgress,
+  }) async {
     if (!useStreaming) {
       return OpenAICompatibleApiService.instance.createChatCompletion(
         config,
-        messages: requestMessages,
+        messages: messages,
         defaults: _buildCompletionDefaults(preset, useStreaming: false),
         cancellationToken: cancellationToken,
       );
@@ -364,7 +584,7 @@ class ChatService {
       await for (final progress
           in OpenAICompatibleApiService.instance.createStreamingChatCompletion(
             config,
-            messages: requestMessages,
+            messages: messages,
             defaults: _buildCompletionDefaults(preset, useStreaming: true),
             cancellationToken: cancellationToken,
           )) {

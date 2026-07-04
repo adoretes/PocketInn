@@ -131,7 +131,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _selectSessionFromSidebar(ChatSessionSummary summary) async {
     _dismissInputKeyboard();
-    if (_viewModel.isSending) {
+    if (_viewModel.isSending || _viewModel.isImpersonating) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('回复生成中，稍后再切换聊天')));
@@ -516,6 +516,39 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _onContinueMessage(int assistantMessageIndex) async {
+    try {
+      await _viewModel.continueAssistantMessage(assistantMessageIndex);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onImpersonate() async {
+    try {
+      final reply = await _viewModel.generateUserReply();
+      if (reply == null || reply.isEmpty || !mounted) {
+        return;
+      }
+      _textController.text = reply;
+      _textController.selection = TextSelection.fromPosition(
+        TextPosition(offset: reply.length),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
   Future<void> _onRegenerateFromUserMessage(int userMessageIndex) async {
     try {
       await _viewModel.regenerateFromUserMessage(
@@ -634,6 +667,7 @@ class _ChatPageState extends State<ChatPage> {
               final isSendEnabled =
                   !_viewModel.isSwitchingSession &&
                   !_viewModel.isSending &&
+                  !_viewModel.isImpersonating &&
                   _inputText.trim().isNotEmpty;
               return Stack(
                 children: [
@@ -673,6 +707,7 @@ class _ChatPageState extends State<ChatPage> {
                             scrollController: _scrollController,
                             inputTapRegionGroupId: _inputTapRegionGroupId,
                             isSending: _viewModel.isSending,
+                            isImpersonating: _viewModel.isImpersonating,
                             regeneratingUserMessageId:
                                 _viewModel.regeneratingUserMessageId,
                             isDraftSession: _viewModel.isDraftSession,
@@ -687,6 +722,8 @@ class _ChatPageState extends State<ChatPage> {
                             onRegenerateFromUserMessage:
                                 _onRegenerateFromUserMessage,
                             onRegenerateMessage: _onRegenerateMessage,
+                            onContinueMessage: _onContinueMessage,
+                            onImpersonate: _onImpersonate,
                             onSwitchMessageVariant: _onSwitchMessageVariant,
                           ),
                         ),

@@ -76,6 +76,7 @@ class ChatViewModel extends ChangeNotifier {
   bool _isLoading = true;
   bool _isSwitchingSession = false;
   bool _isSending = false;
+  bool _isImpersonating = false;
   bool _useStreaming = true;
   bool _isCheckingApiStatus = false;
   String? _apiStatusConfigId;
@@ -109,6 +110,7 @@ class ChatViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isSwitchingSession => _isSwitchingSession;
   bool get isSending => _isSending;
+  bool get isImpersonating => _isImpersonating;
   bool get useStreaming => _useStreaming;
   bool get isCheckingApiStatus => _isCheckingApiStatus;
   String? get apiStatusConfigId => _apiStatusConfigId;
@@ -407,7 +409,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 从侧边栏选择一个会话。返回是否已开始切换（false 表示当前正在发送）。
   bool selectSession(String sessionId) {
-    if (_isSending) {
+    if (_isSending || _isImpersonating) {
       return false;
     }
     if (sessionId == _activeSession?.id) {
@@ -531,7 +533,8 @@ class ChatViewModel extends ChangeNotifier {
         session == null ||
         character == null ||
         _isSwitchingSession ||
-        _isSending) {
+        _isSending ||
+        _isImpersonating) {
       return;
     }
 
@@ -607,7 +610,7 @@ class ChatViewModel extends ChangeNotifier {
   }) async {
     final session = _activeSession;
     final character = _activeCharacter;
-    if (session == null || character == null || _isSending) {
+    if (session == null || character == null || _isSending || _isImpersonating) {
       return;
     }
     if (userMessageIndex < 0 || userMessageIndex >= _messages.length) {
@@ -684,7 +687,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 重新生成指定位置的角色消息（其上一条为用户消息）。
   Future<void> regenerateMessage(int assistantMessageIndex) async {
-    if (_isSending) {
+    if (_isSending || _isImpersonating) {
       return;
     }
     final session = _activeSession;
@@ -705,6 +708,119 @@ class ChatViewModel extends ChangeNotifier {
     await regenerateFromUserMessage(
       userMessageIndex: assistantMessageIndex - 1,
     );
+  }
+
+  /// 继续推进：基于最后一条角色消息生成新的角色消息。
+  Future<void> continueAssistantMessage(int assistantMessageIndex) async {
+    if (_isSending || _isImpersonating) {
+      return;
+    }
+    final session = _activeSession;
+    final character = _activeCharacter;
+    if (session == null || character == null) {
+      return;
+    }
+    if (assistantMessageIndex < 0 ||
+        assistantMessageIndex >= _messages.length) {
+      return;
+    }
+    if (assistantMessageIndex != _messages.length - 1) {
+      return;
+    }
+
+    final lastAssistantMessage = _messages[assistantMessageIndex];
+    if (lastAssistantMessage.isMe || lastAssistantMessage.id == null) {
+      return;
+    }
+
+    final cancellationToken = ChatCompletionCancelToken();
+    _activeCompletionCancelToken = cancellationToken;
+    _isSending = true;
+    _pendingUserMessage = null;
+    _regeneratingUserMessageId = null;
+    _streamingAssistantText = '';
+    _streamingThinkingChain = '';
+    notifyListeners();
+
+    try {
+      await getIt<ChatService>().continueAssistantResponse(
+        session: session,
+        character: character,
+        chatMessages: _messages,
+        selectedPresetId: _selectedPresetId,
+        selectedUserSettingId: _selectedUserSettingId,
+        selectedWorldBookIds: _selectedWorldBookIds,
+        useStreaming: _useStreaming,
+        cancellationToken: cancellationToken,
+        onStreamProgress: (progress) {
+          if (_isDisposed) {
+            return;
+          }
+          if (progress.textDelta.isNotEmpty) {
+            _streamingAssistantText += progress.textDelta;
+          }
+          if (progress.thinkingDelta.isNotEmpty) {
+            _streamingThinkingChain += progress.thinkingDelta;
+          }
+          notifyListeners();
+        },
+      );
+    } on ChatCompletionCancelledException {
+      // 用户主动终止，不弹错误提示。
+    } finally {
+      _resetPendingMessages();
+      await _loadSession(preferredSessionId: session.id);
+      if (!_isDisposed) {
+        _isSending = false;
+        if (identical(_activeCompletionCancelToken, cancellationToken)) {
+          _activeCompletionCancelToken = null;
+        }
+        notifyListeners();
+      }
+    }
+  }
+
+  /// 助手帮答：生成一条用户回复文本，由 UI 层填入输入框。
+  /// 返回 null 表示当前不可用或被取消。
+  Future<String?> generateUserReply() async {
+    final session = _activeSession;
+    final character = _activeCharacter;
+    if (session == null || character == null) {
+      return null;
+    }
+    if (_isSending || _isImpersonating || _isSwitchingSession) {
+      return null;
+    }
+    if (_messages.isEmpty) {
+      return null;
+    }
+
+    final cancellationToken = ChatCompletionCancelToken();
+    _activeCompletionCancelToken = cancellationToken;
+    _isImpersonating = true;
+    notifyListeners();
+
+    try {
+      return await getIt<ChatService>().generateUserReply(
+        session: session,
+        character: character,
+        chatMessages: _messages,
+        selectedPresetId: _selectedPresetId,
+        selectedUserSettingId: _selectedUserSettingId,
+        selectedWorldBookIds: _selectedWorldBookIds,
+        cancellationToken: cancellationToken,
+      );
+    } on ChatCompletionCancelledException {
+      return null;
+    } finally {
+      _isImpersonating = false;
+      if (identical(_activeCompletionCancelToken, cancellationToken)) {
+        _activeCompletionCancelToken = null;
+      }
+      if (!_isDisposed) {
+        notifyListeners();
+      }
+    }
   }
 
   // --- 消息操作 ---

@@ -23,11 +23,14 @@ class MessageBubble extends StatefulWidget {
     required this.canEdit,
     required this.canDelete,
     required this.isBusyRegenerating,
+    required this.isBusyImpersonating,
     required this.onCopy,
     required this.onEdit,
     required this.onDelete,
     this.onGenerate,
     this.onRegenerate,
+    this.onContinue,
+    this.onImpersonate,
     this.onSelectPreviousVariant,
     this.onSelectNextVariant,
   });
@@ -42,11 +45,14 @@ class MessageBubble extends StatefulWidget {
   final bool canEdit;
   final bool canDelete;
   final bool isBusyRegenerating;
+  final bool isBusyImpersonating;
   final VoidCallback onCopy;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onGenerate;
   final VoidCallback? onRegenerate;
+  final VoidCallback? onContinue;
+  final VoidCallback? onImpersonate;
   final VoidCallback? onSelectPreviousVariant;
   final VoidCallback? onSelectNextVariant;
 
@@ -462,11 +468,31 @@ class _MessageBubbleState extends State<MessageBubble> {
           onPressed: widget.onGenerate!,
           colorScheme: colorScheme,
         ),
-      if (widget.isLastCharacterMessage && widget.onRegenerate != null)
+      if (widget.isLastCharacterMessage &&
+          widget.onRegenerate != null &&
+          !widget.isBusyImpersonating)
         _buildActionButton(
           icon: Icons.refresh,
           tooltip: '重新生成',
           onPressed: widget.onRegenerate!,
+          colorScheme: colorScheme,
+        ),
+      if (widget.isLastCharacterMessage &&
+          widget.onContinue != null &&
+          !widget.isBusyImpersonating)
+        _buildActionButton(
+          icon: Icons.arrow_forward,
+          tooltip: '继续推进',
+          onPressed: widget.onContinue!,
+          colorScheme: colorScheme,
+        ),
+      if (widget.isLastCharacterMessage && widget.onImpersonate != null)
+        _buildActionButton(
+          icon: widget.isBusyImpersonating
+              ? Icons.hourglass_top
+              : Icons.lightbulb_outline,
+          tooltip: widget.isBusyImpersonating ? '生成中' : '助手帮答',
+          onPressed: widget.isBusyImpersonating ? null : widget.onImpersonate,
           colorScheme: colorScheme,
         ),
     ];
@@ -548,7 +574,7 @@ class _MessageBubbleState extends State<MessageBubble> {
   Widget _buildActionButton({
     required IconData icon,
     required String tooltip,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
     required ColorScheme colorScheme,
   }) {
     return IconButton(
@@ -559,7 +585,9 @@ class _MessageBubbleState extends State<MessageBubble> {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       style: IconButton.styleFrom(
-        foregroundColor: colorScheme.onSurfaceVariant,
+        foregroundColor: onPressed != null
+            ? colorScheme.onSurfaceVariant
+            : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
