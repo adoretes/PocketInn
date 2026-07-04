@@ -1,0 +1,6 @@
+# Flutter 桌面端生成的插件注册文件由工具链以 LF 写入，
+# 锁定行尾符避免在 Windows 上因 autocrlf 反复显示为已修改。
+**/generated_plugin_registrant.cc text eol=lf
+**/generated_plugin_registrant.h text eol=lf
+**/generated_plugins.cmake text eol=lf
+**/GeneratedPluginRegistrant.swift text eol=lf
