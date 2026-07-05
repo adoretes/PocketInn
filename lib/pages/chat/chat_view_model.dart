@@ -86,6 +86,7 @@ class ChatViewModel extends ChangeNotifier {
   String? _regeneratingUserMessageId;
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
+  String _streamingImpersonationText = '';
   bool _isDraftSession = false;
   List<String> _draftOpeningAssistantMessages = const [];
   int _draftOpeningMessageIndex = 0;
@@ -782,7 +783,10 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 助手帮答：生成一条用户回复文本，由 UI 层填入输入框。
   /// 返回 null 表示当前不可用或被取消。
-  Future<String?> generateUserReply() async {
+  /// [onProgress] 在流式生成时回调累积文本。
+  Future<String?> generateUserReply({
+    void Function(String accumulatedText)? onProgress,
+  }) async {
     final session = _activeSession;
     final character = _activeCharacter;
     if (session == null || character == null) {
@@ -798,6 +802,7 @@ class ChatViewModel extends ChangeNotifier {
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
     _isImpersonating = true;
+    _streamingImpersonationText = '';
     notifyListeners();
 
     try {
@@ -808,12 +813,23 @@ class ChatViewModel extends ChangeNotifier {
         selectedPresetId: _selectedPresetId,
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
+        useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
+        onStreamProgress: (progress) {
+          if (_isDisposed) {
+            return;
+          }
+          if (progress.textDelta.isNotEmpty) {
+            _streamingImpersonationText += progress.textDelta;
+            onProgress?.call(_streamingImpersonationText);
+          }
+        },
       );
     } on ChatCompletionCancelledException {
       return null;
     } finally {
       _isImpersonating = false;
+      _streamingImpersonationText = '';
       if (identical(_activeCompletionCancelToken, cancellationToken)) {
         _activeCompletionCancelToken = null;
       }

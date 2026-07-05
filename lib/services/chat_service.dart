@@ -362,11 +362,13 @@ class ChatService {
       userName: userSetting.name,
     ).trim();
 
+    final fixedRole = preset.extra['fixed_prompts_role'] as String? ?? 'system';
+
     final requestMessages = <Map<String, dynamic>>[
       for (final message in promptAssembly.messages)
         {'role': message.role, 'content': message.content},
       if (continueNudge.isNotEmpty)
-        {'role': 'system', 'content': continueNudge},
+        {'role': fixedRole, 'content': continueNudge},
     ];
 
     try {
@@ -411,7 +413,9 @@ class ChatService {
     String? selectedPresetId,
     String? selectedUserSettingId,
     Set<String> selectedWorldBookIds = const <String>{},
+    bool useStreaming = false,
     ChatCompletionCancelToken? cancellationToken,
+    void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
     final config = enabledApiConfig?.copyWith();
     if (config == null) {
@@ -460,11 +464,13 @@ class ChatService {
       userName: userSetting.name,
     ).trim();
 
+    final fixedRole = preset.extra['fixed_prompts_role'] as String? ?? 'system';
+
     final requestMessages = <Map<String, dynamic>>[
       for (final message in promptAssembly.messages)
         {'role': message.role, 'content': message.content},
       if (impersonationPrompt.isNotEmpty)
-        {'role': 'system', 'content': impersonationPrompt},
+        {'role': fixedRole, 'content': impersonationPrompt},
     ];
 
     try {
@@ -472,8 +478,9 @@ class ChatService {
         config,
         messages: requestMessages,
         preset: preset,
-        useStreaming: false,
+        useStreaming: useStreaming,
         cancellationToken: cancellationToken,
+        onStreamProgress: onStreamProgress,
       );
       return completion.text;
     } on SocketException catch (_) {

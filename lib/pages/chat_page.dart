@@ -531,7 +531,15 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _onImpersonate() async {
     try {
-      final reply = await _viewModel.generateUserReply();
+      final reply = await _viewModel.generateUserReply(
+        onProgress: (text) {
+          if (!mounted) return;
+          _textController.text = text;
+          _textController.selection = TextSelection.fromPosition(
+            TextPosition(offset: text.length),
+          );
+        },
+      );
       if (reply == null || reply.isEmpty || !mounted) {
         return;
       }

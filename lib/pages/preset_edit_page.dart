@@ -31,6 +31,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
   late final TextEditingController _impersonationController;
   late final TextEditingController _newChatPromptController;
   late final TextEditingController _newExampleChatController;
+  String _fixedRole = 'system';
 
   @override
   void initState() {
@@ -47,21 +48,25 @@ class _PresetEditPageState extends State<PresetEditPage> {
       text: _preset.openaiMaxTokens.toString(),
     );
     _continueNudgeController = TextEditingController(
-      text: (_preset.extra['continue_nudge_prompt'] as String?) ??
+      text:
+          (_preset.extra['continue_nudge_prompt'] as String?) ??
           '[Continue your last message without repeating its original content.]',
     );
     _impersonationController = TextEditingController(
-      text: (_preset.extra['impersonation_prompt'] as String?) ??
+      text:
+          (_preset.extra['impersonation_prompt'] as String?) ??
           '[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don\'t write as {{char}} or system. Don\'t describe actions of {{char}}.]',
     );
     _newChatPromptController = TextEditingController(
-      text: (_preset.extra['new_chat_prompt'] as String?) ??
-          '[Start a new Chat]',
+      text:
+          (_preset.extra['new_chat_prompt'] as String?) ?? '[Start a new Chat]',
     );
     _newExampleChatController = TextEditingController(
-      text: (_preset.extra['new_example_chat_prompt'] as String?) ??
+      text:
+          (_preset.extra['new_example_chat_prompt'] as String?) ??
           '[Example Chat]',
     );
+    _fixedRole = _preset.extra['fixed_prompts_role'] as String? ?? 'system';
   }
 
   @override
@@ -79,9 +84,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
 
   void _updateExtraField(String key, String value) {
     setState(() {
-      _preset = _preset.copyWith(
-        extra: {..._preset.extra, key: value},
-      );
+      _preset = _preset.copyWith(extra: {..._preset.extra, key: value});
     });
   }
 
@@ -108,6 +111,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
         'impersonation_prompt': _impersonationController.text,
         'new_chat_prompt': _newChatPromptController.text,
         'new_example_chat_prompt': _newExampleChatController.text,
+        'fixed_prompts_role': _fixedRole,
       },
       updatedAt: DateTime.now(),
     );
@@ -238,107 +242,143 @@ class _PresetEditPageState extends State<PresetEditPage> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: _NumericField(
-                          label: '温度',
-                          controller: _temperatureController,
-                          allowDecimal: true,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _NumericField(
+                              label: '温度',
+                              controller: _temperatureController,
+                              allowDecimal: true,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _NumericField(
+                              label: '上下文',
+                              controller: _contextController,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _NumericField(
+                              label: '最大Token',
+                              controller: _maxTokensController,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _NumericField(
-                          label: '上下文',
-                          controller: _contextController,
-                        ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Text('注入身份：', style: TextStyle(fontSize: 14)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment(
+                                  value: 'system',
+                                  label: Text('系统'),
+                                ),
+                                ButtonSegment(value: 'user', label: Text('用户')),
+                                ButtonSegment(
+                                  value: 'assistant',
+                                  label: Text('助手'),
+                                ),
+                              ],
+                              selected: {_fixedRole},
+                              onSelectionChanged: (selection) {
+                                setModalState(() {
+                                  _fixedRole = selection.first;
+                                });
+                                _updateExtraField(
+                                  'fixed_prompts_role',
+                                  _fixedRole,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _NumericField(
-                          label: '最大Token',
-                          controller: _maxTokensController,
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _newChatPromptController,
+                        maxLines: 1,
+                        decoration: const InputDecoration(
+                          labelText: '新对话标记',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                         ),
+                        onChanged: (value) =>
+                            _updateExtraField('new_chat_prompt', value),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _newExampleChatController,
+                        maxLines: 1,
+                        decoration: const InputDecoration(
+                          labelText: '示例对话标记',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        onChanged: (value) =>
+                            _updateExtraField('new_example_chat_prompt', value),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _continueNudgeController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: '继续推进提示',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        onChanged: (value) =>
+                            _updateExtraField('continue_nudge_prompt', value),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _impersonationController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: '助手帮答提示',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        onChanged: (value) =>
+                            _updateExtraField('impersonation_prompt', value),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _newChatPromptController,
-                    maxLines: 1,
-                    decoration: const InputDecoration(
-                      labelText: '新对话标记',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                    ),
-                    onChanged: (value) =>
-                        _updateExtraField('new_chat_prompt', value),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _newExampleChatController,
-                    maxLines: 1,
-                    decoration: const InputDecoration(
-                      labelText: '示例对话标记',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                    ),
-                    onChanged: (value) =>
-                        _updateExtraField('new_example_chat_prompt', value),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _continueNudgeController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: '继续推进提示',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                    ),
-                    onChanged: (value) =>
-                        _updateExtraField('continue_nudge_prompt', value),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _impersonationController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: '助手帮答提示',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                    ),
-                    onChanged: (value) =>
-                        _updateExtraField('impersonation_prompt', value),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -359,13 +399,9 @@ class _PresetEditPageState extends State<PresetEditPage> {
                 prompt: prompt,
                 index: index,
                 isExpanded: _expandedPrompts.contains(prompt.identifier),
-                onToggleExpanded: () =>
-                    _toggleExpanded(prompt.identifier),
-                onToggleEnabled: (value) =>
-                    _togglePromptEnabled(prompt, value),
-                onDelete: prompt.isDefault
-                    ? null
-                    : () => _deletePrompt(prompt),
+                onToggleExpanded: () => _toggleExpanded(prompt.identifier),
+                onToggleEnabled: (value) => _togglePromptEnabled(prompt, value),
+                onDelete: prompt.isDefault ? null : () => _deletePrompt(prompt),
                 onUpdatePrompt: _updatePrompt,
               );
             },
