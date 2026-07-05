@@ -707,9 +707,10 @@ class ChatService {
       'stream': useStreaming,
       'temperature': preset.temperature,
       'top_p': preset.topP,
-      'frequency_penalty': preset.frequencyPenalty,
-      'presence_penalty': preset.presencePenalty,
       if (preset.openaiMaxTokens > 0) 'max_tokens': preset.openaiMaxTokens,
+      if (preset.extra['enable_reasoning'] == true) ...{
+        'reasoning_effort': preset.extra['reasoning_effort'] ?? 'medium',
+      },
     };
   }
 }

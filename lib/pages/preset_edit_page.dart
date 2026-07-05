@@ -32,6 +32,8 @@ class _PresetEditPageState extends State<PresetEditPage> {
   late final TextEditingController _newChatPromptController;
   late final TextEditingController _newExampleChatController;
   String _fixedRole = 'system';
+  bool _enableReasoning = false;
+  String _reasoningEffort = 'medium';
 
   @override
   void initState() {
@@ -67,6 +69,8 @@ class _PresetEditPageState extends State<PresetEditPage> {
           '[Example Chat]',
     );
     _fixedRole = _preset.extra['fixed_prompts_role'] as String? ?? 'system';
+    _enableReasoning = _preset.extra['enable_reasoning'] as bool? ?? false;
+    _reasoningEffort = _preset.extra['reasoning_effort'] as String? ?? 'medium';
   }
 
   @override
@@ -112,6 +116,8 @@ class _PresetEditPageState extends State<PresetEditPage> {
         'new_chat_prompt': _newChatPromptController.text,
         'new_example_chat_prompt': _newExampleChatController.text,
         'fixed_prompts_role': _fixedRole,
+        'enable_reasoning': _enableReasoning,
+        'reasoning_effort': _reasoningEffort,
       },
       updatedAt: DateTime.now(),
     );
@@ -277,6 +283,67 @@ class _PresetEditPageState extends State<PresetEditPage> {
                             child: _NumericField(
                               label: '最大Token',
                               controller: _maxTokensController,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Text('思考开关：', style: TextStyle(fontSize: 14)),
+                          const SizedBox(width: 8),
+                          Switch(
+                            value: _enableReasoning,
+                            onChanged: (value) {
+                              setModalState(() {
+                                _enableReasoning = value;
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 16),
+                          const Text('思考层级：', style: TextStyle(fontSize: 14)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey(_reasoningEffort),
+                              initialValue: _reasoningEffort,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'auto',
+                                  child: Text('自动'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'low',
+                                  child: Text('低'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'medium',
+                                  child: Text('中'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'high',
+                                  child: Text('高'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'xhigh',
+                                  child: Text('超高'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setModalState(() {
+                                    _reasoningEffort = value;
+                                  });
+                                }
+                              },
                             ),
                           ),
                         ],
