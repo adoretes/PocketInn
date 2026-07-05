@@ -72,6 +72,15 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.2.1',
+                  date: '2026-07-06',
+                  changes: [
+                    '重构 API 配置：单模型改为提供方+模型列表',
+                    '新增思考开关及思考层级选项',
+                    '优化预设编辑页面',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.2.0',
                   date: '2026-07-05',
                   changes: [
