@@ -533,11 +533,11 @@ class MemorySettingsCard extends StatelessWidget {
               onChanged: (value) =>
                   updateMemoryExtractionConfig(recallCount: value.toInt()),
             ),
-            if (apiConfigs.length > 1) ...[
+            if (apiConfigs.any((c) => c.models.isNotEmpty)) ...[
               const SizedBox(height: 12),
-              _ApiConfigSelector(
+              _ExtractionModelSelector(
                 apiConfigs: apiConfigs,
-                selectedConfigId: memoryConfig.extractionModelId,
+                selectedModelId: memoryConfig.extractionModelId,
                 onChanged: (id) => updateMemoryExtractionConfig(
                   extractionModelId: id,
                 ),
@@ -812,20 +812,32 @@ class _CustomInjectionPromptTile extends StatelessWidget {
   }
 }
 
-class _ApiConfigSelector extends StatelessWidget {
-  const _ApiConfigSelector({
+class _ExtractionModelSelector extends StatelessWidget {
+  const _ExtractionModelSelector({
     required this.apiConfigs,
-    this.selectedConfigId,
+    this.selectedModelId,
     required this.onChanged,
   });
 
   final List<ApiConfig> apiConfigs;
-  final String? selectedConfigId;
+  final String? selectedModelId;
   final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    // 收集所有 (provider, model) 对，用于下拉项展示
+    final entries = <({ApiConfig provider, ApiModel model})>[];
+    for (final c in apiConfigs) {
+      for (final m in c.models) {
+        entries.add((provider: c, model: m));
+      }
+    }
+
+    // 校验当前选中的 id 是否仍有效，无效则视为未选（回退到"当前选中模型"）
+    final currentValid = selectedModelId != null &&
+        entries.any((e) => e.model.id == selectedModelId);
 
     return Material(
       color: colorScheme.surfaceContainerLow,
@@ -845,15 +857,15 @@ class _ApiConfigSelector extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '默认使用当前启用的 API 配置',
+              '默认使用当前选中的模型',
               style: TextStyle(
                 fontSize: 13,
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: selectedConfigId,
+            DropdownButtonFormField<String?>(
+              initialValue: currentValid ? selectedModelId : null,
               isExpanded: true,
               decoration: InputDecoration(
                 border: OutlineInputBorder(
@@ -865,14 +877,17 @@ class _ApiConfigSelector extends StatelessWidget {
                 ),
               ),
               items: [
-                const DropdownMenuItem<String>(
+                const DropdownMenuItem<String?>(
                   value: null,
-                  child: Text('使用当前 API'),
+                  child: Text('使用当前选中模型'),
                 ),
-                for (final config in apiConfigs)
-                  DropdownMenuItem<String>(
-                    value: config.id,
-                    child: Text(config.name),
+                for (final entry in entries)
+                  DropdownMenuItem<String?>(
+                    value: entry.model.id,
+                    child: Text(
+                      '${entry.provider.name} · ${entry.model.modelId.trim().isEmpty ? '(未填写 Model ID)' : entry.model.modelId}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
               ],
               onChanged: onChanged,

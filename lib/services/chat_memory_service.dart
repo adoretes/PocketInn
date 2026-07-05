@@ -75,18 +75,31 @@ class ChatMemoryService {
     return messages;
   }
 
-  ApiConfig? get _extractionConfig {
+  ResolvedApiConfig? get _extractionConfig {
     final configs = apiConfigsNotifier.value;
-    final modelId = memoryExtractionNotifier.value.extractionModelId;
-    if (modelId != null && modelId.isNotEmpty) {
-      for (final config in configs) {
-        if (config.id == modelId) return config;
+    final extractionModelId = memoryExtractionNotifier.value.extractionModelId;
+    ApiConfig? provider;
+    ApiModel? model;
+    if (extractionModelId != null && extractionModelId.isNotEmpty) {
+      outer:
+      for (final c in configs) {
+        for (final m in c.models) {
+          if (m.id == extractionModelId) {
+            provider = c;
+            model = m;
+            break outer;
+          }
+        }
       }
     }
-    for (final config in configs) {
-      if (config.enabled) return config;
+    // 未显式指定时，回退到当前选中的模型（及其 provider）。
+    if (provider == null || model == null) {
+      final tuple = selectedApiModelTuple;
+      if (tuple == null) return null;
+      provider = tuple.provider;
+      model = tuple.model;
     }
-    return null;
+    return provider.resolve(model);
   }
 
   Future<String?> extractMemories({

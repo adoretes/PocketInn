@@ -183,13 +183,13 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       statusProvider: () => ApiStatusInfo(
         isChecking: _viewModel.isCheckingApiStatus,
-        configId: _viewModel.apiStatusConfigId,
+        modelId: _viewModel.apiStatusModelId,
         result: _viewModel.apiStatusResult,
       ),
       useStreamingProvider: () => _viewModel.useStreaming,
       isSendingProvider: () => _viewModel.isSending,
       onStreamingChanged: _viewModel.setUseStreaming,
-      onSelectConfig: _viewModel.selectApiConfig,
+      onSelectModel: _viewModel.selectApiModel,
       onRefreshStatus: _viewModel.onApiConfigsChanged,
       onOpenConfigPage: _openApiConfigPage,
       onOpenRequestLogPage: _openApiRequestLogPage,
@@ -647,7 +647,7 @@ class _ChatPageState extends State<ChatPage> {
               return ApiStatusActionButton(
                 status: ApiStatusInfo(
                   isChecking: _viewModel.isCheckingApiStatus,
-                  configId: _viewModel.apiStatusConfigId,
+                  modelId: _viewModel.apiStatusModelId,
                   result: _viewModel.apiStatusResult,
                 ),
                 onPressed: _showApiSelectorSheet,

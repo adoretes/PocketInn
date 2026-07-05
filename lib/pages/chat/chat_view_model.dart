@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 import '../../core/service_locator.dart';
 import '../../data/api_configs.dart';
 import '../../data/mock_user_settings.dart';
-import '../../models/api_config.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import '../../models/preset.dart';
 import '../../models/world_book.dart';
+import '../../services/api_config_service.dart';
 import '../../services/chat_character_resolver.dart';
 import '../../services/chat_database_service.dart';
 import '../../services/chat_opening_message_builder.dart';
@@ -44,6 +44,7 @@ class ChatViewModel extends ChangeNotifier {
     _chatDbChangeNotifier = getIt<ChatDatabaseService>().changeNotifier;
     _presetChangeNotifier = getIt<PresetService>().changeNotifier;
     apiConfigsNotifier.addListener(onApiConfigsChanged);
+    selectedApiModelIdNotifier.addListener(onApiConfigsChanged);
     _chatDbChangeNotifier.addListener(onChatDatabaseChanged);
     _presetChangeNotifier.addListener(onPresetsChanged);
   }
@@ -79,7 +80,7 @@ class ChatViewModel extends ChangeNotifier {
   bool _isImpersonating = false;
   bool _useStreaming = true;
   bool _isCheckingApiStatus = false;
-  String? _apiStatusConfigId;
+  String? _apiStatusModelId;
   ApiConnectionTestResult? _apiStatusResult;
   ChatCompletionCancelToken? _activeCompletionCancelToken;
   ChatMessage? _pendingUserMessage;
@@ -114,7 +115,7 @@ class ChatViewModel extends ChangeNotifier {
   bool get isImpersonating => _isImpersonating;
   bool get useStreaming => _useStreaming;
   bool get isCheckingApiStatus => _isCheckingApiStatus;
-  String? get apiStatusConfigId => _apiStatusConfigId;
+  String? get apiStatusModelId => _apiStatusModelId;
   ApiConnectionTestResult? get apiStatusResult => _apiStatusResult;
   bool get isDraftSession => _isDraftSession;
   List<String> get draftOpeningAssistantMessages =>
@@ -201,7 +202,7 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
 
     // 并发触发 API 状态刷新（不等待，匹配原 initState 行为）。
-    _refreshEnabledApiStatus();
+    _refreshSelectedApiStatus();
 
     final books = await getIt<WorldBookService>().loadAll();
     final presets = await getIt<PresetService>().loadAllSummaries();
@@ -222,8 +223,8 @@ class ChatViewModel extends ChangeNotifier {
     await _loadSession(preferredSessionId: preferredSessionId);
   }
 
-  /// 全局 API 配置变化时刷新 API 状态。
-  Future<void> onApiConfigsChanged() => _refreshEnabledApiStatus();
+  /// 全局 API 配置或选中模型变化时刷新 API 状态。
+  Future<void> onApiConfigsChanged() => _refreshSelectedApiStatus();
 
   /// 聊天数据库变化时重新加载当前会话。
   Future<void> onChatDatabaseChanged() async {
@@ -486,41 +487,46 @@ class ChatViewModel extends ChangeNotifier {
 
   // --- API 状态 ---
 
-  Future<void> _refreshEnabledApiStatus() async {
-    final config = enabledApiConfig;
+  Future<void> _refreshSelectedApiStatus() async {
+    final config = resolvedSelectedApi;
     if (config == null) {
       if (_isDisposed) {
         return;
       }
       _isCheckingApiStatus = false;
-      _apiStatusConfigId = null;
+      _apiStatusModelId = null;
       _apiStatusResult = null;
       notifyListeners();
       return;
     }
 
     _isCheckingApiStatus = true;
-    _apiStatusConfigId = config.id;
+    _apiStatusModelId = selectedApiModelIdNotifier.value;
     notifyListeners();
 
     final result = await getIt<OpenAICompatibleApiService>().testConnection(
-      config.copyWith(),
+      config,
     );
-    if (_isDisposed || enabledApiConfig?.id != config.id) {
+    if (_isDisposed ||
+        selectedApiModelIdNotifier.value != _apiStatusModelId) {
       return;
     }
 
     _isCheckingApiStatus = false;
-    _apiStatusConfigId = config.id;
+    _apiStatusModelId = selectedApiModelIdNotifier.value;
     _apiStatusResult = result;
     notifyListeners();
   }
 
-  Future<void> selectApiConfig(ApiConfig target) async {
-    final nextConfigs = apiConfigsNotifier.value
-        .map((item) => item.copyWith(enabled: item.id == target.id))
-        .toList();
-    await updateApiConfigs(nextConfigs);
+  /// 选择某个模型。直接委托给全局 [selectApiModel]（来自 data/api_configs.dart）。
+  ///
+  /// 选择状态变化会触发 [selectedApiModelIdNotifier]，本 VM 在构造时已注册监听，
+  /// 故 [_refreshSelectedApiStatus] 会自动执行，无需在此显式调用。
+  Future<void> selectApiModel(String modelId) async {
+    // 显式调用顶层函数（通过 getIt 间接拿到 Service 不可行，
+    // 这里直接复用全局辅助），使用 ApiConfigService 单例完成持久化。
+    selectedApiModelIdNotifier.value = modelId;
+    await ApiConfigService.instance.saveSelectedModelId(modelId);
   }
 
   // --- 发送 / 重新生成 ---
@@ -1181,6 +1187,7 @@ class ChatViewModel extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     apiConfigsNotifier.removeListener(onApiConfigsChanged);
+    selectedApiModelIdNotifier.removeListener(onApiConfigsChanged);
     _chatDbChangeNotifier.removeListener(onChatDatabaseChanged);
     _presetChangeNotifier.removeListener(onPresetsChanged);
     _activeCompletionCancelToken?.cancel();

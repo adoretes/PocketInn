@@ -55,12 +55,12 @@ class ChatService {
       throw const FormatException('消息不能为空');
     }
 
-    final config = enabledApiConfig?.copyWith();
+    final config = resolvedSelectedApi;
     if (config == null) {
-      throw StateError('当前没有启用的 API 配置');
+      throw StateError('当前未选择 API 模型');
     }
     if (config.model.trim().isEmpty) {
-      throw const FormatException('当前启用的 API 配置未填写 Model');
+      throw const FormatException('当前选中的模型未填写 Model ID');
     }
 
     final preset = await _resolvePreset(
@@ -183,12 +183,12 @@ class ChatService {
       throw StateError('只能基于用户消息重新生成回复');
     }
 
-    final config = enabledApiConfig?.copyWith();
+    final config = resolvedSelectedApi;
     if (config == null) {
-      throw StateError('当前没有启用的 API 配置');
+      throw StateError('当前未选择 API 模型');
     }
     if (config.model.trim().isEmpty) {
-      throw const FormatException('当前启用的 API 配置未填写 Model');
+      throw const FormatException('当前选中的模型未填写 Model ID');
     }
 
     final preset = await _resolvePreset(
@@ -315,12 +315,12 @@ class ChatService {
       throw StateError('角色消息缺少 ID，无法继续');
     }
 
-    final config = enabledApiConfig?.copyWith();
+    final config = resolvedSelectedApi;
     if (config == null) {
-      throw StateError('当前没有启用的 API 配置');
+      throw StateError('当前未选择 API 模型');
     }
     if (config.model.trim().isEmpty) {
-      throw const FormatException('当前启用的 API 配置未填写 Model');
+      throw const FormatException('当前选中的模型未填写 Model ID');
     }
 
     final preset = await _resolvePreset(
@@ -417,12 +417,12 @@ class ChatService {
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
-    final config = enabledApiConfig?.copyWith();
+    final config = resolvedSelectedApi;
     if (config == null) {
-      throw StateError('当前没有启用的 API 配置');
+      throw StateError('当前未选择 API 模型');
     }
     if (config.model.trim().isEmpty) {
-      throw const FormatException('当前启用的 API 配置未填写 Model');
+      throw const FormatException('当前选中的模型未填写 Model ID');
     }
 
     final preset = await _resolvePreset(
@@ -546,7 +546,7 @@ class ChatService {
   }
 
   Future<ChatCompletionResult> _createCompletion(
-    ApiConfig config, {
+    ResolvedApiConfig config, {
     required PromptAssemblyResult promptAssembly,
     required Preset preset,
     required bool useStreaming,
@@ -569,7 +569,7 @@ class ChatService {
   }
 
   Future<ChatCompletionResult> _createCompletionFromMessages(
-    ApiConfig config, {
+    ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     required Preset preset,
     required bool useStreaming,

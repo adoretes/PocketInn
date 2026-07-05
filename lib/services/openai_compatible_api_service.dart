@@ -95,7 +95,7 @@ class OpenAICompatibleApiService {
   // 流式响应中相邻两次数据之间的空闲超时，超过则视为卡住。
   static const Duration _streamIdleTimeout = Duration(seconds: 60);
 
-  Future<List<String>> fetchModels(ApiConfig config) async {
+  Future<List<String>> fetchModels(ResolvedApiConfig config) async {
     _validateConfig(config);
     final uri = _buildUri(config.baseUrl, 'models');
 
@@ -136,7 +136,7 @@ class OpenAICompatibleApiService {
     return models;
   }
 
-  Future<ApiConnectionTestResult> testConnection(ApiConfig config) async {
+  Future<ApiConnectionTestResult> testConnection(ResolvedApiConfig config) async {
     try {
       _validateConfig(config);
       if (config.model.trim().isNotEmpty) {
@@ -180,7 +180,7 @@ class OpenAICompatibleApiService {
   }
 
   Future<ChatCompletionResult> createChatCompletion(
-    ApiConfig config, {
+    ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
     ChatCompletionCancelToken? cancellationToken,
@@ -284,7 +284,7 @@ class OpenAICompatibleApiService {
   }
 
   Stream<ChatCompletionProgress> createStreamingChatCompletion(
-    ApiConfig config, {
+    ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
     ChatCompletionCancelToken? cancellationToken,
@@ -447,7 +447,7 @@ class OpenAICompatibleApiService {
     }
   }
 
-  Future<void> _probeChatCompletion(ApiConfig config) async {
+  Future<void> _probeChatCompletion(ResolvedApiConfig config) async {
     final body = config.buildRequestBody(
       messages: const [
         {'role': 'user', 'content': 'ping'},
@@ -471,7 +471,7 @@ class OpenAICompatibleApiService {
     );
   }
 
-  Future<ApiConnectionTestResult> _probeReachability(ApiConfig config) async {
+  Future<ApiConnectionTestResult> _probeReachability(ResolvedApiConfig config) async {
     try {
       final response = await _sendJson(
         'GET',
@@ -549,7 +549,7 @@ class OpenAICompatibleApiService {
     }
   }
 
-  Map<String, String> _buildHeaders(ApiConfig config) {
+  Map<String, String> _buildHeaders(ResolvedApiConfig config) {
     return {
       'Accept': 'application/json',
       if (config.apiKey.trim().isNotEmpty)
@@ -568,7 +568,7 @@ class OpenAICompatibleApiService {
     return Uri.parse('$base/$path');
   }
 
-  void _validateConfig(ApiConfig config) {
+  void _validateConfig(ResolvedApiConfig config) {
     if (config.baseUrl.trim().isEmpty) {
       throw const FormatException('Base URL 不能为空');
     }

@@ -18,11 +18,13 @@ class _OpenAICompatibleConfigPageState
     extends State<OpenAICompatibleConfigPage> {
   List<ApiConfig> _configItems = [];
   final Set<String> _expandedIds = <String>{};
+  // Provider 级文本控制器：name / baseUrl / apiKey
   final Map<String, Map<String, TextEditingController>> _controllers = {};
+  // 每个 model 的 modelId / customBody 控制器，按 model.id 索引
+  final Map<String, TextEditingController> _modelIdControllers = {};
+  final Map<String, TextEditingController> _customBodyControllers = {};
   final Set<String> _testingIds = <String>{};
-  final Set<String> _loadingModelIds = <String>{};
-  final Map<String, List<String>> _modelsByConfigId = {};
-  final Map<String, FocusNode> _modelFocusNodes = {};
+  final Set<String> _loadingModelIds = <String>{}; // provider ids 拉取中
   bool _isSaving = false;
 
   @override
@@ -37,6 +39,9 @@ class _OpenAICompatibleConfigPageState
         .toList();
     for (final item in items) {
       _initControllersForItem(item);
+      for (final m in item.models) {
+        _initModelControllers(m);
+      }
     }
     if (!mounted) return;
     setState(() {
@@ -50,16 +55,15 @@ class _OpenAICompatibleConfigPageState
       'name': TextEditingController(text: item.name),
       'baseUrl': TextEditingController(text: item.baseUrl),
       'apiKey': TextEditingController(text: item.apiKey),
-      'model': TextEditingController(text: item.model),
-      'customBody': TextEditingController(text: item.customBody),
     };
-    final focusNode = FocusNode();
-    _modelFocusNodes[item.id] = focusNode;
-    focusNode.addListener(() {
-      if (focusNode.hasFocus) {
-        _fetchModels(item.id);
-      }
-    });
+  }
+
+  void _initModelControllers(ApiModel model) {
+    if (_modelIdControllers.containsKey(model.id)) return;
+    _modelIdControllers[model.id] = TextEditingController(text: model.modelId);
+    _customBodyControllers[model.id] = TextEditingController(
+      text: model.customBody,
+    );
   }
 
   void _disposeControllersForItem(String id) {
@@ -69,19 +73,31 @@ class _OpenAICompatibleConfigPageState
       controller.dispose();
     }
     _controllers.remove(id);
-    _modelFocusNodes[id]?.dispose();
-    _modelFocusNodes.remove(id);
+  }
+
+  void _disposeModelControllers(String modelId) {
+    _modelIdControllers[modelId]?.dispose();
+    _customBodyControllers[modelId]?.dispose();
+    _modelIdControllers.remove(modelId);
+    _customBodyControllers.remove(modelId);
   }
 
   ApiConfig _applyControllersToItem(ApiConfig item) {
     final controllers = _controllers[item.id]!;
     final nameText = controllers['name']!.text.trim();
+    final updatedModels = item.models.map((m) {
+      final modelIdCtl = _modelIdControllers[m.id]!;
+      final customBodyCtl = _customBodyControllers[m.id]!;
+      return m.copyWith(
+        modelId: modelIdCtl.text.trim(),
+        customBody: customBodyCtl.text.trim(),
+      );
+    }).toList();
     return item.copyWith(
       name: nameText.isEmpty ? item.name : nameText,
       baseUrl: controllers['baseUrl']!.text.trim(),
       apiKey: controllers['apiKey']!.text.trim(),
-      model: controllers['model']!.text.trim(),
-      customBody: controllers['customBody']!.text.trim(),
+      models: updatedModels,
     );
   }
 
@@ -124,7 +140,10 @@ class _OpenAICompatibleConfigPageState
 
     try {
       final updated = _applyControllersToItem(item);
-      updated.parseCustomBody();
+      // 校验每个 model 的 customBody 是否合法 JSON
+      for (final m in updated.models) {
+        m.parseCustomBody();
+      }
       _replaceConfigItem(updated);
       await _persistConfigs(successMessage: '配置 "${updated.name}" 已保存');
     } on FormatException catch (error) {
@@ -141,26 +160,36 @@ class _OpenAICompatibleConfigPageState
   ApiConfig? _buildDraftConfig(ApiConfig item) {
     final controllers = _controllers[item.id];
     if (controllers == null) return null;
-
+    final updatedModels = item.models.map((m) {
+      final modelIdCtl = _modelIdControllers[m.id];
+      final customBodyCtl = _customBodyControllers[m.id];
+      return m.copyWith(
+        modelId: modelIdCtl?.text.trim() ?? m.modelId,
+        customBody: customBodyCtl?.text.trim() ?? m.customBody,
+      );
+    }).toList();
     return item.copyWith(
       name: controllers['name']!.text.trim(),
       baseUrl: controllers['baseUrl']!.text.trim(),
       apiKey: controllers['apiKey']!.text.trim(),
-      model: controllers['model']!.text.trim(),
-      customBody: controllers['customBody']!.text.trim(),
+      models: updatedModels,
     );
   }
 
   Future<void> _onTestConnection(ApiConfig item) async {
     final draft = _buildDraftConfig(item);
     if (draft == null) return;
+    if (draft.models.isEmpty) {
+      _showError('请先添加至少一个模型再测试连接');
+      return;
+    }
 
     setState(() {
       _testingIds.add(item.id);
     });
     try {
       final result = await OpenAICompatibleApiService.instance.testConnection(
-        draft,
+        draft.resolveFirstOrEmpty(),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -180,112 +209,136 @@ class _OpenAICompatibleConfigPageState
     }
   }
 
-  Future<void> _fetchModels(String configId) async {
-    if (_loadingModelIds.contains(configId)) return;
-    final cached = _modelsByConfigId[configId];
-    if (cached != null && cached.isNotEmpty) return;
-
-    final itemIndex = _configItems.indexWhere((i) => i.id == configId);
-    if (itemIndex < 0) return;
-    final item = _configItems[itemIndex];
+  /// 拉取远端模型列表，弹多选框，把勾选的模型作为新条目批量添加到当前 provider 下。
+  /// 已存在的 modelId 会被自动过滤，避免重复。
+  Future<void> _showFetchModelsDialog(ApiConfig item) async {
+    if (_loadingModelIds.contains(item.id)) return;
     final draft = _buildDraftConfig(item);
     if (draft == null) return;
 
     setState(() {
-      _loadingModelIds.add(configId);
+      _loadingModelIds.add(item.id);
     });
     try {
       final models = await OpenAICompatibleApiService.instance.fetchModels(
-        draft,
+        draft.resolveFirstOrEmpty(),
       );
       if (!mounted) return;
-      setState(() {
-        _modelsByConfigId[configId] = models;
-        _loadingModelIds.remove(configId);
-      });
       if (models.isEmpty) {
         _showError('未拉取到模型列表');
+        return;
+      }
+      // 过滤掉已存在的 modelId，避免重复添加
+      final existingIds = item.models
+          .map((m) => m.modelId.trim())
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final candidates = models
+          .where((m) => !existingIds.contains(m))
+          .toList(growable: false);
+      if (candidates.isEmpty) {
+        _showError('远端模型已全部存在，无需重复添加');
+        return;
+      }
+
+      final selected = <String>{};
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (ctx, ss) {
+              return AlertDialog(
+                title: const Text('选择要添加的模型'),
+                content: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.85,
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final m in candidates)
+                        CheckboxListTile(
+                          value: selected.contains(m),
+                          onChanged: (v) {
+                            ss(() {
+                              if (v == true) {
+                                selected.add(m);
+                              } else {
+                                selected.remove(m);
+                              }
+                            });
+                          },
+                          title: Text(m),
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: selected.isEmpty
+                        ? null
+                        : () => Navigator.of(dialogContext).pop(true),
+                    child: Text(
+                      selected.isEmpty
+                          ? '添加'
+                          : '添加 (${selected.length})',
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (confirmed != true || selected.isEmpty) return;
+
+      final itemIndex = _configItems.indexWhere((i) => i.id == item.id);
+      if (itemIndex < 0) return;
+      final newModels = <ApiModel>[];
+      for (final modelId in selected) {
+        final newModel = ApiModel(
+          id: ApiConfigService.instance.generateModelId(),
+          modelId: modelId,
+          customBody: '',
+        );
+        _initModelControllers(newModel);
+        newModels.add(newModel);
+      }
+      setState(() {
+        _configItems[itemIndex] = item.copyWith(
+          models: [...item.models, ...newModels],
+        );
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已添加 ${newModels.length} 个模型')),
+        );
       }
     } on FormatException catch (error) {
       if (mounted) {
-        setState(() {
-          _loadingModelIds.remove(configId);
-        });
         _showError(error.message.toString());
       }
     } on Object catch (error) {
       if (mounted) {
-        setState(() {
-          _loadingModelIds.remove(configId);
-        });
         _showError('拉取模型失败: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingModelIds.remove(item.id);
+        });
       }
     }
   }
 
-  InputDecoration _buildInputDecoration({
-    required String label,
-    required String? hint,
-    required int maxLines,
-  }) {
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      alignLabelWithHint: maxLines > 1,
-      border: const OutlineInputBorder(),
-    );
-  }
-
-  Widget _buildModelDropdownMenu(ApiConfig item) {
-    final controller = _controllers[item.id]!['model']!;
-    final models = _modelsByConfigId[item.id] ?? [];
-    final isLoading = _loadingModelIds.contains(item.id);
-    final focusNode = _modelFocusNodes[item.id]!;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return DropdownMenu<String>(
-          width: constraints.maxWidth,
-          controller: controller,
-          focusNode: focusNode,
-          enableFilter: true,
-          menuHeight: 300,
-          hintText: 'gpt-3.5-turbo, deepseek-chat, etc.',
-          trailingIcon: isLoading
-              ? const Padding(
-                  padding: EdgeInsets.all(14),
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : const Icon(Icons.arrow_drop_down),
-          dropdownMenuEntries: models
-              .map(
-                (model) => DropdownMenuEntry<String>(
-                  value: model,
-                  label: model,
-                  labelWidget: Text(model, overflow: TextOverflow.ellipsis),
-                ),
-              )
-              .toList(),
-          onSelected: (value) {
-            if (value != null) {
-              _replaceConfigItem(item.copyWith(model: value));
-            }
-          },
-          inputDecorationTheme: const InputDecorationTheme(
-            border: OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(horizontal: 16),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _showCustomBodyDialog(ApiConfig item) async {
-    final controller = _controllers[item.id]?['customBody'];
+  Future<void> _showCustomBodyDialog(ApiModel model) async {
+    final controller = _customBodyControllers[model.id];
     if (controller == null) return;
 
     await showDialog<void>(
@@ -317,7 +370,37 @@ class _OpenAICompatibleConfigPageState
     );
   }
 
+  void _addModel(ApiConfig item) {
+    final itemIndex = _configItems.indexWhere((i) => i.id == item.id);
+    if (itemIndex < 0) return;
+    final newModel = ApiModel(
+      id: ApiConfigService.instance.generateModelId(),
+      modelId: '',
+      customBody: '',
+    );
+    _initModelControllers(newModel);
+    setState(() {
+      _configItems[itemIndex] = item.copyWith(
+        models: [...item.models, newModel],
+      );
+    });
+  }
+
+  Future<void> _deleteModel(ApiConfig item, ApiModel model) async {
+    final itemIndex = _configItems.indexWhere((i) => i.id == item.id);
+    if (itemIndex < 0) return;
+    _disposeModelControllers(model.id);
+    setState(() {
+      _configItems[itemIndex] = item.copyWith(
+        models: item.models.where((m) => m.id != model.id).toList(),
+      );
+    });
+  }
+
   Future<void> _deleteConfigItem(ApiConfig item) async {
+    for (final m in item.models) {
+      _disposeModelControllers(m.id);
+    }
     setState(() {
       _configItems.removeWhere((i) => i.id == item.id);
       _expandedIds.remove(item.id);
@@ -332,8 +415,7 @@ class _OpenAICompatibleConfigPageState
       name: '新配置',
       baseUrl: '',
       apiKey: '',
-      model: '',
-      customBody: '',
+      models: const [],
     );
     _initControllersForItem(newItem);
     setState(() {
@@ -365,8 +447,11 @@ class _OpenAICompatibleConfigPageState
         controller.dispose();
       }
     }
-    for (final focusNode in _modelFocusNodes.values) {
-      focusNode.dispose();
+    for (final c in _modelIdControllers.values) {
+      c.dispose();
+    }
+    for (final c in _customBodyControllers.values) {
+      c.dispose();
     }
     super.dispose();
   }
@@ -408,6 +493,9 @@ class _OpenAICompatibleConfigPageState
                 final item = _configItems[index];
                 if (!_controllers.containsKey(item.id)) {
                   _initControllersForItem(item);
+                  for (final m in item.models) {
+                    _initModelControllers(m);
+                  }
                 }
                 return _buildConfigCard(item);
               },
@@ -433,13 +521,26 @@ class _OpenAICompatibleConfigPageState
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      item.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '模型数：${item.models.length}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   Icon(
@@ -476,8 +577,8 @@ class _OpenAICompatibleConfigPageState
                     hint: 'sk-...',
                     obscureText: true,
                   ),
-                  const SizedBox(height: 12),
-                  _buildModelDropdownMenu(item),
+                  const SizedBox(height: 16),
+                  _buildModelsList(item),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -498,11 +599,6 @@ class _OpenAICompatibleConfigPageState
                         tooltip: '测试连接',
                       ),
                       IconButton(
-                        onPressed: () => _showCustomBodyDialog(item),
-                        icon: const Icon(Icons.code, size: 22),
-                        tooltip: '自定义 Body',
-                      ),
-                      IconButton(
                         onPressed: () => _deleteConfigItem(item),
                         icon: const Icon(Icons.delete_outline, size: 22),
                         tooltip: '删除配置',
@@ -512,6 +608,7 @@ class _OpenAICompatibleConfigPageState
                         onPressed: _isSaving
                             ? null
                             : () => _saveConfigItem(item),
+                        icon: const Icon(Icons.save_outlined, size: 18),
                         label: const Text('保存'),
                       ),
                     ],
@@ -521,6 +618,104 @@ class _OpenAICompatibleConfigPageState
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildModelsList(ApiConfig item) {
+    final isLoading = _loadingModelIds.contains(item.id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '模型列表（${item.models.length}）',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+            const Spacer(),
+            FilledButton.tonalIcon(
+              onPressed: () => _addModel(item),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加'),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: isLoading ? null : () => _showFetchModelsDialog(item),
+              icon: isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.download_outlined, size: 18),
+              label: const Text('拉取'),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (item.models.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              '尚未添加模型，可手填或点"拉取"从远端批量添加',
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            ),
+          )
+        else
+          for (final model in item.models)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _modelIdControllers[model.id],
+                      decoration: const InputDecoration(
+                        labelText: 'Model ID',
+                        hintText: 'deepseek-chat',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => _showCustomBodyDialog(model),
+                    icon: const Icon(Icons.code, size: 20),
+                    tooltip: '自定义 Body',
+                  ),
+                  IconButton(
+                    onPressed: () => _deleteModel(item, model),
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    tooltip: '删除模型',
+                  ),
+                ],
+              ),
+            ),
+      ],
     );
   }
 
@@ -546,6 +741,19 @@ class _OpenAICompatibleConfigPageState
           ? 4
           : 1,
       style: const TextStyle(fontSize: 14),
+    );
+  }
+
+  InputDecoration _buildInputDecoration({
+    required String label,
+    required String? hint,
+    required int maxLines,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      alignLabelWithHint: maxLines > 1,
+      border: const OutlineInputBorder(),
     );
   }
 }
