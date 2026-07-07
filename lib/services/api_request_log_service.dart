@@ -76,7 +76,7 @@ class ApiRequestLogService {
 
   static final ApiRequestLogService instance = ApiRequestLogService._();
 
-  static const String _storageKey = 'api_request_logs';
+  static const String _fileName = 'api_request_logs.json';
   static const int _maxEntries = 10;
 
   final ValueNotifier<List<ApiRequestLogEntry>> logsNotifier = ValueNotifier(
@@ -90,7 +90,7 @@ class ApiRequestLogService {
       return;
     }
     final storage = StorageService.instance;
-    final raw = storage.getString(_storageKey);
+    final raw = await storage.readJsonFile(_fileName);
     if (raw != null && raw.trim().isNotEmpty) {
       try {
         final decoded = jsonDecode(raw);
@@ -153,12 +153,12 @@ class ApiRequestLogService {
   Future<void> clear() async {
     await initialize();
     logsNotifier.value = const <ApiRequestLogEntry>[];
-    await StorageService.instance.remove(_storageKey);
+    await StorageService.instance.deleteJsonFile(_fileName);
   }
 
   Future<void> reload() async {
     final storage = StorageService.instance;
-    final raw = storage.getString(_storageKey);
+    final raw = await storage.readJsonFile(_fileName);
     if (raw == null || raw.trim().isEmpty) {
       logsNotifier.value = const <ApiRequestLogEntry>[];
       _initialized = true;
@@ -190,7 +190,7 @@ class ApiRequestLogService {
 
   Future<void> _persist(List<ApiRequestLogEntry> logs) async {
     final encoded = jsonEncode(logs.map((item) => item.toJson()).toList());
-    await StorageService.instance.setString(_storageKey, encoded);
+    await StorageService.instance.writeJsonFile(_fileName, encoded);
   }
 
   String _normalizeText(Object? value) {
