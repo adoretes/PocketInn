@@ -69,6 +69,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Prepare Android signing
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: bash
@@ -110,6 +113,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Build Windows
         run: flutter build windows --release --build-name="${{ needs.prepare-release.outputs.build_name }}" --build-number="${{ needs.prepare-release.outputs.build_number }}"
 
@@ -148,6 +154,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Prepare iOS signing
         id: ios_signing
