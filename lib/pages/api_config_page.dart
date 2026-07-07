@@ -409,6 +409,17 @@ class _OpenAICompatibleConfigPageState
     await _persistConfigs(successMessage: '已删除配置: ${item.name}');
   }
 
+  void _reorderConfigs(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) {
+        newIndex -= 1;
+      }
+      final item = _configItems.removeAt(oldIndex);
+      _configItems.insert(newIndex, item);
+    });
+    _persistConfigs();
+  }
+
   void _createNewConfig() {
     final newItem = ApiConfig(
       id: ApiConfigService.instance.generateId(),
@@ -486,9 +497,11 @@ class _OpenAICompatibleConfigPageState
       ),
       body: _configItems.isEmpty
           ? const Center(child: Text('暂无配置，点击右上角 + 新建'))
-          : ListView.builder(
+          : ReorderableListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: _configItems.length,
+              onReorder: _reorderConfigs,
+              buildDefaultDragHandles: false,
               itemBuilder: (context, index) {
                 final item = _configItems[index];
                 if (!_controllers.containsKey(item.id)) {
@@ -508,6 +521,7 @@ class _OpenAICompatibleConfigPageState
     final isExpanded = _expandedIds.contains(item.id);
 
     return Card(
+      key: ValueKey(item.id),
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -520,6 +534,11 @@ class _OpenAICompatibleConfigPageState
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
+                  ReorderableDragStartListener(
+                    index: _configItems.indexOf(item),
+                    child: const Icon(Icons.drag_handle, color: Colors.grey),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
