@@ -336,6 +336,10 @@ class _PresetEditPageState extends State<PresetEditPage> {
                                   value: 'xhigh',
                                   child: Text('超高'),
                                 ),
+                                DropdownMenuItem(
+                                  value: 'max',
+                                  child: Text('最大'),
+                                ),
                               ],
                               onChanged: (value) {
                                 if (value != null) {
