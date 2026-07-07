@@ -72,6 +72,17 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.2.2',
+                  date: '2026-07-07',
+                  changes: [
+                    '修复拖拽显示效果',
+                    '添加配置项排序功能，支持拖拽调整顺序',
+                    '新增最大选项至思考层级',
+                    '更新日志存储方式',
+                    '重构 API：接口抽象、错误清理、去重、API Key 加密',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.2.1',
                   date: '2026-07-06',
                   changes: [
