@@ -463,6 +463,19 @@ class _PresetEditPageState extends State<PresetEditPage> {
             itemCount: _preset.prompts.length,
             onReorder: _reorderPrompts,
             buildDefaultDragHandles: false,
+            proxyDecorator: (child, index, animation) {
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (context, child) {
+                  return Material(
+                    color: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    child: child,
+                  );
+                },
+                child: child,
+              );
+            },
             itemBuilder: (context, index) {
               final prompt = _preset.prompts[index];
               return _PromptCard(

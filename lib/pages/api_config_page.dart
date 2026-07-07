@@ -502,6 +502,7 @@ class _OpenAICompatibleConfigPageState
               itemCount: _configItems.length,
               onReorder: _reorderConfigs,
               buildDefaultDragHandles: false,
+              proxyDecorator: (child, index, animation) => child,
               itemBuilder: (context, index) {
                 final item = _configItems[index];
                 if (!_controllers.containsKey(item.id)) {
