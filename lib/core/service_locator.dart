@@ -15,6 +15,7 @@ import '../services/chat_database_service.dart';
 import '../services/chat_memory_service.dart' as chat_memory;
 import '../services/chat_service.dart';
 import '../services/font_service.dart';
+import '../services/i_openai_api_service.dart';
 import '../services/openai_compatible_api_service.dart';
 import '../services/preset_service.dart';
 import '../services/storage_service.dart';
@@ -89,6 +90,9 @@ Future<void> setupServiceLocator() async {
   getIt.registerLazySingleton<ChatService>(() => ChatService.instance);
   getIt.registerLazySingleton<ChatCharacterResolver>(
     () => ChatCharacterResolver.instance,
+  );
+  getIt.registerLazySingleton<IOpenAiApiService>(
+    () => OpenAICompatibleApiService.instance,
   );
   getIt.registerLazySingleton<OpenAICompatibleApiService>(
     () => OpenAICompatibleApiService.instance,

@@ -7,6 +7,7 @@ import '../models/api/openai_chat_completion_response.dart';
 import '../models/api/openai_models_response.dart';
 import '../models/api_config.dart';
 import 'api_request_log_service.dart';
+import 'i_openai_api_service.dart';
 
 class ChatCompletionResult {
   const ChatCompletionResult({required this.text, this.thinkingChain});
@@ -82,7 +83,7 @@ class ApiConnectionTestResult {
   final int? modelCount;
 }
 
-class OpenAICompatibleApiService {
+class OpenAICompatibleApiService implements IOpenAiApiService {
   OpenAICompatibleApiService._();
 
   static final OpenAICompatibleApiService instance =
@@ -95,6 +96,7 @@ class OpenAICompatibleApiService {
   // 流式响应中相邻两次数据之间的空闲超时，超过则视为卡住。
   static const Duration _streamIdleTimeout = Duration(seconds: 60);
 
+  @override
   Future<List<String>> fetchModels(ResolvedApiConfig config) async {
     _validateConfig(config);
     final uri = _buildUri(config.baseUrl, 'models');
@@ -136,6 +138,7 @@ class OpenAICompatibleApiService {
     return models;
   }
 
+  @override
   Future<ApiConnectionTestResult> testConnection(ResolvedApiConfig config) async {
     try {
       _validateConfig(config);
@@ -179,6 +182,7 @@ class OpenAICompatibleApiService {
     }
   }
 
+  @override
   Future<ChatCompletionResult> createChatCompletion(
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
@@ -283,6 +287,7 @@ class OpenAICompatibleApiService {
     );
   }
 
+  @override
   Stream<ChatCompletionProgress> createStreamingChatCompletion(
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,

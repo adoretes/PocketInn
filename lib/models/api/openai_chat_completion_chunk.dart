@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'openai_response_utils.dart';
+
 part 'openai_chat_completion_chunk.freezed.dart';
 part 'openai_chat_completion_chunk.g.dart';
 
@@ -23,55 +25,6 @@ Object? _readDeltaReasoningRaw(Map json, String _) {
   return null;
 }
 
-/// 从流式 chunk 的 `choice` 中读取文本候选字段原始值。
-Object? _readChoiceTextRaw(Map json, String _) {
-  for (final key in const ['text', 'content']) {
-    if (json.containsKey(key)) {
-      return json[key];
-    }
-  }
-  return null;
-}
-
-/// 从流式 chunk 的 `choice` 中读取推理链候选字段原始值。
-Object? _readChoiceReasoningRaw(Map json, String _) {
-  for (final key in const ['reasoning_content', 'reasoning', 'thinking']) {
-    if (json.containsKey(key)) {
-      return json[key];
-    }
-  }
-  return null;
-}
-
-String _extractStructuredText(Object? value) {
-  if (value == null) {
-    return '';
-  }
-  if (value is String) {
-    return value;
-  }
-  if (value is List) {
-    final buffer = <String>[];
-    for (final item in value) {
-      final text = _extractStructuredText(item).trim();
-      if (text.isNotEmpty) {
-        buffer.add(text);
-      }
-    }
-    return buffer.join('\n');
-  }
-  if (value is Map) {
-    final map = Map<String, dynamic>.from(value);
-    for (final key in const ['text', 'content', 'value', 'output_text']) {
-      final text = _extractStructuredText(map[key]).trim();
-      if (text.isNotEmpty) {
-        return text;
-      }
-    }
-  }
-  return '';
-}
-
 /// OpenAI 兼容接口流式响应的单个 SSE chunk。
 @freezed
 abstract class OpenAIChatCompletionChunk with _$OpenAIChatCompletionChunk {
@@ -93,8 +46,8 @@ abstract class OpenAIChunkChoice with _$OpenAIChunkChoice {
     @Default(0) int index,
     OpenAIChunkDelta? delta,
     @JsonKey(name: 'finish_reason') String? finishReason,
-    @JsonKey(readValue: _readChoiceTextRaw) Object? text,
-    @JsonKey(readValue: _readChoiceReasoningRaw) Object? reasoning,
+    @JsonKey(readValue: readChoiceTextRaw) Object? text,
+    @JsonKey(readValue: readChoiceReasoningRaw) Object? reasoning,
   }) = _OpenAIChunkChoice;
 
   factory OpenAIChunkChoice.fromJson(Map<String, dynamic> json) =>
@@ -106,7 +59,7 @@ abstract class OpenAIChunkChoice with _$OpenAIChunkChoice {
     if (fromDelta.isNotEmpty) {
       return fromDelta;
     }
-    return _extractStructuredText(text);
+    return extractStructuredText(text);
   }
 
   /// 该 chunk 的推理链增量。
@@ -115,7 +68,7 @@ abstract class OpenAIChunkChoice with _$OpenAIChunkChoice {
     if (fromDelta.isNotEmpty) {
       return fromDelta;
     }
-    return _extractStructuredText(reasoning);
+    return extractStructuredText(reasoning);
   }
 
   /// 是否携带了流结束标志。
@@ -135,7 +88,7 @@ abstract class OpenAIChunkDelta with _$OpenAIChunkDelta {
   factory OpenAIChunkDelta.fromJson(Map<String, dynamic> json) =>
       _$OpenAIChunkDeltaFromJson(json);
 
-  String get contentText => _extractStructuredText(content);
+  String get contentText => extractStructuredText(content);
 
-  String get reasoningText => _extractStructuredText(reasoningContent);
+  String get reasoningText => extractStructuredText(reasoningContent);
 }

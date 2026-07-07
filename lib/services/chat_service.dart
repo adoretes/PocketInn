@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io';
+
+import 'package:get_it/get_it.dart';
 
 import '../data/api_configs.dart';
 import '../data/mock_user_settings.dart';
@@ -13,6 +14,7 @@ import 'chat_character_resolver.dart';
 import 'chat_database_service.dart';
 import 'chat_memory_service.dart';
 import 'chat_variable_service.dart';
+import 'i_openai_api_service.dart';
 import 'openai_compatible_api_service.dart';
 import 'preset_service.dart';
 import 'prompt_assembler.dart';
@@ -149,15 +151,7 @@ class ChatService {
         promptAssembly: promptAssembly,
         completion: completion,
       );
-    } on SocketException catch (_) {
-      rethrow;
-    } on HttpException catch (_) {
-      rethrow;
-    } on FormatException catch (_) {
-      rethrow;
-    } on StateError catch (_) {
-      rethrow;
-    } on ChatCompletionCancelledException catch (_) {
+    } on ChatCompletionCancelledException {
       rethrow;
     } catch (error) {
       throw StateError('发送聊天请求失败: $error');
@@ -275,15 +269,7 @@ class ChatService {
         promptAssembly: promptAssembly,
         completion: completion,
       );
-    } on SocketException catch (_) {
-      rethrow;
-    } on HttpException catch (_) {
-      rethrow;
-    } on FormatException catch (_) {
-      rethrow;
-    } on StateError catch (_) {
-      rethrow;
-    } on ChatCompletionCancelledException catch (_) {
+    } on ChatCompletionCancelledException {
       rethrow;
     } catch (error) {
       throw StateError('重新生成聊天回复失败: $error');
@@ -389,15 +375,7 @@ class ChatService {
       );
 
       return completion;
-    } on SocketException catch (_) {
-      rethrow;
-    } on HttpException catch (_) {
-      rethrow;
-    } on FormatException catch (_) {
-      rethrow;
-    } on StateError catch (_) {
-      rethrow;
-    } on ChatCompletionCancelledException catch (_) {
+    } on ChatCompletionCancelledException {
       rethrow;
     } catch (error) {
       throw StateError('继续推进失败: $error');
@@ -483,15 +461,7 @@ class ChatService {
         onStreamProgress: onStreamProgress,
       );
       return completion.text;
-    } on SocketException catch (_) {
-      rethrow;
-    } on HttpException catch (_) {
-      rethrow;
-    } on FormatException catch (_) {
-      rethrow;
-    } on StateError catch (_) {
-      rethrow;
-    } on ChatCompletionCancelledException catch (_) {
+    } on ChatCompletionCancelledException {
       rethrow;
     } catch (error) {
       throw StateError('助手帮答失败: $error');
@@ -576,8 +546,9 @@ class ChatService {
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
+    final api = GetIt.instance<IOpenAiApiService>();
     if (!useStreaming) {
-      return OpenAICompatibleApiService.instance.createChatCompletion(
+      return api.createChatCompletion(
         config,
         messages: messages,
         defaults: _buildCompletionDefaults(preset, useStreaming: false),
@@ -589,7 +560,7 @@ class ChatService {
     final thinkingBuffer = StringBuffer();
     try {
       await for (final progress
-          in OpenAICompatibleApiService.instance.createStreamingChatCompletion(
+          in api.createStreamingChatCompletion(
             config,
             messages: messages,
             defaults: _buildCompletionDefaults(preset, useStreaming: true),

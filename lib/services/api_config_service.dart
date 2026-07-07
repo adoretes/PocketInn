@@ -1,4 +1,5 @@
 import '../models/api_config.dart';
+import 'secure_storage_service.dart';
 import 'storage_service.dart';
 
 class ApiConfigService {
@@ -30,8 +31,6 @@ class ApiConfigService {
     final items = data['items'] as List<dynamic>? ?? const [];
 
     if (version == 1) {
-      // v1 → v2 迁移：旧 ApiConfig { model:String, customBody:String, enabled:bool }
-      // 转换为新 ApiConfig（provider）下挂一个 ApiModel。
       final migrated = <ApiConfig>[];
       String? selectedModelId;
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -60,21 +59,37 @@ class ApiConfigService {
           ),
         );
       }
-      // 迁移后立刻以新版本落盘，避免下次重复迁移。
+      // v1 → v2 迁移后立即保存（apiKey 会同步到安全存储）
       await saveAll(migrated, selectedModelId);
       return (configs: migrated, selectedModelId: selectedModelId);
     }
 
-    // v2 直接反序列化
+    // v2 反序列化后从安全存储填充 apiKey
     final configs = items
         .map(
           (item) =>
               ApiConfig.fromJson(Map<String, dynamic>.from(item as Map)),
         )
         .toList();
+    final enriched = <ApiConfig>[];
+    for (final config in configs) {
+      if (config.apiKey.isNotEmpty) {
+        // 旧数据迁移：apiKey 仍明文在 JSON 中，写入安全存储
+        await SecureStorageService.instance.saveApiKey(
+          config.id,
+          config.apiKey,
+        );
+        enriched.add(config);
+      } else {
+        final storedKey = await SecureStorageService.instance.readApiKey(
+          config.id,
+        );
+        enriched.add(config.copyWith(apiKey: storedKey));
+      }
+    }
     final selectedModelId = data['selectedApiModelId'] as String?;
     return (
-      configs: configs,
+      configs: enriched,
       selectedModelId:
           (selectedModelId != null && selectedModelId.isNotEmpty)
           ? selectedModelId
@@ -84,9 +99,18 @@ class ApiConfigService {
 
   Future<void> saveAll(List<ApiConfig> configs, String? selectedModelId) async {
     _checkInitialized();
+    // 先同步 apiKey 到安全存储
+    for (final config in configs) {
+      await SecureStorageService.instance.saveApiKey(
+        config.id,
+        config.apiKey,
+      );
+    }
+    // 写入 JSON 时清空 apiKey，避免明文落盘
+    final sanitized = configs.map((c) => c.copyWith(apiKey: '')).toList();
     await StorageService.instance.writeJsonMap(_filename, {
       'version': _dataVersion,
-      'items': configs.map((item) => item.toJson()).toList(),
+      'items': sanitized.map((item) => item.toJson()).toList(),
       'selectedApiModelId': selectedModelId,
     });
   }
