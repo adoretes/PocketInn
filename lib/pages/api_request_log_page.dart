@@ -109,11 +109,13 @@ class _LogCard extends StatelessWidget {
             const SizedBox(height: 12),
             _FieldBlock(label: '请求地址', value: entry.endpoint),
             const SizedBox(height: 12),
-            _FieldBlock(
-              label: '请求体',
-              value: entry.requestBody.isEmpty ? '无' : entry.requestBody,
-              copyValue: entry.requestBody,
-            ),
+            entry.requestBody.isEmpty
+                ? _FieldBlock(label: '请求体', value: '无', copyValue: null)
+                : _CollapsibleJsonBlock(
+                    label: '请求体',
+                    jsonString: entry.requestBody,
+                    copyValue: entry.requestBody,
+                  ),
             const SizedBox(height: 12),
             _FieldBlock(
               label: '响应',
@@ -152,6 +154,206 @@ class _LogCard extends StatelessWidget {
     }
     final path = uri.path.isEmpty ? '/' : uri.path;
     return uri.hasQuery ? '$path?${uri.query}' : path;
+  }
+}
+
+class _CollapsibleJsonBlock extends StatefulWidget {
+  const _CollapsibleJsonBlock({
+    required this.label,
+    required this.jsonString,
+    required this.copyValue,
+  });
+
+  final String label;
+  final String jsonString;
+  final String? copyValue;
+
+  @override
+  State<_CollapsibleJsonBlock> createState() => _CollapsibleJsonBlockState();
+}
+
+class _CollapsibleJsonBlockState extends State<_CollapsibleJsonBlock> {
+  static const double _lineHeight = 20.0;
+
+  bool _collapsed = true;
+  bool _hasMessages = false;
+  int _foldStart = 0;
+  int _foldEnd = 0;
+  int _messageCount = 0;
+  late List<String> _allLines;
+
+  @override
+  void initState() {
+    super.initState();
+    _parse();
+  }
+
+  void _parse() {
+    _allLines = widget.jsonString.split('\n');
+    for (int i = 0; i < _allLines.length; i++) {
+      if (!_allLines[i].contains('"messages"')) continue;
+      _foldStart = i;
+      int depth = 0;
+      bool inArray = false;
+      for (int j = i; j < _allLines.length; j++) {
+        for (final ch in _allLines[j].runes) {
+          final c = String.fromCharCode(ch);
+          if (c == '[') { depth++; inArray = true; } else if (c == ']') {
+            depth--;
+            if (inArray && depth == 0) { _foldEnd = j; break; }
+          }
+        }
+        if (_foldEnd > 0) break;
+      }
+      if (_foldEnd > _foldStart + 1) {
+        _hasMessages = true;
+        for (int j = _foldStart; j <= _foldEnd && j < _allLines.length; j++) {
+          if (_allLines[j].contains('"role"')) _messageCount++;
+        }
+      }
+      break;
+    }
+  }
+
+  List<String> get _visibleLines {
+    if (!_hasMessages || !_collapsed) return _allLines;
+    final start = _allLines[_foldStart];
+    final end = _allLines[_foldEnd];
+    final bp = start.indexOf('[');
+    final prefix = bp >= 0 ? start.substring(0, bp + 1) : start;
+    final cp = end.indexOf(']');
+    final suffix = cp >= 0 ? end.substring(cp) : end;
+    return [
+      ..._allLines.sublist(0, _foldStart),
+      '$prefix /* $_messageCount 条消息 */ $suffix',
+      ..._allLines.sublist(_foldEnd + 1),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final lines = _visibleLines;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            if (widget.copyValue != null &&
+                widget.copyValue!.trim().isNotEmpty)
+              IconButton(
+                tooltip: '复制',
+                visualDensity: VisualDensity.compact,
+                onPressed: () async {
+                  await Clipboard.setData(
+                    ClipboardData(text: widget.copyValue!),
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('${widget.label}已复制')));
+                  }
+                },
+                icon: const Icon(Icons.content_copy_outlined, size: 18),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.only(
+            left: _hasMessages ? 0 : 12,
+            top: 12,
+            right: 12,
+            bottom: 12,
+          ),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: _hasMessages ? _buildLines(lines, colorScheme) : SelectableText(widget.jsonString),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLines(List<String> lines, ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int i = 0; i < lines.length; i++)
+          _buildLine(i, lines[i], colorScheme),
+      ],
+    );
+  }
+
+  Widget _buildLine(int index, String text, ColorScheme colorScheme) {
+    final isFoldLine = index == _foldStart;
+    final isPlaceholder = _hasMessages && _collapsed && isFoldLine;
+    final textStyle = TextStyle(
+      fontFamily: 'monospace',
+      fontSize: 13,
+      height: _lineHeight / 13,
+      color: colorScheme.onSurface,
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 20,
+          height: _lineHeight,
+          child: isFoldLine
+              ? GestureDetector(
+                  onTap: () => setState(() => _collapsed = !_collapsed),
+                  child: Icon(
+                    _collapsed ? Icons.keyboard_arrow_right_rounded : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : null,
+        ),
+        Expanded(
+          child: SizedBox(
+            height: _lineHeight,
+            child: isPlaceholder ? _buildPlaceholderText(text, colorScheme, textStyle) : Text(text, style: textStyle),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlaceholderText(String text, ColorScheme colorScheme, TextStyle baseStyle) {
+    final cs = text.indexOf('/*');
+    final ce = text.indexOf('*/') + 2;
+    if (cs < 0 || ce <= cs) return Text(text, style: baseStyle);
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: text.substring(0, cs), style: baseStyle),
+          TextSpan(
+            text: text.substring(cs, ce),
+            style: baseStyle.copyWith(
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          TextSpan(text: text.substring(ce), style: baseStyle),
+        ],
+      ),
+    );
   }
 }
 
