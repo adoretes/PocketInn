@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/world_book.dart';
 import '../services/world_book_service.dart';
 import '../widgets/expanded_text_editor_field.dart';
+import 'world_book_edit_page.dart';
 
 class RoleEditPage extends StatefulWidget {
   const RoleEditPage({
@@ -262,6 +263,17 @@ class _RoleEditPageState extends State<RoleEditPage> {
     setState(() {
       _selectedWorldBookId = selectedId.isEmpty ? null : selectedId;
     });
+  }
+
+  Future<void> _editWorldBook(String worldBookId) async {
+    final book = await WorldBookService.instance.loadById(worldBookId);
+    if (!mounted || book == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WorldBookEditPage(worldBook: book),
+      ),
+    );
   }
 
   Future<void> _pickImage() async {
@@ -802,7 +814,13 @@ class _RoleEditPageState extends State<RoleEditPage> {
                           leading: const Icon(Icons.menu_book_outlined),
                           title: const Text('选择世界书'),
                           subtitle: Text(_selectedWorldBookLabel),
-                          trailing: const Icon(Icons.chevron_right),
+                          trailing: _selectedWorldBookId != null
+                              ? IconButton(
+                                  icon: const Icon(Icons.edit_outlined),
+                                  tooltip: '编辑世界书',
+                                  onPressed: () => _editWorldBook(_selectedWorldBookId!),
+                                )
+                              : const Icon(Icons.chevron_right),
                           onTap: _pickWorldBook,
                         ),
                       ],
