@@ -72,6 +72,15 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.2.3',
+                  date: '2026-07-09',
+                  changes: [
+                    '优化请求体显示，添加可折叠 JSON 块以展示消息',
+                    '优化模型拉取',
+                    '角色卡页面添加编辑世界书入口',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.2.2',
                   date: '2026-07-07',
                   changes: [
