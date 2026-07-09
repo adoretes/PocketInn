@@ -234,74 +234,23 @@ class _OpenAICompatibleConfigPageState
           .where((id) => id.isNotEmpty)
           .toSet();
       final candidates = models
-          .where((m) => !existingIds.contains(m))
+          .where((m) => !existingIds.contains(m.modelId))
           .toList(growable: false);
       if (candidates.isEmpty) {
         _showError('远端模型已全部存在，无需重复添加');
         return;
       }
 
-      final selected = <String>{};
-      final confirmed = await showDialog<bool>(
+      final selectedIds = await showDialog<Set<String>>(
         context: context,
-        builder: (dialogContext) {
-          return StatefulBuilder(
-            builder: (ctx, ss) {
-              return AlertDialog(
-                title: const Text('选择要添加的模型'),
-                content: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.85,
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      for (final m in candidates)
-                        CheckboxListTile(
-                          value: selected.contains(m),
-                          onChanged: (v) {
-                            ss(() {
-                              if (v == true) {
-                                selected.add(m);
-                              } else {
-                                selected.remove(m);
-                              }
-                            });
-                          },
-                          title: Text(m),
-                          dense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('取消'),
-                  ),
-                  FilledButton(
-                    onPressed: selected.isEmpty
-                        ? null
-                        : () => Navigator.of(dialogContext).pop(true),
-                    child: Text(
-                      selected.isEmpty
-                          ? '添加'
-                          : '添加 (${selected.length})',
-                    ),
-                  ),
-                ],
-              );
-            },
-          );
-        },
+        builder: (_) => _FetchModelsDialog(candidates: candidates),
       );
-      if (confirmed != true || selected.isEmpty) return;
+      if (selectedIds == null || selectedIds.isEmpty) return;
 
       final itemIndex = _configItems.indexWhere((i) => i.id == item.id);
       if (itemIndex < 0) return;
       final newModels = <ApiModel>[];
-      for (final modelId in selected) {
+      for (final modelId in selectedIds) {
         final newModel = ApiModel(
           id: ApiConfigService.instance.generateModelId(),
           modelId: modelId,
@@ -321,13 +270,9 @@ class _OpenAICompatibleConfigPageState
         );
       }
     } on FormatException catch (error) {
-      if (mounted) {
-        _showError(error.message.toString());
-      }
+      if (mounted) _showError(error.message.toString());
     } on Object catch (error) {
-      if (mounted) {
-        _showError('拉取模型失败: $error');
-      }
+      if (mounted) _showError('拉取模型失败: $error');
     } finally {
       if (mounted) {
         setState(() {
@@ -774,6 +719,273 @@ class _OpenAICompatibleConfigPageState
       hintText: hint,
       alignLabelWithHint: maxLines > 1,
       border: const OutlineInputBorder(),
+    );
+  }
+}
+
+class _FetchModelsDialog extends StatefulWidget {
+  final List<FetchedModelInfo> candidates;
+
+  const _FetchModelsDialog({required this.candidates});
+
+  @override
+  State<_FetchModelsDialog> createState() => _FetchModelsDialogState();
+}
+
+class _FetchModelsDialogState extends State<_FetchModelsDialog> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  final _selected = <String>{};
+  final _collapsedGroups = <String>{};
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<FetchedModelInfo> get _filtered {
+    if (_searchQuery.isEmpty) return widget.candidates;
+    final q = _searchQuery.toLowerCase();
+    return widget.candidates
+        .where((m) => m.modelId.toLowerCase().contains(q))
+        .toList();
+  }
+
+  Map<String?, List<FetchedModelInfo>> get _grouped {
+    final result = <String?, List<FetchedModelInfo>>{};
+    for (final m in _filtered) {
+      result.putIfAbsent(m.ownedBy ?? '', () => []).add(m);
+    }
+    return result;
+  }
+
+  bool get _allSelected =>
+      _filtered.every((m) => _selected.contains(m.modelId));
+
+  int get _totalCount => widget.candidates.length;
+
+  void _toggleAll() {
+    setState(() {
+      if (_allSelected) {
+        _selected.removeAll(_filtered.map((m) => m.modelId));
+      } else {
+        _selected.addAll(_filtered.map((m) => m.modelId));
+      }
+    });
+  }
+
+  void _toggleGroup(String? groupKey, List<FetchedModelInfo> models) {
+    setState(() {
+      final all = models.every((m) => _selected.contains(m.modelId));
+      if (all) {
+        _selected.removeAll(models.map((m) => m.modelId));
+      } else {
+        _selected.addAll(models.map((m) => m.modelId));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _grouped;
+    return AlertDialog(
+      title: const Text('选择要添加的模型'),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.88,
+        height: MediaQuery.of(context).size.height * 0.6,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '搜索模型...',
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              onChanged: (v) => setState(() {
+                _searchQuery = v;
+                if (v.isNotEmpty) _collapsedGroups.clear();
+              }),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: _filtered.isEmpty ? null : _toggleAll,
+                  icon: Icon(
+                    _allSelected
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    size: 20,
+                  ),
+                  label: Text(
+                    _allSelected ? '取消全选' : '全选',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '已选 ${_selected.length} / $_totalCount',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: groups.isEmpty
+                  ? Center(
+                      child: Text(
+                        _searchQuery.isEmpty ? '暂无可用模型' : '未找到匹配的模型',
+                        style: TextStyle(color: Colors.grey[500]),
+                      ),
+                    )
+                  : ListView(
+                      children: [
+                        for (final entry in groups.entries)
+                          _buildGroup(entry.key, entry.value),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(Set.of(_selected)),
+          child: Text(
+            _selected.isEmpty
+                ? '添加'
+                : '添加 (${_selected.length})',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGroup(String? groupKey, List<FetchedModelInfo> models) {
+    final label = (groupKey?.isNotEmpty == true) ? groupKey! : '其他';
+    final allSelected = models.every((m) => _selected.contains(m.modelId));
+    final isCollapsed = _collapsedGroups.contains(groupKey);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => _toggleGroup(groupKey, models),
+                child: Icon(
+                  allSelected
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
+                  size: 18,
+                  color: Colors.grey[700],
+                ),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (isCollapsed) {
+                        _collapsedGroups.remove(groupKey);
+                      } else {
+                        _collapsedGroups.add(groupKey!);
+                      }
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 6,
+                      horizontal: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${models.length}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const Spacer(),
+                        Icon(
+                          isCollapsed
+                              ? Icons.expand_more
+                              : Icons.expand_less,
+                          size: 18,
+                          color: Colors.grey[500],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!isCollapsed)
+          for (final m in models)
+            ListTile(
+              onTap: () {
+                setState(() {
+                  if (_selected.contains(m.modelId)) {
+                    _selected.remove(m.modelId);
+                  } else {
+                    _selected.add(m.modelId);
+                  }
+                });
+              },
+              selected: _selected.contains(m.modelId),
+              title: Text(
+                m.modelId,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              subtitle: m.ownedBy?.isNotEmpty == true
+                  ? Text(
+                      m.ownedBy!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    )
+                  : null,
+              dense: true,
+              contentPadding: const EdgeInsets.only(left: 0, right: 8),
+              trailing: _selected.contains(m.modelId)
+                  ? const Icon(Icons.check, size: 18)
+                  : null,
+              visualDensity: VisualDensity.compact,
+            ),
+      ],
     );
   }
 }

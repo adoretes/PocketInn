@@ -83,6 +83,28 @@ class ApiConnectionTestResult {
   final int? modelCount;
 }
 
+class FetchedModelInfo {
+  const FetchedModelInfo({
+    required this.modelId,
+    this.ownedBy,
+    this.object,
+  });
+
+  final String modelId;
+  final String? ownedBy;
+  final String? object;
+}
+
+class _CachedFetchedModels {
+  final List<FetchedModelInfo> models;
+  final DateTime fetchedAt;
+
+  _CachedFetchedModels({required this.models, required this.fetchedAt});
+
+  bool isExpiredFor(Duration cacheDuration) =>
+      DateTime.now().difference(fetchedAt) > cacheDuration;
+}
+
 class OpenAICompatibleApiService implements IOpenAiApiService {
   OpenAICompatibleApiService._();
 
@@ -96,9 +118,21 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
   // 流式响应中相邻两次数据之间的空闲超时，超过则视为卡住。
   static const Duration _streamIdleTimeout = Duration(seconds: 60);
 
+  // 拉取模型列表缓存时长
+  static const Duration _modelsCacheDuration = Duration(minutes: 5);
+
+  // 拉取模型列表缓存，key 为 baseUrl|apiKey
+  final Map<String, _CachedFetchedModels> _modelsFetchCache = {};
+
   @override
-  Future<List<String>> fetchModels(ResolvedApiConfig config) async {
+  Future<List<FetchedModelInfo>> fetchModels(ResolvedApiConfig config) async {
     _validateConfig(config);
+    final cacheKey = '${config.baseUrl.trim()}|${config.apiKey.trim()}';
+    final cached = _modelsFetchCache[cacheKey];
+    if (cached != null && !cached.isExpiredFor(_modelsCacheDuration)) {
+      return cached.models;
+    }
+
     final uri = _buildUri(config.baseUrl, 'models');
 
     final response = await _sendJson(
@@ -128,13 +162,21 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       throw FormatException('模型接口返回解析失败: $error');
     }
 
-    final models =
-        modelsResponse.data
-            .map((item) => item.id.trim())
-            .where((id) => id.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
+    final seen = <String>{};
+    final models = modelsResponse.data
+        .where((item) => item.id.trim().isNotEmpty && seen.add(item.id.trim()))
+        .map((item) => FetchedModelInfo(
+              modelId: item.id.trim(),
+              ownedBy: item.ownedBy,
+              object: item.object,
+            ))
+        .toList()
+      ..sort((a, b) => a.modelId.compareTo(b.modelId));
+
+    _modelsFetchCache[cacheKey] = _CachedFetchedModels(
+      models: models,
+      fetchedAt: DateTime.now(),
+    );
     return models;
   }
 

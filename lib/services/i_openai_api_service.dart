@@ -4,7 +4,7 @@ import '../models/api_config.dart';
 import 'openai_compatible_api_service.dart';
 
 abstract class IOpenAiApiService {
-  Future<List<String>> fetchModels(ResolvedApiConfig config);
+  Future<List<FetchedModelInfo>> fetchModels(ResolvedApiConfig config);
 
   Future<ApiConnectionTestResult> testConnection(ResolvedApiConfig config);
 
