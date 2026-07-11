@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../../models/chat_memory.dart';
 import '../../../models/chat_session.dart';
 import '../../../services/chat_database_service.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
 import '../../../services/chat_memory_service.dart';
 import '../../memory_settings_page.dart';
 
@@ -77,7 +79,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     setState(() => _isLoading = true);
     final db = ChatDatabaseService.instance;
     final nodes = await db.loadAllSessionNodes(widget.sessionId);
+    if (!mounted) return;
     final memories = await db.loadAllSessionMemories(widget.sessionId);
+    if (!mounted) return;
 
     final byMessageId = <String, List<MemoryNode>>{};
     for (final m in memories) {
@@ -134,11 +138,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     // 计算活跃路径：从 activeLeafMessageId 沿 parentId 回溯到根。
     final activeIds = <String>{};
     String? cur = widget.activeLeafMessageId;
-    while (cur != null) {
+    while (cur != null && treeNodes.containsKey(cur)) {
       activeIds.add(cur);
-      final n = treeNodes[cur];
-      if (n == null) break;
-      cur = n.parentId;
+      cur = treeNodes[cur]!.parentId;
     }
 
     // 计算布局
@@ -212,10 +214,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
       _rootCanvasSizes
         ..clear()
         ..addAll(canvasSizes);
-      _selectedRootIndex = defaultIndex.clamp(
-        0,
-        roots.isEmpty ? 0 : roots.length - 1,
-      );
+      _selectedRootIndex = roots.isEmpty
+          ? 0
+          : defaultIndex.clamp(0, roots.length - 1);
       _isLoading = false;
     });
   }
@@ -239,114 +240,246 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     final isDark =
         Theme.of(context).colorScheme.brightness == Brightness.dark;
     final tc = isDark ? _TreeColors.dark : _TreeColors.light;
+
+    final lines = preview.split('\n');
+    final needsExpand = lines.length > 4 || preview.length > 200;
+
+    var isExpanded = false;
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetCtx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          isUser ? '用户消息' : '角色消息',
-                          style: Theme.of(sheetCtx)
-                              .textTheme
-                              .labelMedium
-                              ?.copyWith(
-                                color: Theme.of(sheetCtx)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return SafeArea(
+              child: LayoutBuilder(
+                builder: (ctx, constraints) {
+                  // 预留底部按钮区域的高度
+                  const buttonAreaHeight = 136.0;
+                  final maxContentHeight =
+                      (constraints.maxHeight - buttonAreaHeight)
+                          .clamp(80.0, 600.0);
+
+                  // 估算消息文本之外固定部分的高度
+                  final fixedH = 26.0 + // 标题行 + SizedBox(6)
+                      (preview.isNotEmpty && needsExpand ? 36.0 : 0.0) + // 展开按钮
+                      (hasMemory ? 108.0 : 0.0); // 记忆列表
+                  final messageMaxHeight =
+                      (maxContentHeight - fixedH).clamp(60.0, 600.0);
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  isUser ? '用户消息' : '角色消息',
+                                  style: Theme.of(ctx)
+                                      .textTheme
+                                      .labelMedium
+                                      ?.copyWith(
+                                        color: Theme.of(ctx)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                                if (hasMemory) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: tc.memoryActive
+                                          .withValues(alpha: 0.16),
+                                      borderRadius:
+                                          BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '记忆点 · ${n.memoryEntries.length} 条',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: tc.memoryActive,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            if (preview.isEmpty)
+                              Text(
+                                '（无内容）',
+                                style:
+                                    Theme.of(ctx).textTheme.bodyMedium,
+                              )
+                            else
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight: messageMaxHeight,
+                                ),
+                                child: SingleChildScrollView(
+                                  child: !isExpanded
+                                      ? Text(
+                                          preview,
+                                          maxLines: 4,
+                                          overflow:
+                                              TextOverflow.ellipsis,
+                                          style: Theme.of(ctx)
+                                              .textTheme
+                                              .bodyMedium,
+                                        )
+                                      : MarkdownBody(
+                                          data: preview,
+                                          selectable: true,
+                                          styleSheet:
+                                              MarkdownStyleSheet(
+                                            p: Theme.of(ctx)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                    height: 1.5),
+                                            blockSpacing: 4,
+                                            code: TextStyle(
+                                              fontSize: 13,
+                                              fontFamily: 'monospace',
+                                              color: Theme.of(ctx)
+                                                  .colorScheme
+                                                  .primary,
+                                              backgroundColor:
+                                                  Theme.of(ctx)
+                                                      .colorScheme
+                                                      .surfaceContainerHighest,
+                                            ),
+                                            codeblockDecoration:
+                                                BoxDecoration(
+                                              color: Theme.of(ctx)
+                                                  .colorScheme
+                                                  .surfaceContainerHighest,
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                      6),
+                                            ),
+                                            horizontalRuleDecoration:
+                                                BoxDecoration(
+                                              border: Border(
+                                                top: BorderSide(
+                                                  color: Theme.of(ctx)
+                                                      .colorScheme
+                                                      .outlineVariant,
+                                                  width: 0.5,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                ),
                               ),
+                            if (preview.isNotEmpty && needsExpand)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.only(top: 4),
+                                child: SizedBox(
+                                  height: 32,
+                                  child: TextButton.icon(
+                                    onPressed: () {
+                                      setState(
+                                        () =>
+                                            isExpanded = !isExpanded,
+                                      );
+                                    },
+                                    icon: Icon(
+                                      isExpanded
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      isExpanded
+                                          ? '收起'
+                                          : '展开完整消息',
+                                      style: const TextStyle(
+                                          fontSize: 13),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                      ),
+                                      visualDensity:
+                                          VisualDensity.compact,
+                                      foregroundColor: Theme.of(ctx)
+                                          .colorScheme
+                                          .primary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (hasMemory) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                n.memoryEntries
+                                    .map((m) => '• ${m.content}')
+                                    .join('\n'),
+                                maxLines: 5,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(ctx)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(ctx)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ],
                         ),
-                        if (hasMemory) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: tc.memoryActive.withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '记忆点 · ${n.memoryEntries.length} 条',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: tc.memoryActive,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      preview.isEmpty ? '（无内容）' : preview,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(sheetCtx).textTheme.bodyMedium,
-                    ),
-                    if (hasMemory) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        n.memoryEntries
-                            .map((m) => '• ${m.content}')
-                            .join('\n'),
-                        maxLines: 5,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(sheetCtx)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                              color: Theme.of(sheetCtx)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
                       ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.my_location),
+                        title: const Text('切换到该分支'),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _jumpTo(n.id);
+                        },
+                      ),
+                      if (hasMemory)
+                        ListTile(
+                          leading: const Icon(Icons.edit_note_outlined),
+                          title: const Text('编辑该节点的记忆'),
+
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _editMemoriesAt(n.id, n.memoryEntries);
+                          },
+                        )
+                      else
+                        ListTile(
+                          leading: const Icon(Icons.bookmark_add_outlined),
+                          title: const Text('在此处添加记忆'),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _addMemoryAt(n.id);
+                          },
+                        ),
                     ],
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.my_location),
-                title: const Text('切换到该分支'),
-                onTap: () {
-                  Navigator.of(sheetCtx).pop();
-                  _jumpTo(n.id);
+                  );
                 },
               ),
-              if (hasMemory)
-                ListTile(
-                  leading: const Icon(Icons.edit_note_outlined),
-                  title: const Text('编辑该节点的记忆'),
-                  subtitle: const Text('每行一条，可在此添加或删除'),
-                  onTap: () {
-                    Navigator.of(sheetCtx).pop();
-                    _editMemoriesAt(n.id, n.memoryEntries);
-                  },
-                )
-              else
-                ListTile(
-                  leading: const Icon(Icons.bookmark_add_outlined),
-                  title: const Text('在此处添加记忆'),
-                  onTap: () {
-                    Navigator.of(sheetCtx).pop();
-                    _addMemoryAt(n.id);
-                  },
-                ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -358,9 +491,13 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
       sessionId: widget.sessionId,
       messageId: messageId,
     );
-    // 通过沿 parent 回溯，逐层把分支状态切到包含 messageId 的链路。
+    if (leafId.isEmpty) return;
+
     final allNodes = await db.loadAllSessionNodes(widget.sessionId);
     final byId = {for (final n in allNodes) n.id: n};
+    if (byId[leafId] == null) return;
+
+    // 从 messageId 沿 parentId 回溯到根，逐层切换分支状态
     final chain = <ChatNode>[];
     String? cur = messageId;
     while (cur != null) {
@@ -376,12 +513,15 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
         childMessageId: n.id,
       );
     }
-    // 再从 messageId 走到叶子，让 current_leaf 指向 leafId
-    await db.switchActiveBranch(
-      sessionId: widget.sessionId,
-      parentMessageId: byId[leafId]?.parentId,
-      childMessageId: leafId,
-    );
+
+    // leafId != messageId 时才额外激活叶子节点，避免冗余写入
+    if (leafId != messageId) {
+      await db.switchActiveBranch(
+        sessionId: widget.sessionId,
+        parentMessageId: byId[leafId]?.parentId,
+        childMessageId: leafId,
+      );
+    }
 
     if (!mounted) return;
     widget.onJumpToMessage?.call(messageId);
@@ -993,8 +1133,8 @@ class _TreeEdgePainter extends CustomPainter {
 
       // 让线先垂直延伸一段再弯曲：将贝塞尔的两个控制点放在端点正下/正上。
       final dy = end.dy - start.dy;
-      // 垂直延伸量：取行距的 1/3 与 18 之间的较小值，并不超过总距离一半。
-      final stub = math.min(18.0, dy.abs() / 2);
+      // 垂直延伸量：取纵向距离的 35%，不超过 24，保证曲线比例一致
+      final stub = math.min(dy.abs() * 0.35, 24.0);
       final c1 = Offset(start.dx, start.dy + stub);
       final c2 = Offset(end.dx, end.dy - stub);
 
