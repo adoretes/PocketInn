@@ -256,7 +256,7 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
               child: LayoutBuilder(
                 builder: (ctx, constraints) {
                   // 预留底部按钮区域的高度
-                  const buttonAreaHeight = 136.0;
+                  const buttonAreaHeight = 64.0;
                   final maxContentHeight =
                       (constraints.maxHeight - buttonAreaHeight)
                           .clamp(80.0, 600.0);
@@ -447,33 +447,60 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
                         ),
                       ),
                       const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.my_location),
-                        title: const Text('切换到该分支'),
-                        onTap: () {
-                          Navigator.of(ctx).pop();
-                          _jumpTo(n.id);
-                        },
-                      ),
-                      if (hasMemory)
-                        ListTile(
-                          leading: const Icon(Icons.edit_note_outlined),
-                          title: const Text('编辑该节点的记忆'),
-
-                          onTap: () {
-                            Navigator.of(ctx).pop();
-                            _editMemoriesAt(n.id, n.memoryEntries);
-                          },
-                        )
-                      else
-                        ListTile(
-                          leading: const Icon(Icons.bookmark_add_outlined),
-                          title: const Text('在此处添加记忆'),
-                          onTap: () {
-                            Navigator.of(ctx).pop();
-                            _addMemoryAt(n.id);
-                          },
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
                         ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _buildActionButton(
+                                ctx,
+                                icon: Icons.my_location,
+                                label: '切换',
+                                onTap: () {
+                                  Navigator.of(ctx).pop();
+                                  _jumpTo(n.id);
+                                },
+                              ),
+                            ),
+                            Expanded(
+                              child: _buildActionButton(
+                                ctx,
+                                icon: hasMemory
+                                    ? Icons.edit_note_outlined
+                                    : Icons.bookmark_add_outlined,
+                                label:
+                                    hasMemory ? '编辑记忆' : '添加记忆',
+                                onTap: () {
+                                  Navigator.of(ctx).pop();
+                                  if (hasMemory) {
+                                    _editMemoriesAt(
+                                      n.id,
+                                      n.memoryEntries,
+                                    );
+                                  } else {
+                                    _addMemoryAt(n.id);
+                                  }
+                                },
+                              ),
+                            ),
+                            Expanded(
+                              child: _buildActionButton(
+                                ctx,
+                                icon: Icons.delete_outline,
+                                label: '删除',
+                                destructive: true,
+                                onTap: () {
+                                  Navigator.of(ctx).pop();
+                                  _confirmDeleteMessage(n);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   );
                 },
@@ -623,6 +650,62 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
         .map((l) => l.trim())
         .where((l) => l.isNotEmpty)
         .toList(growable: false);
+  }
+
+  Widget _buildActionButton(
+    BuildContext ctx, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool destructive = false,
+  }) {
+    final colorScheme = Theme.of(ctx).colorScheme;
+    final color = destructive ? colorScheme.error : colorScheme.primary;
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: color,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteMessage(_TreeNode n) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除消息'),
+        content: const Text('确定删除该消息及其分支吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await ChatDatabaseService.instance.deleteMessageBranch(
+      sessionId: widget.sessionId,
+      messageId: n.id,
+    );
+    if (!mounted) return;
+    await _reload();
   }
 
   @override
