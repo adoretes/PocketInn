@@ -252,7 +252,7 @@ class _OpenAICompatibleConfigPageState
       final newModels = <ApiModel>[];
       for (final modelId in selectedIds) {
         final newModel = ApiModel(
-          id: ApiConfigService.instance.generateModelId(),
+id: '${item.id}_model_${modelId}',
           modelId: modelId,
           customBody: '',
         );
