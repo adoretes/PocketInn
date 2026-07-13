@@ -82,6 +82,8 @@ class ChatService {
       chatMessages: chatMessages,
     );
 
+    final truncatedChatMessages = _truncateChatMessages(chatMessages);
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -90,7 +92,7 @@ class ChatService {
         userSettingPrompt: userSetting.prompt,
         preset: preset,
         selectedWorldBooks: worldBooks,
-        chatMessages: chatMessages,
+        chatMessages: truncatedChatMessages,
         currentInput: normalizedInput,
         memoryContext: memoryContext,
       ),
@@ -202,6 +204,8 @@ class ChatService {
       chatMessages: historyBeforeUserMessage,
     );
 
+    final truncatedHistory = _truncateChatMessages(historyBeforeUserMessage);
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -210,7 +214,7 @@ class ChatService {
         userSettingPrompt: userSetting.prompt,
         preset: preset,
         selectedWorldBooks: worldBooks,
-        chatMessages: historyBeforeUserMessage,
+        chatMessages: truncatedHistory,
         currentInput: userMessage.text,
         memoryContext: memoryContext,
       ),
@@ -326,6 +330,8 @@ class ChatService {
       chatMessages: chatMessages,
     );
 
+    final truncatedChatMessages = _truncateChatMessages(chatMessages);
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -334,7 +340,7 @@ class ChatService {
         userSettingPrompt: userSetting.prompt,
         preset: preset,
         selectedWorldBooks: worldBooks,
-        chatMessages: chatMessages,
+        chatMessages: truncatedChatMessages,
         currentInput: '',
         memoryContext: memoryContext,
       ),
@@ -420,6 +426,8 @@ class ChatService {
       chatMessages: chatMessages,
     );
 
+    final truncatedChatMessages = _truncateChatMessages(chatMessages);
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -428,7 +436,7 @@ class ChatService {
         userSettingPrompt: userSetting.prompt,
         preset: preset,
         selectedWorldBooks: worldBooks,
-        chatMessages: chatMessages,
+        chatMessages: truncatedChatMessages,
         currentInput: '',
         memoryContext: memoryContext,
       ),
@@ -594,6 +602,13 @@ class ChatService {
     return ChatCompletionResult(
       text: text,
       thinkingChain: thinking.isEmpty ? null : thinking,
+    );
+  }
+
+  List<ChatMessage> _truncateChatMessages(List<ChatMessage> messages) {
+    return ChatMemoryService.truncateToRecentRounds(
+      messages,
+      memoryExtractionNotifier.value.recentRounds,
     );
   }
 

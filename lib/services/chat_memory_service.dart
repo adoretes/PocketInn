@@ -55,7 +55,6 @@ class ChatMemoryService {
   ///
   /// 从末尾向前数 `recentRounds` 个助手消息，包含其前导用户消息。
   /// `recentRounds <= 0` 视为不截断。
-  @visibleForTesting
   static List<ChatMessage> truncateToRecentRounds(
     List<ChatMessage> messages,
     int recentRounds,
@@ -136,7 +135,7 @@ class ChatMemoryService {
 
     final truncated = truncateToRecentRounds(
       messages,
-      memoryExtractionNotifier.value.recentRounds,
+      memoryExtractionNotifier.value.interval,
     );
     final chatLog = truncated
         .map((m) => '${m.isMe ? userName : characterName}: ${m.text}')

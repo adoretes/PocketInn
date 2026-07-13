@@ -514,10 +514,10 @@ class MemorySettingsCard extends StatelessWidget {
               title: '最近对话轮数',
               subtitle: '拼入提示词的最近 N 轮对话',
               value: memoryConfig.recentRounds.toDouble(),
-              min: 1,
+              min: 0,
               max: 50,
-              divisions: 49,
-              displayValue: (v) => '${v.toInt()} 轮',
+              divisions: 50,
+              displayValue: (v) => v.toInt() == 0 ? '无限制' : '${v.toInt()} 轮',
               onChanged: (value) =>
                   updateMemoryExtractionConfig(recentRounds: value.toInt()),
             ),
