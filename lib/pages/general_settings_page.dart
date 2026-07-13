@@ -491,7 +491,7 @@ class MemorySettingsCard extends StatelessWidget {
         children: [
           _SwitchTile(
             title: '启用长期记忆',
-            subtitle: '开启后系统将自动提取和管理记忆点',
+            subtitle: '系统自动提取和管理记忆点',
             value: memoryConfig.enabled,
             onChanged: (value) =>
                 updateMemoryExtractionConfig(enabled: value),

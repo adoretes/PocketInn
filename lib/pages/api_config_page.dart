@@ -252,7 +252,7 @@ class _OpenAICompatibleConfigPageState
       final newModels = <ApiModel>[];
       for (final modelId in selectedIds) {
         final newModel = ApiModel(
-id: '${item.id}_model_${modelId}',
+id: '${item.id}_model_$modelId',
           modelId: modelId,
           customBody: '',
         );
