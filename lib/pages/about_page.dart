@@ -72,6 +72,16 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.2.5',
+                  date: '2026-07-09',
+                  changes: [
+                    '优化记忆树页面操作按钮的样式和布局',
+                    '修复拉取模型逻辑',
+                    '优化请求日志',
+                    '优化记忆提取设置，允许最近对话轮数为无限制',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.2.4',
                   date: '2026-07-09',
                   changes: [
