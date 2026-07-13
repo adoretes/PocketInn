@@ -327,10 +327,9 @@ class _CollapsibleJsonBlockState extends State<_CollapsibleJsonBlock> {
               : null,
         ),
         Expanded(
-          child: SizedBox(
-            height: _lineHeight,
-            child: isPlaceholder ? _buildPlaceholderText(text, colorScheme, textStyle) : Text(text, style: textStyle),
-          ),
+          child: isPlaceholder
+              ? _buildPlaceholderText(text, colorScheme, textStyle)
+              : Text(text, style: textStyle),
         ),
       ],
     );
