@@ -665,17 +665,16 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
       onPressed: onTap,
       style: TextButton.styleFrom(
         foregroundColor: color,
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+        minimumSize: const Size(48, 48),
+        tapTargetSize: MaterialTapTargetSize.padded,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 13)),
+          Icon(icon, size: 22),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(fontSize: 15)),
         ],
       ),
     );
