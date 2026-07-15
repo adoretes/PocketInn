@@ -116,67 +116,6 @@ void main() {
     });
   });
 
-  group('ChatMemoryService.isDuplicate', () {
-    test('空集合返回 false', () {
-      expect(ChatMemoryService.isDuplicate('任何内容', <String>{}), isFalse);
-    });
-
-    test('精确匹配返回 true', () {
-      expect(ChatMemoryService.isDuplicate('用户喜欢苹果', {'用户喜欢苹果'}), isTrue);
-    });
-
-    test('大小写不敏感', () {
-      expect(
-        ChatMemoryService.isDuplicate('Apple Banana', {'apple banana'}),
-        isTrue,
-      );
-    });
-
-    test('首尾空白不影响比较', () {
-      expect(
-        ChatMemoryService.isDuplicate('  apple banana  ', {'apple banana'}),
-        isTrue,
-      );
-    });
-
-    test('Jaccard 相似度 > 0.7 判定为重复', () {
-      // {apple, banana, cherry} vs {apple, banana, cherry, date}
-      // intersection = 3, union = 4, ratio = 0.75 > 0.7
-      expect(
-        ChatMemoryService.isDuplicate('apple banana cherry', {
-          'apple banana cherry date',
-        }),
-        isTrue,
-      );
-    });
-
-    test('Jaccard 相似度 < 0.7 判定为不重复', () {
-      // {apple, banana} vs {cherry, date, elderberry, fig}
-      // intersection = 0, union = 6, ratio = 0
-      expect(
-        ChatMemoryService.isDuplicate('apple banana', {
-          'cherry date elderberry fig',
-        }),
-        isFalse,
-      );
-    });
-
-    test('集合中任意一条匹配即返回 true', () {
-      expect(
-        ChatMemoryService.isDuplicate('apple banana cherry', {
-          'totally different',
-          'apple banana cherry date',
-        }),
-        isTrue,
-      );
-    });
-
-    test('中文无空格文本按整体匹配（Jaccard 退化为相等比较）', () {
-      // 整条字符串视作单个词，Jaccard 退化为：完全相同 → 1.0；否则 → 0
-      expect(ChatMemoryService.isDuplicate('我喜欢吃苹果', {'我喜欢吃苹果'}), isTrue);
-      expect(ChatMemoryService.isDuplicate('我喜欢吃苹果', {'我喜欢吃苹果和香蕉'}), isFalse);
-    });
-  });
 
   group('MemoryExtractionConfig.copyWith', () {
     test('不传 extractionModelId 时保持原值', () {

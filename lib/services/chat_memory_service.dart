@@ -206,7 +206,6 @@ class ChatMemoryService {
       sessionId: sessionId,
       pathMessageIds: pathIds,
     );
-    final existingContents = existingMemories.map((m) => m.content).toSet();
     final injectionMemories = existingMemories
         .take(memoryExtractionNotifier.value.recallCount)
         .map((m) => m.content)
@@ -231,7 +230,6 @@ class ChatMemoryService {
 
     final toInsert = <MemoryNode>[];
     for (final line in memoryLines) {
-      if (isDuplicate(line, existingContents)) continue;
       toInsert.add(
         MemoryNode(
           id: _generateMemoryId(),
@@ -247,26 +245,6 @@ class ChatMemoryService {
     if (toInsert.isEmpty) return false;
     await ChatDatabaseService.instance.insertMemoriesInTx(toInsert);
     return true;
-  }
-
-  @visibleForTesting
-  static bool isDuplicate(String newContent, Set<String> existingContents) {
-    final normalized = newContent.trim().toLowerCase();
-    if (existingContents.any((e) => e.trim().toLowerCase() == normalized)) {
-      return true;
-    }
-    final newWords = normalized.split(RegExp(r'\s+')).toSet();
-    for (final existing in existingContents) {
-      final existingWords = existing
-          .trim()
-          .toLowerCase()
-          .split(RegExp(r'\s+'))
-          .toSet();
-      final intersection = newWords.intersection(existingWords).length;
-      final union = newWords.union(existingWords).length;
-      if (union > 0 && intersection / union > 0.7) return true;
-    }
-    return false;
   }
 
   Future<void> updateMemory({
