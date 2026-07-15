@@ -106,6 +106,8 @@ class ChatMemoryService {
     required String characterName,
     required String userName,
     List<String> existingMemories = const [],
+    String currentInput = '',
+    Map<String, String> cardData = const {},
   }) async {
     if (messages.isEmpty) return null;
 
@@ -124,9 +126,11 @@ class ChatMemoryService {
     final macroState = PromptMacroState(
       characterName: characterName,
       userName: userName,
+      currentInput: currentInput,
       lastUserMessage: lastUser?.text ?? '',
       lastCharMessage: lastChar?.text ?? '',
       memoryContext: existingMemories,
+      extraVariables: cardData,
     );
     final extractionPrompt = ChatVariableService.resolveMacros(
       rawPrompt,
@@ -223,6 +227,8 @@ class ChatMemoryService {
     required List<ChatMessage> messages,
     required String characterName,
     required String userName,
+    String currentInput = '',
+    Map<String, String> cardData = const {},
   }) async {
     final pathIds = messages
         .where((m) => m.id != null)
@@ -241,6 +247,8 @@ class ChatMemoryService {
       characterName: characterName,
       userName: userName,
       existingMemories: injectionMemories,
+      currentInput: currentInput,
+      cardData: cardData,
     );
     if (extracted == null || extracted.isEmpty) return false;
 

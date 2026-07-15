@@ -144,6 +144,8 @@ class ChatService {
           ),
           characterName: character.name,
           userName: userSetting.name,
+          currentInput: userNode.text,
+          cardData: _extractCardData(character.cardJson),
         ),
       );
 
@@ -256,6 +258,8 @@ class ChatService {
           ),
           characterName: character.name,
           userName: userSetting.name,
+          currentInput: userMessage.text,
+          cardData: _extractCardData(character.cardJson),
         ),
       );
 
@@ -641,6 +645,8 @@ class ChatService {
     required ChatMessage assistantMessage,
     required String characterName,
     required String userName,
+    required String currentInput,
+    required Map<String, String> cardData,
   }) async {
     final memoryConfig = memoryExtractionNotifier.value;
     if (!memoryConfig.enabled) return;
@@ -664,6 +670,8 @@ class ChatService {
       messages: allMessages,
       characterName: characterName,
       userName: userName,
+      currentInput: currentInput,
+      cardData: cardData,
     );
   }
 
@@ -697,6 +705,15 @@ class ChatService {
       if (preset.extra['enable_reasoning'] == true) ...{
         'reasoning_effort': preset.extra['reasoning_effort'] ?? 'medium',
       },
+    };
+  }
+
+  static Map<String, String> _extractCardData(Map<String, dynamic> cardJson) {
+    final data = (cardJson['data'] as Map<String, dynamic>?) ?? cardJson;
+    return {
+      'personality': (data['personality'] as String?) ?? '',
+      'description': (data['description'] as String?) ?? '',
+      'scenario': (data['scenario'] as String?) ?? '',
     };
   }
 }

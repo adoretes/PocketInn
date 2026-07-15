@@ -9,9 +9,13 @@ class PromptMacroState {
     this.lastCharMessage = '',
     this.memoryContext = const [],
     Map<String, String>? localVariables,
-  }) : localVariables = localVariables == null
-           ? <String, String>{}
-           : Map<String, String>.from(localVariables);
+    Map<String, String>? extraVariables,
+  })  : localVariables = localVariables == null
+            ? <String, String>{}
+            : Map<String, String>.from(localVariables),
+        extraVariables = extraVariables == null
+            ? <String, String>{}
+            : Map<String, String>.from(extraVariables);
 
   final String characterName;
   final String userName;
@@ -20,6 +24,7 @@ class PromptMacroState {
   final String lastCharMessage;
   final List<String> memoryContext;
   final Map<String, String> localVariables;
+  final Map<String, String> extraVariables;
 
   PromptMacroState copy() {
     return PromptMacroState(
@@ -30,6 +35,7 @@ class PromptMacroState {
       lastCharMessage: lastCharMessage,
       memoryContext: memoryContext,
       localVariables: localVariables,
+      extraVariables: extraVariables,
     );
   }
 }
@@ -142,6 +148,18 @@ class ChatVariableService {
         }
         return '';
       default:
+        final matchedKey = state.extraVariables.keys.firstWhere(
+          (k) => k.toLowerCase() == trimmedBody.toLowerCase(),
+          orElse: () => '',
+        );
+        if (matchedKey.isNotEmpty) {
+          final value = state.extraVariables[matchedKey] ?? '';
+          return _replaceBasicPlaceholders(
+            value,
+            characterName: state.characterName,
+            userName: state.userName,
+          );
+        }
         return fullMatch;
     }
   }
