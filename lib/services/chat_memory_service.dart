@@ -187,8 +187,34 @@ class ChatMemoryService {
       sessionId: sessionId,
       pathMessageIds: pathMessageIds,
     );
-    if (all.length <= count) return all;
-    return all.sublist(0, count);
+    if (all.isEmpty) return [];
+
+    // 按 branchLeafId 分组
+    final grouped = <String, List<MemoryNode>>{};
+    for (final m in all) {
+      grouped.putIfAbsent(m.branchLeafId, () => []).add(m);
+    }
+
+    // 每个节点内按时间升序排列
+    for (final list in grouped.values) {
+      list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    }
+
+    // 按节点内最新记忆的创建时间升序排列（最早的节点在前）
+    final sortedNodes = grouped.values.toList()
+      ..sort((a, b) => a.last.createdAt.compareTo(b.last.createdAt));
+
+    // count <= 0 表示无限制，合并所有节点
+    if (count <= 0) {
+      return sortedNodes.expand((e) => e).toList();
+    }
+
+    // 节点数不足 count 时直接合并返回
+    if (sortedNodes.length <= count) {
+      return sortedNodes.expand((e) => e).toList();
+    }
+
+    return sortedNodes.take(count).expand((e) => e).toList();
   }
 
   Future<bool> tryExtractAndSave({
@@ -207,7 +233,6 @@ class ChatMemoryService {
       pathMessageIds: pathIds,
     );
     final injectionMemories = existingMemories
-        .take(memoryExtractionNotifier.value.recallCount)
         .map((m) => m.content)
         .toList();
 

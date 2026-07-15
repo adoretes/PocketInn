@@ -527,9 +527,9 @@ class MemorySettingsCard extends StatelessWidget {
               subtitle: '拼入提示词的历史记忆节点数量',
               value: memoryConfig.recallCount.toDouble(),
               min: 0,
-              max: 10,
-              divisions: 10,
-              displayValue: (v) => v.toInt().toString(),
+              max: 50,
+              divisions: 50,
+              displayValue: (v) => v.toInt() == 0 ? '无限制' : '${v.toInt()} 个',
               onChanged: (value) =>
                   updateMemoryExtractionConfig(recallCount: value.toInt()),
             ),
