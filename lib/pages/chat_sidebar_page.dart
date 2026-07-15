@@ -84,6 +84,7 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
           summary: summary,
           roleName: roleName,
           avatarText: avatarText,
+          characterId: summary.characterId,
           imagePath: character?.thumbnailPath ?? character?.imagePath,
         ),
       );
@@ -193,6 +194,20 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
 
   Future<void> _openCharacterEditor(String characterId) async {
     await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _CharacterEditorLoader(characterId: characterId),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _onChatAvatarTap(String characterId) async {
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    await navigator.push(
       MaterialPageRoute(
         builder: (context) => _CharacterEditorLoader(characterId: characterId),
       ),
@@ -441,10 +456,13 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                                       borderRadius: BorderRadius.circular(14),
                                     ),
                                     selected: isActive,
-                                    leading: _RoleAvatar(
-                                      imagePath: item.imagePath,
-                                      fallbackText: item.avatarText,
-                                      radius: 20,
+                                    leading: GestureDetector(
+                                      onTap: () => _onChatAvatarTap(item.characterId),
+                                      child: _RoleAvatar(
+                                        imagePath: item.imagePath,
+                                        fallbackText: item.avatarText,
+                                        radius: 20,
+                                      ),
                                     ),
                                     title: Text(item.summary.title),
                                     subtitle: Text(
@@ -572,12 +590,14 @@ class _ChatListEntry {
     required this.summary,
     required this.roleName,
     required this.avatarText,
+    required this.characterId,
     this.imagePath,
   });
 
   final ChatSessionSummary summary;
   final String roleName;
   final String avatarText;
+  final String characterId;
   final String? imagePath;
 }
 
