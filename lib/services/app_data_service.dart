@@ -7,6 +7,7 @@ import 'api_request_log_service.dart';
 import 'character_service.dart';
 import 'chat_database_service.dart';
 import 'preset_service.dart';
+import 'remote_backup_settings_service.dart';
 import 'storage_service.dart';
 import 'user_settings_service.dart';
 import 'world_book_service.dart';
@@ -27,6 +28,7 @@ class AppDataService {
     await ApiConfigService.instance.resetToDefaults();
     await UserSettingsService.instance.resetToDefault();
     await ApiRequestLogService.instance.clear();
+    await RemoteBackupSettingsService.instance.clear();
 
     ChatDatabaseService.instance.resetIdSequence();
     await ChatDatabaseService.instance.initialize();

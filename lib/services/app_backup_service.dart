@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'app_data_service.dart';
 import 'chat_database_service.dart';
 import 'font_service.dart';
+import 'remote_backup_settings_service.dart';
 import 'storage_service.dart';
 
 class AppBackupService {
@@ -22,10 +23,15 @@ class AppBackupService {
   static const String _dataRoot = 'data';
   static const String _databaseRoot = 'database';
   static const String _fontsRoot = 'fonts';
+  static const String remoteBackupFileName = 'pocketinn-latest.zip';
+  static const int maxArchiveSizeBytes = 1024 * 1024 * 1024;
+  static const int _maxArchiveEntries = 5000;
+  static const int _maxArchiveEntrySizeBytes = 1024 * 1024 * 1024;
+  static const int _maxArchiveUncompressedSizeBytes = 4 * 1024 * 1024 * 1024;
 
   Future<String?> exportBackup() async {
     final defaultName = 'pocketinn-backup-${_dateStamp()}.zip';
-    final backupBytes = await _buildBackupArchiveBytes();
+    final backupBytes = await buildBackupArchiveBytes();
 
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       final outputPath = await FilePicker.platform.saveFile(
@@ -71,7 +77,29 @@ class AppBackupService {
   }
 
   Future<void> restoreBackupArchive(String archivePath) async {
-    final archive = ZipDecoder().decodeStream(InputFileStream(archivePath));
+    final archiveFile = File(archivePath);
+    if (await archiveFile.length() > maxArchiveSizeBytes) {
+      throw const FormatException('备份文件过大，最大支持 1 GB');
+    }
+    final stream = InputFileStream(archivePath);
+    try {
+      final archive = ZipDecoder().decodeStream(stream);
+      await _restoreBackupArchive(archive);
+    } finally {
+      stream.closeSync();
+    }
+  }
+
+  Future<void> restoreBackupArchiveBytes(Uint8List bytes) async {
+    if (bytes.length > maxArchiveSizeBytes) {
+      throw const FormatException('备份文件过大，最大支持 1 GB');
+    }
+    final archive = ZipDecoder().decodeBytes(bytes);
+    await _restoreBackupArchive(archive);
+  }
+
+  Future<void> _restoreBackupArchive(Archive archive) async {
+    _validateArchive(archive);
     final manifest = _readJsonFileFromArchive(
       archive,
       _manifestPath,
@@ -88,6 +116,11 @@ class AppBackupService {
       errorMessage: '备份缺少 preferences.json',
     );
 
+    // 远程备份连接信息属于设备本地设置，不随备份覆盖。
+    final remoteBackupSettings = await RemoteBackupSettingsService.instance
+        .load();
+    preferences.remove(RemoteBackupSettingsService.settingsKey);
+
     await ChatDatabaseService.instance.deleteDatabaseFiles();
     await StorageService.instance.clearAllData();
 
@@ -101,12 +134,11 @@ class AppBackupService {
         continue;
       }
 
-      final bytes = _archiveFileBytes(file);
       if (p.posix.isWithin(_dataRoot, archivePath)) {
         final relativePath = p.posix.relative(archivePath, from: _dataRoot);
         final targetFile = File(p.join(dataDir, relativePath));
         await targetFile.parent.create(recursive: true);
-        await targetFile.writeAsBytes(bytes, flush: true);
+        _writeArchiveFile(file, targetFile);
         continue;
       }
 
@@ -114,7 +146,7 @@ class AppBackupService {
         final relativePath = p.posix.relative(archivePath, from: _databaseRoot);
         final targetFile = File(p.join(dataDir, relativePath));
         await targetFile.parent.create(recursive: true);
-        await targetFile.writeAsBytes(bytes, flush: true);
+        _writeArchiveFile(file, targetFile);
         continue;
       }
 
@@ -123,17 +155,18 @@ class AppBackupService {
         final fontsDir = await FontService.instance.fontsDir;
         final targetFile = File(p.join(fontsDir, relativePath));
         await targetFile.parent.create(recursive: true);
-        await targetFile.writeAsBytes(bytes, flush: true);
+        _writeArchiveFile(file, targetFile);
       }
     }
 
     await _migrateRestoredData(dataDir);
     _migrateRestoredPreferences(preferences);
     await StorageService.instance.importPreferences(preferences);
+    await RemoteBackupSettingsService.instance.save(remoteBackupSettings);
     await AppDataService.instance.reloadAppState();
   }
 
-  Future<Uint8List> _buildBackupArchiveBytes() async {
+  Future<Uint8List> buildBackupArchiveBytes() async {
     final archive = Archive();
     final manifestBytes = utf8.encode(
       const JsonEncoder.withIndent('  ').convert({
@@ -146,10 +179,10 @@ class AppBackupService {
       ArchiveFile(_manifestPath, manifestBytes.length, manifestBytes),
     );
 
+    final preferences = StorageService.instance.exportPreferences()
+      ..remove(RemoteBackupSettingsService.settingsKey);
     final preferencesBytes = utf8.encode(
-      const JsonEncoder.withIndent(
-        '  ',
-      ).convert(StorageService.instance.exportPreferences()),
+      const JsonEncoder.withIndent('  ').convert(preferences),
     );
     archive.add(
       ArchiveFile(_preferencesPath, preferencesBytes.length, preferencesBytes),
@@ -326,5 +359,41 @@ class AppBackupService {
 
   List<int> _archiveFileBytes(ArchiveFile file) {
     return file.readBytes() ?? const <int>[];
+  }
+
+  void _writeArchiveFile(ArchiveFile file, File targetFile) {
+    final output = OutputFileStream(targetFile.path);
+    try {
+      file.writeContent(output);
+    } finally {
+      output.closeSync();
+    }
+  }
+
+  void _validateArchive(Archive archive) {
+    if (archive.files.length > _maxArchiveEntries) {
+      throw const FormatException('备份包含过多文件');
+    }
+
+    var totalSize = 0;
+    for (final file in archive.files) {
+      if (file.isSymbolicLink) {
+        throw const FormatException('备份不能包含符号链接');
+      }
+      if (!file.isFile) {
+        continue;
+      }
+      final path = p.posix.normalize(file.name);
+      if (path.startsWith('/') || path == '..' || path.startsWith('../')) {
+        throw const FormatException('备份包含非法文件路径');
+      }
+      if (file.size < 0 || file.size > _maxArchiveEntrySizeBytes) {
+        throw const FormatException('备份包含过大的文件');
+      }
+      totalSize += file.size;
+      if (totalSize > _maxArchiveUncompressedSizeBytes) {
+        throw const FormatException('备份解压后的内容过大');
+      }
+    }
   }
 }

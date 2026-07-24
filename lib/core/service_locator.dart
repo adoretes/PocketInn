@@ -18,6 +18,8 @@ import '../services/font_service.dart';
 import '../services/i_openai_api_service.dart';
 import '../services/openai_compatible_api_service.dart';
 import '../services/preset_service.dart';
+import '../services/remote_backup_settings_service.dart';
+import '../services/remote_backup_service.dart';
 import '../services/storage_service.dart';
 import '../services/user_settings_service.dart';
 import '../services/world_book_service.dart';
@@ -84,6 +86,12 @@ Future<void> setupServiceLocator() async {
     () => AppBackupService.instance,
   );
   getIt.registerLazySingleton<AppDataService>(() => AppDataService.instance);
+  getIt.registerLazySingleton<RemoteBackupSettingsService>(
+    () => RemoteBackupSettingsService.instance,
+  );
+  getIt.registerLazySingleton<RemoteBackupService>(
+    () => RemoteBackupService.instance,
+  );
   getIt.registerLazySingleton<AppSettingsService>(
     () => AppSettingsService.instance,
   );

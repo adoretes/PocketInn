@@ -24,4 +24,20 @@ class SecureStorageService {
   Future<void> deleteApiKey(String configId) async {
     await _storage.delete(key: '$_apiKeyPrefix$configId');
   }
+
+  Future<void> saveSecret(String key, String value) async {
+    if (value.trim().isEmpty) {
+      await _storage.delete(key: key);
+      return;
+    }
+    await _storage.write(key: key, value: value);
+  }
+
+  Future<String> readSecret(String key) async {
+    return await _storage.read(key: key) ?? '';
+  }
+
+  Future<void> deleteSecret(String key) async {
+    await _storage.delete(key: key);
+  }
 }
