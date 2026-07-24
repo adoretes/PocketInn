@@ -252,7 +252,7 @@ class _OpenAICompatibleConfigPageState
       final newModels = <ApiModel>[];
       for (final modelId in selectedIds) {
         final newModel = ApiModel(
-id: '${item.id}_model_$modelId',
+          id: '${item.id}_model_$modelId',
           modelId: modelId,
           customBody: '',
         );
@@ -265,9 +265,9 @@ id: '${item.id}_model_$modelId',
         );
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已添加 ${newModels.length} 个模型')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已添加 ${newModels.length} 个模型')));
       }
     } on FormatException catch (error) {
       if (mounted) _showError(error.message.toString());
@@ -465,87 +465,87 @@ id: '${item.id}_model_$modelId',
   Widget _buildConfigCard(ApiConfig item) {
     final controllers = _controllers[item.id]!;
     final isExpanded = _expandedIds.contains(item.id);
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
+    return ReorderableDelayedDragStartListener(
       key: ValueKey(item.id),
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => _toggleExpanded(item),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  ReorderableDragStartListener(
-                    index: _configItems.indexOf(item),
-                    child: const Icon(Icons.drag_handle, color: Colors.grey),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
+      index: _configItems.indexOf(item),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _toggleExpanded(item),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '模型数：${item.models.length}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                          const SizedBox(height: 2),
+                          Text(
+                            '模型数：${item.models.length}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  Icon(
-                    isExpanded ? Icons.expand_less : Icons.expand_more,
-                    color: Colors.grey[600],
-                  ),
-                ],
+                    Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.chevron_right_rounded,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-          if (isExpanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  _buildTextField(
-                    controller: controllers['name']!,
-                    label: '配置名称',
-                    hint: '例如: DeepSeek',
+              if (isExpanded) ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTextField(
+                        controller: controllers['name']!,
+                        label: '配置名称',
+                        hint: '例如: DeepSeek',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildTextField(
+                        controller: controllers['baseUrl']!,
+                        label: 'Base URL',
+                        hint: 'https://api.openai.com/v1',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildTextField(
+                        controller: controllers['apiKey']!,
+                        label: 'API Key',
+                        hint: 'sk-...',
+                        obscureText: true,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildModelsList(item),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: controllers['baseUrl']!,
-                    label: 'Base URL',
-                    hint: 'https://api.openai.com/v1',
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: controllers['apiKey']!,
-                    label: 'API Key',
-                    hint: 'sk-...',
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildModelsList(item),
-                  const SizedBox(height: 16),
-                  Row(
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 16),
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       IconButton(
@@ -554,8 +554,8 @@ id: '${item.id}_model_$modelId',
                             : () => _onTestConnection(item),
                         icon: _testingIds.contains(item.id)
                             ? const SizedBox(
-                                width: 20,
-                                height: 20,
+                                width: 18,
+                                height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                 ),
@@ -573,15 +573,24 @@ id: '${item.id}_model_$modelId',
                         onPressed: _isSaving
                             ? null
                             : () => _saveConfigItem(item),
-                        icon: const Icon(Icons.save_outlined, size: 18),
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.save_outlined, size: 18),
                         label: const Text('保存'),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-        ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -719,6 +728,7 @@ id: '${item.id}_model_$modelId',
       hintText: hint,
       alignLabelWithHint: maxLines > 1,
       border: const OutlineInputBorder(),
+      isDense: true,
     );
   }
 }
@@ -869,11 +879,7 @@ class _FetchModelsDialogState extends State<_FetchModelsDialog> {
           onPressed: _selected.isEmpty
               ? null
               : () => Navigator.of(context).pop(Set.of(_selected)),
-          child: Text(
-            _selected.isEmpty
-                ? '添加'
-                : '添加 (${_selected.length})',
-          ),
+          child: Text(_selected.isEmpty ? '添加' : '添加 (${_selected.length})'),
         ),
       ],
     );
@@ -893,9 +899,7 @@ class _FetchModelsDialogState extends State<_FetchModelsDialog> {
               GestureDetector(
                 onTap: () => _toggleGroup(groupKey, models),
                 child: Icon(
-                  allSelected
-                      ? Icons.check_box
-                      : Icons.check_box_outline_blank,
+                  allSelected ? Icons.check_box : Icons.check_box_outline_blank,
                   size: 18,
                   color: Colors.grey[700],
                 ),
@@ -935,9 +939,7 @@ class _FetchModelsDialogState extends State<_FetchModelsDialog> {
                         ),
                         const Spacer(),
                         Icon(
-                          isCollapsed
-                              ? Icons.expand_more
-                              : Icons.expand_less,
+                          isCollapsed ? Icons.expand_more : Icons.expand_less,
                           size: 18,
                           color: Colors.grey[500],
                         ),
@@ -964,18 +966,12 @@ class _FetchModelsDialogState extends State<_FetchModelsDialog> {
               selected: _selected.contains(m.modelId),
               title: Text(
                 m.modelId,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontFamily: 'monospace',
-                ),
+                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
               ),
               subtitle: m.ownedBy?.isNotEmpty == true
                   ? Text(
                       m.ownedBy!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                     )
                   : null,
               dense: true,
