@@ -72,72 +72,9 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.2.6',
-                  date: '2026-07-15',
-                  changes: [
-                    '优化记忆系统',
-					'添加聊天列表点击头像进入编辑界面',
-                  ],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.2.5',
-                  date: '2026-07-09',
-                  changes: [
-                    '优化记忆树页面操作按钮的样式和布局',
-                    '修复拉取模型逻辑',
-                    '优化请求日志',
-                    '优化记忆提取设置，允许最近对话轮数为无限制',
-                  ],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.2.4',
-                  date: '2026-07-09',
-                  changes: [
-                    '优化记忆树页面的操作按钮布局，添加删除功能',
-                    '优化记忆树页面的消息展示',
-                  ],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.2.3',
-                  date: '2026-07-11',
-                  changes: [
-                    '优化请求体显示，添加可折叠 JSON 块以展示消息',
-                    '优化模型拉取',
-                    '角色卡页面添加编辑世界书入口',
-                  ],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.2.2',
-                  date: '2026-07-07',
-                  changes: [
-                    '修复拖拽显示效果',
-                    '添加配置项排序功能，支持拖拽调整顺序',
-                    '新增最大选项至思考层级',
-                    '更新日志存储方式',
-                    '重构 API：接口抽象、错误清理、去重、API Key 加密',
-                  ],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.2.1',
-                  date: '2026-07-06',
-                  changes: [
-                    '重构 API 配置：单模型改为提供方+模型列表',
-                    '新增思考开关及思考层级选项',
-                    '优化预设编辑页面',
-                  ],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.2.0',
-                  date: '2026-07-05',
-                  changes: [
-                    '新增继续推进和助手帮答功能',
-                    '优化预设编辑页面',
-                    '引入 freezed + json_serializable + build_runner 代码生成基础设施',
-                    '迁移核心模型到 freezed，API 类型化模型与统一错误处理',
-                    '引入 get_it 依赖注入容器',
-                    '拆分 ChatPage 为 ChatViewModel + 子 Widget',
-                    '拆分 CustomThemePage 为 custom_theme/ 子目录',
-                  ],
+                  version: 'v1.3.0',
+                  date: '2026-07-25',
+                  changes: ['增加远程备份数据功能', '优化API配置界面及操作'],
                 ),
               ],
             ),
