@@ -226,6 +226,11 @@ class _RoleEditPageState extends State<RoleEditPage> {
                   title: const Text('不关联世界书'),
                   onTap: () => Navigator.pop(context, ''),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.add_circle_outline),
+                  title: const Text('创建新世界书'),
+                  onTap: () => _createAndBindWorldBook(),
+                ),
                 const Divider(height: 1),
                 Flexible(
                   child: _worldBooks.isEmpty
@@ -263,6 +268,48 @@ class _RoleEditPageState extends State<RoleEditPage> {
     setState(() {
       _selectedWorldBookId = selectedId.isEmpty ? null : selectedId;
     });
+  }
+
+  Future<void> _createAndBindWorldBook() async {
+    final controller = TextEditingController(
+      text: '${nameController.text.trim()}-世界书',
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('创建世界书'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: '世界书名称',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+
+    final book = await WorldBookService.instance.create(name: name);
+    if (!mounted) return;
+
+    setState(() {
+      _worldBooks.add(book);
+    });
+    if (context.mounted) {
+      Navigator.pop(context, book.id);
+    }
   }
 
   Future<void> _editWorldBook(String worldBookId) async {
