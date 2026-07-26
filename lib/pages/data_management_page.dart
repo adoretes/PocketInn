@@ -378,6 +378,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     setState(() => _remoteOperation = '上传 WebDAV');
     try {
       await _saveRemoteSettings();
+      if (!mounted) return;
       final result = await showDialog<Object>(
         context: context,
         barrierDismissible: false,
@@ -407,7 +408,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('上传 WebDAV 成功')),
         );
-      } else if (result is Exception) {
+      } else if (result != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('上传 WebDAV 失败：$result')),
         );
@@ -447,6 +448,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     setState(() => _remoteOperation = '上传 S3');
     try {
       await _saveRemoteSettings();
+      if (!mounted) return;
       final result = await showDialog<Object>(
         context: context,
         barrierDismissible: false,
@@ -476,7 +478,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('上传 S3 成功')),
         );
-      } else if (result is Exception) {
+      } else if (result != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('上传 S3 失败：$result')),
         );
@@ -530,6 +532,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     }
 
     await _saveRemoteSettings();
+    if (!mounted) return;
 
     final result = await showDialog<Object>(
       context: context,
@@ -569,7 +572,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
         SnackBar(content: Text('从 $type 恢复成功')),
       );
       Navigator.pop(context);
-    } else if (result is Exception) {
+    } else if (result != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('从 $type 恢复失败：$result')),
       );
