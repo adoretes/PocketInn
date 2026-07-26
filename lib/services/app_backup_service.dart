@@ -12,6 +12,14 @@ import 'font_service.dart';
 import 'remote_backup_settings_service.dart';
 import 'storage_service.dart';
 
+enum RestoreStep {
+  validating,
+  cleaning,
+  writingFiles,
+  migrating,
+  reloading,
+}
+
 class AppBackupService {
   AppBackupService._();
 
@@ -76,7 +84,10 @@ class AppBackupService {
     return true;
   }
 
-  Future<void> restoreBackupArchive(String archivePath) async {
+  Future<void> restoreBackupArchive(
+    String archivePath, {
+    void Function(RestoreStep step)? onStep,
+  }) async {
     final archiveFile = File(archivePath);
     if (await archiveFile.length() > maxArchiveSizeBytes) {
       throw const FormatException('备份文件过大，最大支持 1 GB');
@@ -84,21 +95,28 @@ class AppBackupService {
     final stream = InputFileStream(archivePath);
     try {
       final archive = ZipDecoder().decodeStream(stream);
-      await _restoreBackupArchive(archive);
+      await _restoreBackupArchive(archive, onStep: onStep);
     } finally {
       stream.closeSync();
     }
   }
 
-  Future<void> restoreBackupArchiveBytes(Uint8List bytes) async {
+  Future<void> restoreBackupArchiveBytes(
+    Uint8List bytes, {
+    void Function(RestoreStep step)? onStep,
+  }) async {
     if (bytes.length > maxArchiveSizeBytes) {
       throw const FormatException('备份文件过大，最大支持 1 GB');
     }
     final archive = ZipDecoder().decodeBytes(bytes);
-    await _restoreBackupArchive(archive);
+    await _restoreBackupArchive(archive, onStep: onStep);
   }
 
-  Future<void> _restoreBackupArchive(Archive archive) async {
+  Future<void> _restoreBackupArchive(
+    Archive archive, {
+    void Function(RestoreStep step)? onStep,
+  }) async {
+    onStep?.call(RestoreStep.validating);
     _validateArchive(archive);
     final manifest = _readJsonFileFromArchive(
       archive,
@@ -121,9 +139,11 @@ class AppBackupService {
         .load();
     preferences.remove(RemoteBackupSettingsService.settingsKey);
 
+    onStep?.call(RestoreStep.cleaning);
     await ChatDatabaseService.instance.deleteDatabaseFiles();
     await StorageService.instance.clearAllData();
 
+    onStep?.call(RestoreStep.writingFiles);
     final dataDir = StorageService.instance.dataDir;
     for (final file in archive.files) {
       if (!file.isFile) {
@@ -159,10 +179,13 @@ class AppBackupService {
       }
     }
 
+    onStep?.call(RestoreStep.migrating);
     await _migrateRestoredData(dataDir);
     _migrateRestoredPreferences(preferences);
     await StorageService.instance.importPreferences(preferences);
     await RemoteBackupSettingsService.instance.save(remoteBackupSettings);
+
+    onStep?.call(RestoreStep.reloading);
     await AppDataService.instance.reloadAppState();
   }
 

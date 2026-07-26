@@ -65,27 +65,50 @@ class RemoteBackupService {
   Future<void> uploadWebDav(
     WebDavBackupConfig config,
     Uint8List bytes,
-    String fileName,
-  ) async {
+    String fileName, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
     _validateWebDav(config);
     await _ensureWebDavDirectory(config);
     final fileUri = _webDavFileUri(config, fileName);
-    final response = await _webDavRequest(
-      config,
-      'PUT',
-      fileUri,
-      body: bytes,
-      headers: {
-        HttpHeaders.contentTypeHeader: 'application/zip',
-        HttpHeaders.contentLengthHeader: bytes.length.toString(),
-      },
-    );
-    _ensureStatus(
-      response,
-      accepted: const {200, 201, 204},
-      operation: 'WebDAV 上传备份',
-      uri: fileUri,
-    );
+    final client = HttpClient()..connectionTimeout = _requestTimeout;
+    try {
+      final request = await client
+          .openUrl('PUT', fileUri)
+          .timeout(_requestTimeout);
+      request.followRedirects = false;
+      final username = config.username.trim();
+      if (username.isNotEmpty || config.password.isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Basic ${base64Encode(utf8.encode('$username:${config.password}'))}',
+        );
+      }
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'application/zip',
+      );
+      request.headers.set(
+        HttpHeaders.contentLengthHeader,
+        bytes.length.toString(),
+      );
+      await _writeChunked(request, bytes, onProgress: onProgress);
+      final response = await request.close().timeout(_requestTimeout);
+      _ensureStatus(
+        _RemoteResponse(response.statusCode, Uint8List(0)),
+        accepted: const {200, 201, 204},
+        operation: 'WebDAV 上传备份',
+        uri: fileUri,
+      );
+    } on SocketException catch (error) {
+      throw RemoteBackupException('无法连接 WebDAV：${error.message}', error);
+    } on TimeoutException catch (error) {
+      throw RemoteBackupException('WebDAV 请求超时', error);
+    } on HttpException catch (error) {
+      throw RemoteBackupException('WebDAV 接收数据失败：${error.message}', error);
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<Uint8List> downloadWebDav(
@@ -106,8 +129,9 @@ class RemoteBackupService {
 
   Future<File> downloadWebDavToFile(
     WebDavBackupConfig config,
-    String fileName,
-  ) async {
+    String fileName, {
+    void Function(int received, int total)? onProgress,
+  }) async {
     _validateWebDav(config);
     final fileUri = _webDavFileUri(config, fileName);
     final file = await _newTemporaryBackupFile();
@@ -131,7 +155,7 @@ class RemoteBackupService {
         operation: 'WebDAV 下载备份',
         uri: fileUri,
       );
-      await _readResponseToFile(response, file);
+      await _readResponseToFile(response, file, onProgress: onProgress);
       return file;
     } on Object {
       if (await file.exists()) {
@@ -158,8 +182,9 @@ class RemoteBackupService {
   Future<void> uploadS3(
     S3BackupConfig config,
     Uint8List bytes,
-    String fileName,
-  ) async {
+    String fileName, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
     _validateS3(config);
     final uri = _s3ObjectUri(config, fileName);
     final response = await _s3Request(
@@ -168,6 +193,7 @@ class RemoteBackupService {
       uri,
       body: bytes,
       headers: {HttpHeaders.contentTypeHeader: 'application/zip'},
+      onProgress: onProgress,
     );
     _ensureStatus(
       response,
@@ -190,7 +216,11 @@ class RemoteBackupService {
     return response.body;
   }
 
-  Future<File> downloadS3ToFile(S3BackupConfig config, String fileName) async {
+  Future<File> downloadS3ToFile(
+    S3BackupConfig config,
+    String fileName, {
+    void Function(int received, int total)? onProgress,
+  }) async {
     _validateS3(config);
     final uri = _s3ObjectUri(config, fileName);
     final file = await _newTemporaryBackupFile();
@@ -218,7 +248,7 @@ class RemoteBackupService {
         operation: 'S3 下载备份',
         uri: uri,
       );
-      await _readResponseToFile(response, file);
+      await _readResponseToFile(response, file, onProgress: onProgress);
       return file;
     } on Object {
       if (await file.exists()) {
@@ -325,6 +355,7 @@ class RemoteBackupService {
     Uri uri, {
     Map<String, String> headers = const {},
     List<int> body = const [],
+    void Function(int sent, int total)? onProgress,
   }) async {
     final requestHeaders = <String, String>{...headers};
     if (method == 'PUT') {
@@ -355,7 +386,11 @@ class RemoteBackupService {
       request.headers.set(HttpHeaders.authorizationHeader, authorization);
       requestHeaders.forEach(request.headers.set);
       if (body.isNotEmpty) {
-        request.add(body);
+        if (onProgress != null) {
+          await _writeChunked(request, body, onProgress: onProgress);
+        } else {
+          request.add(body);
+        }
       }
       final response = await request.close().timeout(_requestTimeout);
       return await _readResponse(response);
@@ -437,14 +472,16 @@ class RemoteBackupService {
 
   Future<void> _readResponseToFile(
     HttpClientResponse response,
-    File file,
-  ) async {
+    File file, {
+    void Function(int received, int total)? onProgress,
+  }) async {
     final maxDownloadSize =
         maximumDownloadSizeForTesting ?? maxDownloadSizeBytes;
     if (response.contentLength > maxDownloadSize) {
       throw const RemoteBackupException('远端响应过大，最大支持 1 GB', null);
     }
     var received = 0;
+    final total = response.contentLength;
     final sink = file.openWrite();
     try {
       await for (final chunk in response.timeout(_requestTimeout)) {
@@ -453,11 +490,28 @@ class RemoteBackupService {
           throw const RemoteBackupException('远端响应过大，最大支持 1 GB', null);
         }
         sink.add(chunk);
+        onProgress?.call(received, total);
       }
       await sink.close();
     } catch (_) {
       await sink.close();
       rethrow;
+    }
+  }
+
+  Future<void> _writeChunked(
+    HttpClientRequest request,
+    List<int> data, {
+    void Function(int sent, int total)? onProgress,
+    int chunkSize = 65536,
+  }) async {
+    var sent = 0;
+    final total = data.length;
+    for (var offset = 0; offset < total; offset += chunkSize) {
+      final end = (offset + chunkSize > total) ? total : offset + chunkSize;
+      request.add(data.sublist(offset, end));
+      sent = end;
+      onProgress?.call(sent, total);
     }
   }
 

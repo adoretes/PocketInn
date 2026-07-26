@@ -9,6 +9,25 @@ import '../services/app_data_service.dart';
 import '../services/remote_backup_service.dart';
 import '../services/remote_backup_settings_service.dart';
 
+String _formatSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+}
+
+String _restoreStepText(RestoreStep step) {
+  return switch (step) {
+    RestoreStep.validating => '正在校验备份文件…',
+    RestoreStep.cleaning => '正在清空当前数据…',
+    RestoreStep.writingFiles => '正在恢复文件…',
+    RestoreStep.migrating => '正在迁移数据…',
+    RestoreStep.reloading => '正在重载应用…',
+  };
+}
+
 class DataManagementPage extends StatefulWidget {
   const DataManagementPage({super.key});
 
@@ -355,23 +374,63 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   Future<void> _handleUploadWebDav() async {
-    await _runRemoteOperation('上传 WebDAV', () async {
+    if (_isRemoteBusy) return;
+    setState(() => _remoteOperation = '上传 WebDAV');
+    try {
       await _saveRemoteSettings();
-      final bytes = await AppBackupService.instance.buildBackupArchiveBytes();
-      await RemoteBackupService.instance.uploadWebDav(
-        _webDavConfig(),
-        bytes,
-        AppBackupService.remoteBackupFileName,
+      final result = await showDialog<Object>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _ProgressDialog(
+          title: '上传到 WebDAV',
+          task: (update) async {
+            update(step: '正在打包数据…', progress: null);
+            final bytes = await AppBackupService.instance.buildBackupArchiveBytes();
+            update(step: '正在上传到服务器…', progress: 0.0);
+            await RemoteBackupService.instance.uploadWebDav(
+              _webDavConfig(),
+              bytes,
+              AppBackupService.remoteBackupFileName,
+              onProgress: (sent, total) {
+                update(
+                  step: '正在上传到服务器…',
+                  progress: total > 0 ? sent / total : null,
+                  detail: '${_formatSize(sent)} / ${_formatSize(total)}',
+                );
+              },
+            );
+          },
+        ),
       );
-    });
+      if (!mounted) return;
+      if (result == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('上传 WebDAV 成功')),
+        );
+      } else if (result is Exception) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传 WebDAV 失败：$result')),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('上传 WebDAV 失败：$error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _remoteOperation = null);
+      }
+    }
   }
 
   Future<void> _handleRestoreWebDav() async {
     await _restoreRemote(
       'WebDAV',
-      download: () => RemoteBackupService.instance.downloadWebDavToFile(
+      download: (onProgress) => RemoteBackupService.instance.downloadWebDavToFile(
         _webDavConfig(),
         AppBackupService.remoteBackupFileName,
+        onProgress: onProgress,
       ),
     );
   }
@@ -384,30 +443,70 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   Future<void> _handleUploadS3() async {
-    await _runRemoteOperation('上传 S3', () async {
+    if (_isRemoteBusy) return;
+    setState(() => _remoteOperation = '上传 S3');
+    try {
       await _saveRemoteSettings();
-      final bytes = await AppBackupService.instance.buildBackupArchiveBytes();
-      await RemoteBackupService.instance.uploadS3(
-        _s3Config(),
-        bytes,
-        AppBackupService.remoteBackupFileName,
+      final result = await showDialog<Object>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _ProgressDialog(
+          title: '上传到 S3',
+          task: (update) async {
+            update(step: '正在打包数据…', progress: null);
+            final bytes = await AppBackupService.instance.buildBackupArchiveBytes();
+            update(step: '正在上传到服务器…', progress: 0.0);
+            await RemoteBackupService.instance.uploadS3(
+              _s3Config(),
+              bytes,
+              AppBackupService.remoteBackupFileName,
+              onProgress: (sent, total) {
+                update(
+                  step: '正在上传到服务器…',
+                  progress: total > 0 ? sent / total : null,
+                  detail: '${_formatSize(sent)} / ${_formatSize(total)}',
+                );
+              },
+            );
+          },
+        ),
       );
-    });
+      if (!mounted) return;
+      if (result == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('上传 S3 成功')),
+        );
+      } else if (result is Exception) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传 S3 失败：$result')),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('上传 S3 失败：$error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _remoteOperation = null);
+      }
+    }
   }
 
   Future<void> _handleRestoreS3() async {
     await _restoreRemote(
       'S3',
-      download: () => RemoteBackupService.instance.downloadS3ToFile(
+      download: (onProgress) => RemoteBackupService.instance.downloadS3ToFile(
         _s3Config(),
         AppBackupService.remoteBackupFileName,
+        onProgress: onProgress,
       ),
     );
   }
 
   Future<void> _restoreRemote(
     String type, {
-    required Future<File> Function() download,
+    required Future<File> Function(void Function(int, int)?) download,
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -430,20 +529,51 @@ class _DataManagementPageState extends State<DataManagementPage> {
       return;
     }
 
-    await _runRemoteOperation('恢复 $type', () async {
-      await _saveRemoteSettings();
-      final archiveFile = await download();
-      try {
-        await AppBackupService.instance.restoreBackupArchive(archiveFile.path);
-      } finally {
-        if (await archiveFile.exists()) {
-          await archiveFile.delete();
-        }
-      }
-      if (mounted) {
-        Navigator.pop(context);
-      }
-    });
+    await _saveRemoteSettings();
+
+    final result = await showDialog<Object>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _ProgressDialog(
+        title: '从 $type 恢复备份',
+        task: (update) async {
+          final archiveFile = await download((received, total) {
+            update(
+              step: '正在从远端下载备份…',
+              progress: total > 0 ? received / total : null,
+              detail: total > 0
+                  ? '${_formatSize(received)} / ${_formatSize(total)}'
+                  : _formatSize(received),
+            );
+          });
+          update(step: '正在恢复备份…', progress: null);
+          try {
+            await AppBackupService.instance.restoreBackupArchive(
+              archiveFile.path,
+              onStep: (step) {
+                update(step: _restoreStepText(step), progress: null);
+              },
+            );
+          } finally {
+            if (await archiveFile.exists()) {
+              await archiveFile.delete();
+            }
+          }
+        },
+      ),
+    );
+
+    if (!mounted) return;
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('从 $type 恢复成功')),
+      );
+      Navigator.pop(context);
+    } else if (result is Exception) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('从 $type 恢复失败：$result')),
+      );
+    }
   }
 
   Future<void> _runRemoteOperation(
@@ -914,6 +1044,91 @@ class _RemoteTextField extends StatelessWidget {
         hintText: hint,
         border: const OutlineInputBorder(),
         isDense: true,
+      ),
+    );
+  }
+}
+
+typedef _ProgressUpdate = void Function({
+  required String step,
+  double? progress,
+  String? detail,
+});
+
+class _ProgressDialog extends StatefulWidget {
+  const _ProgressDialog({
+    required this.title,
+    required this.task,
+  });
+
+  final String title;
+  final Future<void> Function(_ProgressUpdate update) task;
+
+  @override
+  State<_ProgressDialog> createState() => _ProgressDialogState();
+}
+
+class _ProgressDialogState extends State<_ProgressDialog> {
+  String _step = '准备中…';
+  double? _progress;
+  String? _detail;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_startTask);
+  }
+
+  Future<void> _startTask() async {
+    try {
+      await widget.task(({required step, progress, detail}) {
+        if (mounted) {
+          setState(() {
+            _step = step;
+            _progress = progress;
+            _detail = detail;
+          });
+        }
+      });
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop(e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: Text(widget.title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_progress != null)
+              LinearProgressIndicator(value: _progress)
+            else
+              const LinearProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              _step,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+            if (_detail != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _detail!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
