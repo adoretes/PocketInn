@@ -699,8 +699,7 @@ class ChatService {
   }) {
     return {
       'stream': useStreaming,
-      'temperature': preset.temperature,
-      'top_p': preset.topP,
+      if (preset.temperature != null) 'temperature': preset.temperature,
       if (preset.openaiMaxTokens > 0) 'max_tokens': preset.openaiMaxTokens,
       if (preset.extra['enable_reasoning'] == true) ...{
         'reasoning_effort': preset.extra['reasoning_effort'] ?? 'medium',

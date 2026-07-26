@@ -41,7 +41,7 @@ class _PresetEditPageState extends State<PresetEditPage> {
     _preset = widget.preset.copyWith();
     _nameController = TextEditingController(text: _preset.name);
     _temperatureController = TextEditingController(
-      text: _preset.temperature.toStringAsFixed(2),
+      text: _preset.temperature?.toStringAsFixed(2) ?? '',
     );
     _contextController = TextEditingController(
       text: _preset.openaiMaxContext.toString(),
@@ -103,8 +103,9 @@ class _PresetEditPageState extends State<PresetEditPage> {
 
     _preset = _preset.copyWith(
       name: trimmedName,
-      temperature:
-          double.tryParse(_temperatureController.text) ?? _preset.temperature,
+      temperature: _temperatureController.text.isEmpty
+          ? null
+          : (double.tryParse(_temperatureController.text) ?? _preset.temperature),
       openaiMaxContext:
           int.tryParse(_contextController.text) ?? _preset.openaiMaxContext,
       openaiMaxTokens:

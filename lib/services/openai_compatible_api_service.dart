@@ -499,7 +499,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       messages: const [
         {'role': 'user', 'content': 'ping'},
       ],
-      defaults: const {'stream': false, 'max_tokens': 1, 'temperature': 0},
+      defaults: const {'stream': false, 'max_tokens': 1},
     );
 
     final response = await _sendJson(
