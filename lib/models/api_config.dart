@@ -109,7 +109,15 @@ abstract class ResolvedApiConfig with _$ResolvedApiConfig {
       'model': model,
       'messages': messages,
     };
-    body.addAll(parseCustomBody());
+    final customBody = parseCustomBody();
+    if (customBody.containsKey('messages') && customBody['messages'] is List) {
+      final customMessages = customBody.remove('messages') as List;
+      body['messages'] = [
+        ...messages,
+        ...customMessages.cast<Map<String, dynamic>>(),
+      ];
+    }
+    body.addAll(customBody);
     return body;
   }
 }
