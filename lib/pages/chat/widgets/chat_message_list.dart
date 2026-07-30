@@ -62,7 +62,20 @@ class ChatMessageList extends StatelessWidget {
     }
     return Stack(
       children: [
-        ListView.builder(
+        ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: const [
+              Color(0x00FFFFFF),
+              Color(0xFFFFFFFF),
+              Color(0xFFFFFFFF),
+              Color(0x00FFFFFF),
+            ],
+            stops: const [0.0, 0.03, 0.97, 1.0],
+          ).createShader(bounds),
+          blendMode: BlendMode.dstIn,
+          child: ListView.builder(
           key: ValueKey(sessionId),
           controller: scrollController,
           reverse: true,
@@ -130,6 +143,7 @@ class ChatMessageList extends StatelessWidget {
               ),
             );
           },
+        ),
         ),
         Positioned(
           right: 16,
