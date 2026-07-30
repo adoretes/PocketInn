@@ -72,14 +72,14 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.3.2',
+                  date: '2026-07-30',
+                  changes: ['为聊天消息列表添加渐变遮罩效果，提升视觉体验', '优化 ResolvedApiConfig 的请求体构建，支持合并自定义消息'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.3.1',
                   date: '2026-07-25',
                   changes: ['修复上传和恢复错误时静默略过的问题', '优化备份和恢复功能，增加进度反馈和状态更新', '调整预设温度参数为可选，并更新相关处理逻辑', '角色编辑页支持创建并绑定世界书'],
-                ),
-                _UpdateLogItem(
-                  version: 'v1.3.0',
-                  date: '2026-07-25',
-                  changes: ['增加远程备份数据功能', '优化API配置界面及操作'],
                 ),
               ],
             ),
