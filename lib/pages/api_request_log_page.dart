@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -106,6 +108,14 @@ class _LogCard extends StatelessWidget {
               label: '模型',
               value: entry.model.isEmpty ? '未填写' : entry.model,
             ),
+            if (entry.usage != null && entry.usage!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _FieldBlock(
+                label: '用量',
+                value: _formatUsage(entry.usage!),
+                copyValue: _formatUsage(entry.usage!),
+              ),
+            ],
             const SizedBox(height: 12),
             _FieldBlock(label: '请求地址', value: entry.endpoint),
             const SizedBox(height: 12),
@@ -154,6 +164,74 @@ class _LogCard extends StatelessWidget {
     }
     final path = uri.path.isEmpty ? '/' : uri.path;
     return uri.hasQuery ? '$path?${uri.query}' : path;
+  }
+
+  static const Set<String> _usageHandledKeys = {
+    'prompt_tokens',
+    'completion_tokens',
+    'total_tokens',
+    'prompt_cache_hit_tokens',
+    'prompt_cache_miss_tokens',
+    'prompt_tokens_details',
+    'completion_tokens_details',
+  };
+
+  String _formatUsage(Map<String, dynamic> usage) {
+    final lines = <String>[];
+
+    final summary = <String>[
+      if (usage['prompt_tokens'] != null) '输入 ${usage['prompt_tokens']}',
+      if (usage['completion_tokens'] != null)
+        '输出 ${usage['completion_tokens']}',
+      if (usage['total_tokens'] != null) '合计 ${usage['total_tokens']}',
+    ];
+    if (summary.isNotEmpty) {
+      lines.add(summary.join(' · '));
+    }
+
+    final cacheHit =
+        _readNestedInt(usage, 'prompt_tokens_details', 'cached_tokens') ??
+            usage['prompt_cache_hit_tokens'];
+    final cacheMiss = usage['prompt_cache_miss_tokens'];
+    if (cacheHit != null || cacheMiss != null) {
+      lines.add(
+        [
+          if (cacheHit != null) '缓存命中 $cacheHit',
+          if (cacheMiss != null) '缓存未命中 $cacheMiss',
+        ].join(' · '),
+      );
+    }
+
+    final reasoningTokens =
+        _readNestedInt(usage, 'completion_tokens_details', 'reasoning_tokens') ??
+            usage['reasoning_tokens'];
+    if (reasoningTokens != null) {
+      lines.add('思考链 $reasoningTokens');
+    }
+
+    final extraKeys = usage.keys
+        .where((key) => !_usageHandledKeys.contains(key))
+        .toList();
+    if (extraKeys.isNotEmpty) {
+      lines.add(
+        JsonEncoder.withIndent('  ').convert(
+          {for (final key in extraKeys) key: usage[key]},
+        ),
+      );
+    }
+    return lines.join('\n');
+  }
+
+  int? _readNestedInt(
+    Map<String, dynamic> usage,
+    String section,
+    String key,
+  ) {
+    final detail = usage[section];
+    if (detail is Map && detail[key] is num) {
+      return (detail[key] as num).toInt();
+    }
+    return null;
   }
 }
 

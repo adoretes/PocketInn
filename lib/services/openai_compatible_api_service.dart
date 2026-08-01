@@ -322,6 +322,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       statusCode: response.statusCode,
       requestBody: _sanitizeJsonValue(requestBody),
       responseBody: response.body,
+      usage: completionResponse.usage,
     );
     return ChatCompletionResult(
       text: text,
@@ -355,6 +356,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
     final sanitizedBody = _sanitizeJsonValue(body) as Map<String, dynamic>;
     int? statusCode;
     var failureLogged = false;
+    final usage = <String, dynamic>{};
     try {
       cancellationToken?.throwIfCancelled();
       final request = await client
@@ -401,7 +403,10 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
           if (eventPayload.isEmpty) {
             continue;
           }
-          final progress = _parseStreamingEvent(eventPayload);
+          final progress = _parseStreamingEvent(
+            eventPayload,
+            usageSink: usage,
+          );
           if (progress == null) {
             continue;
           }
@@ -426,6 +431,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
                 responseTextBuffer.toString(),
                 reasoningBuffer.toString(),
               ),
+              usage: usage.isEmpty ? null : Map<String, dynamic>.from(usage),
             );
             return;
           }
@@ -438,7 +444,10 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       }
 
       if (dataLines.isNotEmpty) {
-        final progress = _parseStreamingEvent(dataLines.join('\n').trim());
+        final progress = _parseStreamingEvent(
+          dataLines.join('\n').trim(),
+          usageSink: usage,
+        );
         if (progress != null) {
           if (progress.textDelta.isNotEmpty) {
             responseTextBuffer.write(progress.textDelta);
@@ -462,6 +471,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
           responseTextBuffer.toString(),
           reasoningBuffer.toString(),
         ),
+        usage: usage.isEmpty ? null : Map<String, dynamic>.from(usage),
       );
       yield const ChatCompletionProgress(done: true);
     } on ChatCompletionCancelledException {
@@ -629,7 +639,10 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
     return '${value.substring(0, maxLength)}...';
   }
 
-  ChatCompletionProgress? _parseStreamingEvent(String data) {
+  ChatCompletionProgress? _parseStreamingEvent(
+    String data, {
+    Map<String, dynamic>? usageSink,
+  }) {
     if (data.isEmpty) {
       return null;
     }
@@ -642,6 +655,12 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       final decoded = jsonDecode(data);
       if (decoded is! Map<String, dynamic>) {
         return null;
+      }
+      final usageRaw = decoded['usage'];
+      if (usageRaw is Map) {
+        usageSink
+          ?..clear()
+          ..addAll(Map<String, dynamic>.from(usageRaw));
       }
       chunk = OpenAIChatCompletionChunk.fromJson(decoded);
     } on Object {

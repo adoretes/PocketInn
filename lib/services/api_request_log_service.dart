@@ -19,6 +19,7 @@ class ApiRequestLogEntry {
     required this.durationMs,
     this.statusCode,
     this.errorMessage,
+    this.usage,
   });
 
   final String id;
@@ -33,6 +34,7 @@ class ApiRequestLogEntry {
   final int durationMs;
   final int? statusCode;
   final String? errorMessage;
+  final Map<String, dynamic>? usage;
 
   factory ApiRequestLogEntry.fromJson(Map<String, dynamic> json) {
     return ApiRequestLogEntry(
@@ -50,6 +52,9 @@ class ApiRequestLogEntry {
       durationMs: json['durationMs'] as int? ?? 0,
       statusCode: json['statusCode'] as int?,
       errorMessage: json['errorMessage']?.toString(),
+      usage: json['usage'] is Map
+          ? Map<String, dynamic>.from(json['usage'] as Map)
+          : null,
     );
   }
 
@@ -67,6 +72,7 @@ class ApiRequestLogEntry {
       'durationMs': durationMs,
       'statusCode': statusCode,
       'errorMessage': errorMessage,
+      'usage': usage,
     };
   }
 }
@@ -126,6 +132,7 @@ class ApiRequestLogService {
     Object? requestBody,
     String? responseBody,
     String? errorMessage,
+    Map<String, dynamic>? usage,
   }) async {
     await initialize();
     final nextEntry = ApiRequestLogEntry(
@@ -141,6 +148,7 @@ class ApiRequestLogService {
       durationMs: durationMs,
       statusCode: statusCode,
       errorMessage: _normalizeText(errorMessage),
+      usage: usage,
     );
     final nextLogs = [
       nextEntry,

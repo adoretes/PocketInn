@@ -118,6 +118,8 @@ abstract class ResolvedApiConfig with _$ResolvedApiConfig {
       ];
     }
     body.addAll(customBody);
+    // 始终请求返回 token 用量，供请求日志展示。
+    body['include_usage'] = true;
     return body;
   }
 }
