@@ -86,6 +86,8 @@ class PngCharacterCardCodec {
     return output.toBytes();
   }
 
+  static bool isPngBytes(Uint8List bytes) => _looksLikePng(bytes);
+
   static bool _looksLikePng(Uint8List bytes) {
     if (bytes.length < _signature.length) {
       return false;

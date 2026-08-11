@@ -156,19 +156,24 @@ class _CharListPageState extends State<CharListPage> {
 
     if (format == null || !mounted) return;
 
-    final outputPath = switch (format) {
-      _ExportFormat.json => await CharacterService.instance.exportToJsonFile(
-        record,
-      ),
-      _ExportFormat.png => await CharacterService.instance.exportToPngFile(
-        record,
-      ),
-    };
+    try {
+      final outputPath = switch (format) {
+        _ExportFormat.json => await CharacterService.instance
+            .exportToJsonFile(record),
+        _ExportFormat.png => await CharacterService.instance
+            .exportToPngFile(record),
+      };
 
-    if (outputPath == null || !mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('导出成功：$outputPath')));
+      if (outputPath == null || !mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('导出成功：$outputPath')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('导出失败: $e')));
+    }
   }
 
   Future<void> _onDelete(CharacterSummary summary) async {

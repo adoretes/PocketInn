@@ -85,6 +85,25 @@ void main() {
     expect(decoded, isNotNull);
     expect(decoded!['data']['name'], 'Test Character');
   });
+
+  test('isPngBytes detects PNG signature', () {
+    expect(PngCharacterCardCodec.isPngBytes(_basePng()), isTrue);
+    expect(
+      PngCharacterCardCodec.isPngBytes(utf8.encode('not a png')),
+      isFalse,
+    );
+    expect(PngCharacterCardCodec.isPngBytes(Uint8List(0)), isFalse);
+  });
+
+  test('embedCard throws for non-PNG bytes', () {
+    expect(
+      () => PngCharacterCardCodec.embedCard(
+        Uint8List.fromList(utf8.encode('not a png')),
+        jsonEncode(card),
+      ),
+      throwsFormatException,
+    );
+  });
 }
 
 Uint8List _basePng() => Uint8List.fromList(base64Decode(_basePngBase64));

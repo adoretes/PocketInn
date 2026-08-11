@@ -947,7 +947,14 @@ class CharacterService {
     if (exportImagePath.isNotEmpty) {
       final file = File(exportImagePath);
       if (await file.exists()) {
-        return file.readAsBytes();
+        final bytes = await file.readAsBytes();
+        if (PngCharacterCardCodec.isPngBytes(bytes)) {
+          return bytes;
+        }
+        final decoded = img.decodeImage(bytes);
+        if (decoded != null) {
+          return Uint8List.fromList(img.encodePng(decoded));
+        }
       }
     }
 
