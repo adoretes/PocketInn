@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +48,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
   late List<String> tags;
 
   final TextEditingController _newTagController = TextEditingController();
+  final FocusNode _nameFocusNode = FocusNode();
   bool _showValidationError = false;
   String? _pendingImagePath;
   bool _removeImage = false;
@@ -96,7 +98,14 @@ class _RoleEditPageState extends State<RoleEditPage> {
     tags = List<String>.from(data['tags'] as List? ?? const []);
     _selectedWorldBookId = widget.initialWorldBookId;
     _initialBackgroundImage = _imageProviderForPath(widget.imagePath);
+    _nameFocusNode.addListener(_onNameFocusChange);
     _loadWorldBooks();
+  }
+
+  void _onNameFocusChange() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadWorldBooks() async {
@@ -126,6 +135,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
       controller.dispose();
     }
     _newTagController.dispose();
+    _nameFocusNode.removeListener(_onNameFocusChange);
+    _nameFocusNode.dispose();
     super.dispose();
   }
 
@@ -438,35 +449,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
           ),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: TextField(
-          controller: nameController,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            shadows: [
-              Shadow(
-                color: Colors.black45,
-                offset: Offset(0, 1),
-                blurRadius: 1,
-              ),
-            ],
-          ),
-          decoration: InputDecoration(
-            hintText: '角色名称',
-            hintStyle: const TextStyle(color: Colors.white70),
-            border: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            errorBorder: InputBorder.none,
-            disabledBorder: InputBorder.none,
-            errorText:
-                _showValidationError && nameController.text.trim().isEmpty
-                ? '必填'
-                : null,
-            errorStyle: const TextStyle(color: Colors.white70),
-          ),
-        ),
+        title: _buildNameTitle(),
         actions: [
           TextButton.icon(
             onPressed: _pickImage,
@@ -879,6 +862,92 @@ class _RoleEditPageState extends State<RoleEditPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildNameTitle() {
+    const textStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+      shadows: [
+        Shadow(color: Colors.black45, offset: Offset(0, 1), blurRadius: 1),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ValueListenableBuilder<TextEditingValue>(
+          valueListenable: nameController,
+          builder: (context, value, _) {
+            final displayText = value.text.isEmpty ? '角色名称' : value.text;
+            final painter = TextPainter(
+              text: TextSpan(text: displayText, style: textStyle),
+              maxLines: 1,
+              textDirection: Directionality.of(context),
+              textScaler: MediaQuery.textScalerOf(context),
+            )..layout();
+
+            const iconSlotWidth = 22.0;
+            final maxFieldWidth = math.max(
+              constraints.maxWidth - iconSlotWidth,
+              40.0,
+            );
+            // +12 为光标和尾部留白，避免光标贴边被裁剪
+            final fieldWidth = math.min(painter.width + 12, maxFieldWidth);
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: fieldWidth,
+                  child: TextField(
+                    controller: nameController,
+                    focusNode: _nameFocusNode,
+                    style: textStyle,
+                    maxLines: 1,
+                    decoration: InputDecoration(
+                      hintText: '角色名称',
+                      hintStyle: const TextStyle(color: Colors.white70),
+                      border: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorText:
+                          _showValidationError &&
+                              nameController.text.trim().isEmpty
+                          ? '必填'
+                          : null,
+                      errorStyle: const TextStyle(color: Colors.white70),
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                if (!_nameFocusNode.hasFocus) ...[
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: _nameFocusNode.requestFocus,
+                    child: const Icon(
+                      Icons.edit_outlined,
+                      size: 14,
+                      color: Colors.white70,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black45,
+                          offset: Offset(0, 1),
+                          blurRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
