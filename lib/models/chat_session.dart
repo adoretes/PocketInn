@@ -26,6 +26,7 @@ abstract class ChatSession with _$ChatSession {
     required String characterId,
     String? selectedUserSettingId,
     required List<String> selectedWorldBookIds,
+    @Default([]) List<String> selectedRegexRuleGroupIds,
     String? selectedPresetId,
     String? currentLeafMessageId,
     @Default('') String lastMessagePreview,

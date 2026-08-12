@@ -17,6 +17,7 @@ import '../../services/chat_service.dart';
 import '../../services/chat_variable_service.dart';
 import '../../services/openai_compatible_api_service.dart';
 import '../../services/preset_service.dart';
+import '../../services/regex_rule_group_service.dart';
 import '../../services/world_book_service.dart';
 import 'widgets/message_edit_dialog.dart';
 
@@ -70,8 +71,10 @@ class ChatViewModel extends ChangeNotifier {
   List<ChatMessage> _messages = [];
   List<WorldBook> _worldBooks = [];
   List<PresetSummary> _presets = [];
+  List<RegexRuleGroupSummary> _regexRuleGroups = [];
 
   final Set<String> _selectedWorldBookIds = {};
+  final Set<String> _selectedRegexRuleGroupIds = {};
   String? _selectedPresetId;
   String? _selectedUserSettingId;
   bool _isLoading = true;
@@ -106,7 +109,9 @@ class ChatViewModel extends ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   List<WorldBook> get worldBooks => _worldBooks;
   List<PresetSummary> get presets => _presets;
+  List<RegexRuleGroupSummary> get regexRuleGroups => _regexRuleGroups;
   Set<String> get selectedWorldBookIds => _selectedWorldBookIds;
+  Set<String> get selectedRegexRuleGroupIds => _selectedRegexRuleGroupIds;
   String? get selectedPresetId => _selectedPresetId;
   String? get selectedUserSettingId => _selectedUserSettingId;
   bool get isLoading => _isLoading;
@@ -206,6 +211,7 @@ class ChatViewModel extends ChangeNotifier {
 
     final books = await getIt<WorldBookService>().loadAll();
     final presets = await getIt<PresetService>().loadAllSummaries();
+    final regexGroups = await RegexRuleGroupService.instance.loadAllSummaries();
 
     if (_isDisposed) {
       return;
@@ -213,6 +219,7 @@ class ChatViewModel extends ChangeNotifier {
 
     _worldBooks = books;
     _presets = presets;
+    _regexRuleGroups = regexGroups;
     notifyListeners();
 
     if (draftCharacterId != null) {
@@ -292,6 +299,7 @@ class ChatViewModel extends ChangeNotifier {
       characterId: resolvedCharacter.id,
       selectedUserSettingId: draftSelectedUserSettingId,
       selectedWorldBookIds: initialWorldBookIds,
+      selectedRegexRuleGroupIds: const [],
       selectedPresetId: draftSelectedPresetId,
       currentLeafMessageId: null,
       lastMessagePreview: openingMessages.isNotEmpty
@@ -308,6 +316,7 @@ class ChatViewModel extends ChangeNotifier {
     _selectedWorldBookIds
       ..clear()
       ..addAll(initialWorldBookIds);
+    _selectedRegexRuleGroupIds.clear();
     _isDraftSession = true;
     _draftOpeningAssistantMessages = openingMessages;
     _isLoading = false;
@@ -342,6 +351,15 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadRegexRuleGroups() async {
+    final groups = await RegexRuleGroupService.instance.loadAllSummaries();
+    if (_isDisposed) {
+      return;
+    }
+    _regexRuleGroups = groups;
+    notifyListeners();
+  }
+
   Future<void> _loadSession({String? preferredSessionId}) async {
     final loadGeneration = ++_sessionLoadGeneration;
     final summaries = await getIt<ChatDatabaseService>().loadSessionSummaries();
@@ -356,6 +374,7 @@ class ChatViewModel extends ChangeNotifier {
       _selectedUserSettingId = null;
       _selectedPresetId = null;
       _selectedWorldBookIds.clear();
+      _selectedRegexRuleGroupIds.clear();
       _isDraftSession = false;
       _draftOpeningAssistantMessages = const [];
       _draftOpeningMessageIndex = 0;
@@ -397,6 +416,9 @@ class ChatViewModel extends ChangeNotifier {
     _selectedWorldBookIds
       ..clear()
       ..addAll(bundle.session.selectedWorldBookIds);
+    _selectedRegexRuleGroupIds
+      ..clear()
+      ..addAll(bundle.session.selectedRegexRuleGroupIds);
     _isDraftSession = false;
     _draftOpeningAssistantMessages = const [];
     _draftOpeningMessageIndex = 0;
@@ -433,6 +455,7 @@ class ChatViewModel extends ChangeNotifier {
       _activeSession = session.copyWith(
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds.toList(),
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
         selectedPresetId: _selectedPresetId,
       );
       notifyListeners();
@@ -443,6 +466,7 @@ class ChatViewModel extends ChangeNotifier {
       sessionId: session.id,
       selectedUserSettingId: _selectedUserSettingId,
       selectedWorldBookIds: _selectedWorldBookIds.toList(),
+      selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
       selectedPresetId: _selectedPresetId,
     );
     if (_isDisposed) {
@@ -451,6 +475,7 @@ class ChatViewModel extends ChangeNotifier {
     _activeSession = session.copyWith(
       selectedUserSettingId: _selectedUserSettingId,
       selectedWorldBookIds: _selectedWorldBookIds.toList(),
+      selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
       selectedPresetId: _selectedPresetId,
     );
     notifyListeners();
@@ -471,6 +496,7 @@ class ChatViewModel extends ChangeNotifier {
       title: session.title,
       selectedUserSettingId: _selectedUserSettingId,
       selectedWorldBookIds: _selectedWorldBookIds.toList(),
+      selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
       selectedPresetId: _selectedPresetId,
       openingAssistantMessages: _draftOpeningAssistantMessages,
       activeOpeningMessageIndex: _draftOpeningMessageIndex,
@@ -564,6 +590,7 @@ class ChatViewModel extends ChangeNotifier {
         selectedPresetId: _selectedPresetId,
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
         useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
         onStreamProgress: (progress) {
@@ -662,6 +689,7 @@ class ChatViewModel extends ChangeNotifier {
         selectedPresetId: _selectedPresetId,
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
         useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
         onStreamProgress: (progress) {
@@ -757,6 +785,7 @@ class ChatViewModel extends ChangeNotifier {
         selectedPresetId: _selectedPresetId,
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
         useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
         onStreamProgress: (progress) {
@@ -819,6 +848,7 @@ class ChatViewModel extends ChangeNotifier {
         selectedPresetId: _selectedPresetId,
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
         useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
         onStreamProgress: (progress) {
@@ -1018,6 +1048,17 @@ class ChatViewModel extends ChangeNotifier {
     await _persistSessionConfig();
   }
 
+  /// 切换正则规则组选中状态并持久化。
+  Future<void> toggleRegexRuleGroup(String id) async {
+    if (_selectedRegexRuleGroupIds.contains(id)) {
+      _selectedRegexRuleGroupIds.remove(id);
+    } else {
+      _selectedRegexRuleGroupIds.add(id);
+    }
+    notifyListeners();
+    await _persistSessionConfig();
+  }
+
   /// 更新选中的预设并持久化。
   Future<void> setSelectedPresetId(String id) async {
     _selectedPresetId = id;
@@ -1084,6 +1125,7 @@ class ChatViewModel extends ChangeNotifier {
         title: nextTitle,
         selectedUserSettingId: selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds.toList(),
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
         selectedPresetId: _selectedPresetId,
         lastMessagePreview: openingMessages.isNotEmpty
             ? openingMessages.first
@@ -1103,6 +1145,7 @@ class ChatViewModel extends ChangeNotifier {
         title: nextTitle,
         selectedUserSettingId: selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds.toList(),
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
         selectedPresetId: _selectedPresetId,
         openingAssistantMessages: openingMessages,
       );

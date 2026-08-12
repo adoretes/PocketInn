@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/mock_user_settings.dart';
 import 'char_list_page.dart';
 import 'preset_page.dart';
+import 'regex_rule_group_page.dart';
 import 'user_settings_page.dart';
 import 'world_book_page.dart';
 
@@ -73,6 +74,18 @@ class CharacterContentPage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PresetPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _EntryCard(
+            title: '正则替换',
+            subtitle: '按规则组管理文本查找与替换',
+            icon: Icons.find_replace_outlined,
+            colorScheme: colorScheme,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RegexRuleGroupPage()),
               );
             },
           ),

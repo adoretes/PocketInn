@@ -18,6 +18,7 @@ import '../services/font_service.dart';
 import '../services/i_openai_api_service.dart';
 import '../services/openai_compatible_api_service.dart';
 import '../services/preset_service.dart';
+import '../services/regex_rule_group_service.dart';
 import '../services/remote_backup_settings_service.dart';
 import '../services/remote_backup_service.dart';
 import '../services/storage_service.dart';
@@ -52,6 +53,12 @@ Future<void> setupServiceLocator() async {
   getIt.registerSingleton<PresetService>(PresetService.instance);
   await getIt<PresetService>().initialize();
   await preset_selection.initializeSelectedPreset();
+
+  // 4.5 正则规则组服务
+  getIt.registerSingleton<RegexRuleGroupService>(
+    RegexRuleGroupService.instance,
+  );
+  await getIt<RegexRuleGroupService>().initialize();
 
   // 5. API 配置服务
   getIt.registerSingleton<ApiConfigService>(ApiConfigService.instance);

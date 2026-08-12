@@ -7,6 +7,7 @@ import 'api_request_log_service.dart';
 import 'character_service.dart';
 import 'chat_database_service.dart';
 import 'preset_service.dart';
+import 'regex_rule_group_service.dart';
 import 'remote_backup_settings_service.dart';
 import 'storage_service.dart';
 import 'user_settings_service.dart';
@@ -25,6 +26,7 @@ class AppDataService {
     await CharacterService.instance.clearAllData();
     await WorldBookService.instance.clearAllData();
     await PresetService.instance.resetToDefaults();
+    await RegexRuleGroupService.instance.resetToDefaults();
     await ApiConfigService.instance.resetToDefaults();
     await UserSettingsService.instance.resetToDefault();
     await ApiRequestLogService.instance.clear();
@@ -44,5 +46,6 @@ class AppDataService {
     await initializeSelectedPreset();
     await initializeApiConfigs();
     await ApiRequestLogService.instance.reload();
+    RegexRuleGroupService.instance.invalidateCache();
   }
 }

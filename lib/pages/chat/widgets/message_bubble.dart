@@ -33,6 +33,7 @@ class MessageBubble extends StatefulWidget {
     this.onImpersonate,
     this.onSelectPreviousVariant,
     this.onSelectNextVariant,
+    this.displayText,
   });
 
   final ChatMessage message;
@@ -55,6 +56,9 @@ class MessageBubble extends StatefulWidget {
   final VoidCallback? onImpersonate;
   final VoidCallback? onSelectPreviousVariant;
   final VoidCallback? onSelectNextVariant;
+
+  /// 「显示」规则处理后的渲染文本；为空时使用 [message.text] 原始文本。
+  final String? displayText;
 
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
@@ -240,6 +244,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     final textColor = colorScheme.onPrimaryContainer;
     final inlineCodeColor = colorScheme.primary.withValues(alpha: 0.12);
     final codeBlockColor = colorScheme.primary.withValues(alpha: 0.08);
+    final displayText = widget.displayText ?? widget.message.text;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
@@ -273,7 +278,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                     child: Semantics(
                       container: true,
                       child: ChatMarkdownBody(
-                        text: widget.message.text,
+                        text: displayText,
                         settings: settings,
                         textColor: textColor,
                         inlineCodeColor: inlineCodeColor,
@@ -305,8 +310,9 @@ class _MessageBubbleState extends State<MessageBubble> {
     final textColor = colorScheme.onSurface;
     final inlineCodeColor = colorScheme.surfaceContainerHigh;
     final codeBlockColor = colorScheme.surfaceContainerLow;
+    final rawText = widget.displayText ?? widget.message.text;
     final (pseudoChain, cleanedText, pseudoChainComplete) =
-        extractPseudoThinkingChain(widget.message.text);
+        extractPseudoThinkingChain(rawText);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

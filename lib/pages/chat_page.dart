@@ -19,9 +19,11 @@ import '../pages/chat/widgets/memory_tree_page.dart';
 import '../pages/chat/widgets/message_edit_dialog.dart';
 import '../pages/chat_sidebar_page.dart';
 import '../pages/preset_edit_page.dart';
+import '../pages/regex_rule_group_edit_page.dart';
 import '../pages/user_settings_page.dart';
 import '../pages/world_book_edit_page.dart';
 import '../services/preset_service.dart';
+import '../services/regex_rule_group_service.dart';
 import '../services/world_book_service.dart';
 
 /// 聊天页面
@@ -341,6 +343,30 @@ class _ChatPageState extends State<ChatPage> {
       inputTapRegionGroupId: _inputTapRegionGroupId,
       onToggle: (id) => _viewModel.toggleWorldBook(id),
       onEdit: _onWorldBookEditPressed,
+    );
+  }
+
+  Future<void> _onRegexRuleGroupEditPressed(String groupId) async {
+    final group = await RegexRuleGroupService.instance.loadById(groupId);
+    if (group == null || !mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RegexRuleGroupEditPage(group: group),
+      ),
+    );
+
+    await _viewModel.loadRegexRuleGroups();
+  }
+
+  void _onRegexRuleGroupPressed(BuildContext context) {
+    showRegexRuleGroupMenu(
+      context: context,
+      groups: _viewModel.regexRuleGroups,
+      selectedIds: _viewModel.selectedRegexRuleGroupIds,
+      inputTapRegionGroupId: _inputTapRegionGroupId,
+      onToggle: (id) => _viewModel.toggleRegexRuleGroup(id),
+      onEdit: _onRegexRuleGroupEditPressed,
     );
   }
 
@@ -722,6 +748,8 @@ class _ChatPageState extends State<ChatPage> {
                             activeCharacter: _viewModel.activeCharacter,
                             currentUserSetting: _viewModel.currentUserSetting(),
                             sessionId: session.id,
+                            selectedRegexRuleGroupIds:
+                                _viewModel.selectedRegexRuleGroupIds,
                             onCopyMessage: _onCopyMessage,
                             onEditMessage: _onEditMessage,
                             onEditDraftOpeningMessage:
@@ -747,9 +775,13 @@ class _ChatPageState extends State<ChatPage> {
                         settings: settings,
                         worldBooks: _viewModel.worldBooks,
                         selectedWorldBookIds: _viewModel.selectedWorldBookIds,
+                        regexRuleGroups: _viewModel.regexRuleGroups,
+                        selectedRegexRuleGroupIds:
+                            _viewModel.selectedRegexRuleGroupIds,
                         currentUserSetting: _viewModel.currentUserSetting(),
                         onUserSettingsPressed: _onUserSettingsPressed,
                         onWorldBookPressed: _onWorldBookPressed,
+                        onRegexRuleGroupPressed: _onRegexRuleGroupPressed,
                         onPresetPressed: _onPresetPressed,
                         onSendPressed: _onSendPressed,
                         onStopGeneratingPressed: _onStopGeneratingPressed,

@@ -9,6 +9,7 @@ import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import '../models/preset.dart';
 import '../models/prompt_assembly.dart';
+import '../models/regex_rule_group.dart';
 import '../models/world_book.dart';
 import 'chat_character_resolver.dart';
 import 'chat_database_service.dart';
@@ -18,6 +19,8 @@ import 'i_openai_api_service.dart';
 import 'openai_compatible_api_service.dart';
 import 'preset_service.dart';
 import 'prompt_assembler.dart';
+import 'regex_rule_group_service.dart';
+import 'regex_replacement_service.dart';
 import 'world_book_service.dart';
 
 class ChatSendResult {
@@ -47,6 +50,7 @@ class ChatService {
     String? selectedPresetId,
     String? selectedUserSettingId,
     Set<String> selectedWorldBookIds = const <String>{},
+    Set<String> selectedRegexRuleGroupIds = const <String>{},
     bool useStreaming = false,
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
@@ -56,6 +60,16 @@ class ChatService {
     if (normalizedInput.isEmpty) {
       throw const FormatException('消息不能为空');
     }
+
+    final effectiveRegexRuleGroupIds = selectedRegexRuleGroupIds.isNotEmpty
+        ? selectedRegexRuleGroupIds
+        : session.selectedRegexRuleGroupIds.toSet();
+
+    // 「写入」规则：先替换再入库，请求与记录都使用替换后的文本。
+    final storedInput = await _applyUserWriteRules(
+      normalizedInput,
+      effectiveRegexRuleGroupIds,
+    );
 
     final config = resolvedSelectedApi;
     if (config == null) {
@@ -93,7 +107,7 @@ class ChatService {
         preset: preset,
         selectedWorldBooks: worldBooks,
         chatMessages: truncatedChatMessages,
-        currentInput: normalizedInput,
+        currentInput: storedInput,
         memoryContext: memoryContext,
       ),
     );
@@ -106,7 +120,7 @@ class ChatService {
     final userNode = await ChatDatabaseService.instance.appendUserMessage(
       sessionId: activeSession.id,
       parentMessageId: activeSession.currentLeafMessageId,
-      text: normalizedInput,
+      text: storedInput,
     );
 
     try {
@@ -115,6 +129,7 @@ class ChatService {
         promptAssembly: promptAssembly,
         preset: preset,
         useStreaming: useStreaming,
+        selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
         cancellationToken: cancellationToken,
         onStreamProgress: onStreamProgress,
       );
@@ -123,7 +138,10 @@ class ChatService {
           .appendAssistantMessage(
             sessionId: activeSession.id,
             parentMessageId: userNode.id,
-            text: completion.text,
+            text: await _applyAssistantOutputRules(
+              completion.text,
+              effectiveRegexRuleGroupIds,
+            ),
             thinkingChain: completion.thinkingChain,
           );
 
@@ -170,6 +188,7 @@ class ChatService {
     String? selectedPresetId,
     String? selectedUserSettingId,
     Set<String> selectedWorldBookIds = const <String>{},
+    Set<String> selectedRegexRuleGroupIds = const <String>{},
     bool useStreaming = false,
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
@@ -188,6 +207,10 @@ class ChatService {
     if (config.model.trim().isEmpty) {
       throw const FormatException('当前选中的模型未填写 Model ID');
     }
+
+    final effectiveRegexRuleGroupIds = selectedRegexRuleGroupIds.isNotEmpty
+        ? selectedRegexRuleGroupIds
+        : session.selectedRegexRuleGroupIds.toSet();
 
     final preset = await _resolvePreset(
       selectedPresetId ?? session.selectedPresetId,
@@ -229,6 +252,7 @@ class ChatService {
         promptAssembly: promptAssembly,
         preset: preset,
         useStreaming: useStreaming,
+        selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
         cancellationToken: cancellationToken,
         onStreamProgress: onStreamProgress,
       );
@@ -237,7 +261,10 @@ class ChatService {
           .appendAssistantMessage(
             sessionId: session.id,
             parentMessageId: userMessage.id,
-            text: completion.text,
+            text: await _applyAssistantOutputRules(
+              completion.text,
+              effectiveRegexRuleGroupIds,
+            ),
             thinkingChain: completion.thinkingChain,
           );
 
@@ -293,6 +320,7 @@ class ChatService {
     String? selectedPresetId,
     String? selectedUserSettingId,
     Set<String> selectedWorldBookIds = const <String>{},
+    Set<String> selectedRegexRuleGroupIds = const <String>{},
     bool useStreaming = false,
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
@@ -316,6 +344,10 @@ class ChatService {
     if (config.model.trim().isEmpty) {
       throw const FormatException('当前选中的模型未填写 Model ID');
     }
+
+    final effectiveRegexRuleGroupIds = selectedRegexRuleGroupIds.isNotEmpty
+        ? selectedRegexRuleGroupIds
+        : session.selectedRegexRuleGroupIds.toSet();
 
     final preset = await _resolvePreset(
       selectedPresetId ?? session.selectedPresetId,
@@ -373,6 +405,7 @@ class ChatService {
         messages: requestMessages,
         preset: preset,
         useStreaming: useStreaming,
+        selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
         cancellationToken: cancellationToken,
         onStreamProgress: onStreamProgress,
       );
@@ -380,7 +413,10 @@ class ChatService {
       await ChatDatabaseService.instance.appendAssistantMessage(
         sessionId: session.id,
         parentMessageId: lastMessageId,
-        text: completion.text,
+        text: await _applyAssistantOutputRules(
+          completion.text,
+          effectiveRegexRuleGroupIds,
+        ),
         thinkingChain: completion.thinkingChain,
       );
 
@@ -401,6 +437,7 @@ class ChatService {
     String? selectedPresetId,
     String? selectedUserSettingId,
     Set<String> selectedWorldBookIds = const <String>{},
+    Set<String> selectedRegexRuleGroupIds = const <String>{},
     bool useStreaming = false,
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
@@ -412,6 +449,10 @@ class ChatService {
     if (config.model.trim().isEmpty) {
       throw const FormatException('当前选中的模型未填写 Model ID');
     }
+
+    final effectiveRegexRuleGroupIds = selectedRegexRuleGroupIds.isNotEmpty
+        ? selectedRegexRuleGroupIds
+        : session.selectedRegexRuleGroupIds.toSet();
 
     final preset = await _resolvePreset(
       selectedPresetId ?? session.selectedPresetId,
@@ -469,6 +510,7 @@ class ChatService {
         messages: requestMessages,
         preset: preset,
         useStreaming: useStreaming,
+        selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
         cancellationToken: cancellationToken,
         onStreamProgress: onStreamProgress,
       );
@@ -527,11 +569,58 @@ class ChatService {
     return books;
   }
 
+  Future<List<RegexRuleGroup>> _loadRegexGroups(
+    Set<String> selectedIds,
+  ) async {
+    if (selectedIds.isEmpty) return const [];
+    try {
+      final all = await RegexRuleGroupService.instance.loadAll();
+      return all
+          .where((group) => selectedIds.contains(group.id))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// 用户输入「写入」规则：发送时替换用户输入后再入库与组装请求。
+  Future<String> _applyUserWriteRules(
+    String text,
+    Set<String> selectedRegexRuleGroupIds,
+  ) async {
+    final groups = await _loadRegexGroups(selectedRegexRuleGroupIds);
+    if (groups.isEmpty) return text;
+    return RegexReplacementService().applyToMessage(
+      text: text,
+      groups: groups,
+      isUserMessage: true,
+      depth: 0,
+      mode: RegexExecutionMode.store,
+    ).text;
+  }
+
+  /// 助手输出「写入」规则：仅对最新一条助手消息生效。
+  Future<String> _applyAssistantOutputRules(
+    String text,
+    Set<String> selectedRegexRuleGroupIds,
+  ) async {
+    final groups = await _loadRegexGroups(selectedRegexRuleGroupIds);
+    if (groups.isEmpty) return text;
+    return RegexReplacementService().applyToMessage(
+      text: text,
+      groups: groups,
+      isUserMessage: false,
+      depth: 0,
+      mode: RegexExecutionMode.store,
+    ).text;
+  }
+
   Future<ChatCompletionResult> _createCompletion(
     ResolvedApiConfig config, {
     required PromptAssemblyResult promptAssembly,
     required Preset preset,
     required bool useStreaming,
+    required Set<String> selectedRegexRuleGroupIds,
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
@@ -545,6 +634,7 @@ class ChatService {
       messages: requestMessages,
       preset: preset,
       useStreaming: useStreaming,
+      selectedRegexRuleGroupIds: selectedRegexRuleGroupIds,
       cancellationToken: cancellationToken,
       onStreamProgress: onStreamProgress,
     );
@@ -555,14 +645,23 @@ class ChatService {
     required List<Map<String, dynamic>> messages,
     required Preset preset,
     required bool useStreaming,
+    required Set<String> selectedRegexRuleGroupIds,
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
+    final ruleGroups = await _loadRegexGroups(selectedRegexRuleGroupIds);
+    final requestMessages = ruleGroups.isEmpty
+        ? messages
+        : RegexReplacementService().applyToRequestMessages(
+            messages: messages,
+            groups: ruleGroups,
+          );
+
     final api = GetIt.instance<IOpenAiApiService>();
     if (!useStreaming) {
       return api.createChatCompletion(
         config,
-        messages: messages,
+        messages: requestMessages,
         defaults: _buildCompletionDefaults(preset, useStreaming: false),
         cancellationToken: cancellationToken,
       );
@@ -574,7 +673,7 @@ class ChatService {
       await for (final progress
           in api.createStreamingChatCompletion(
             config,
-            messages: messages,
+            messages: requestMessages,
             defaults: _buildCompletionDefaults(preset, useStreaming: true),
             cancellationToken: cancellationToken,
           )) {

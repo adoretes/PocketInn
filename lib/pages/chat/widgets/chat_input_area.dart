@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../data/app_settings.dart';
 import '../../../data/mock_user_settings.dart';
 import '../../../models/world_book.dart';
+import '../../../services/regex_rule_group_service.dart';
 
 class ChatInputArea extends StatelessWidget {
   const ChatInputArea({
@@ -19,9 +20,12 @@ class ChatInputArea extends StatelessWidget {
     required this.settings,
     required this.worldBooks,
     required this.selectedWorldBookIds,
+    required this.regexRuleGroups,
+    required this.selectedRegexRuleGroupIds,
     required this.currentUserSetting,
     required this.onUserSettingsPressed,
     required this.onWorldBookPressed,
+    required this.onRegexRuleGroupPressed,
     required this.onPresetPressed,
     required this.onSendPressed,
     required this.onStopGeneratingPressed,
@@ -37,9 +41,12 @@ class ChatInputArea extends StatelessWidget {
   final AppSettings settings;
   final List<WorldBook> worldBooks;
   final Set<String> selectedWorldBookIds;
+  final List<RegexRuleGroupSummary> regexRuleGroups;
+  final Set<String> selectedRegexRuleGroupIds;
   final UserSetting? currentUserSetting;
   final ValueChanged<BuildContext> onUserSettingsPressed;
   final ValueChanged<BuildContext> onWorldBookPressed;
+  final ValueChanged<BuildContext> onRegexRuleGroupPressed;
   final ValueChanged<BuildContext> onPresetPressed;
   final VoidCallback onSendPressed;
   final VoidCallback onStopGeneratingPressed;
@@ -55,12 +62,14 @@ class ChatInputArea extends StatelessWidget {
     final selectedWorldBooks = worldBooks
         .where((item) => selectedWorldBookIds.contains(item.id))
         .toList();
-    final worldBookDisplayText = selectedWorldBooks.isEmpty
-        ? '世界书'
-        : selectedWorldBooks.length == 1
-        ? selectedWorldBooks.first.name
-        : '${selectedWorldBooks.length} 本世界书';
     final worldBookColor = selectedWorldBooks.isNotEmpty
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
+    final hasRegexRuleGroups = regexRuleGroups.isNotEmpty;
+    final selectedRegexRuleGroupCount = regexRuleGroups
+        .where((item) => selectedRegexRuleGroupIds.contains(item.id))
+        .length;
+    final regexRuleGroupColor = selectedRegexRuleGroupCount > 0
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
     final useGlassEffect = hasBackground && settings.inputGlassEffect;
@@ -154,30 +163,41 @@ class ChatInputArea extends StatelessWidget {
                 ),
               ),
               Builder(
-                builder: (context) => ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 120),
-                  child: TextButton.icon(
-                    onPressed: hasWorldBooks
-                        ? () => onWorldBookPressed(context)
-                        : null,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      minimumSize: const Size(40, 40),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: Icon(
-                      Icons.menu_book_rounded,
-                      size: 20,
-                      color: worldBookColor,
-                    ),
-                    label: Text(
-                      worldBookDisplayText,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                builder: (context) => IconButton(
+                  icon: Icon(
+                    Icons.menu_book_rounded,
+                    size: 22,
+                    color: worldBookColor,
                   ),
+                  onPressed: hasWorldBooks
+                      ? () => onWorldBookPressed(context)
+                      : null,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                  tooltip: '世界书',
+                ),
+              ),
+              Builder(
+                builder: (context) => IconButton(
+                  icon: Icon(
+                    Icons.find_replace_rounded,
+                    size: 22,
+                    color: regexRuleGroupColor,
+                  ),
+                  onPressed: hasRegexRuleGroups
+                      ? () => onRegexRuleGroupPressed(context)
+                      : null,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                  tooltip: '正则替换',
                 ),
               ),
               Builder(

@@ -4,6 +4,7 @@ import '../../../data/mock_user_settings.dart';
 import '../../../models/preset.dart';
 import '../../../models/user_setting.dart';
 import '../../../models/world_book.dart';
+import '../../../services/regex_rule_group_service.dart';
 import '../utils/popup_menu_position.dart';
 
 /// 显示用户设定选择菜单。选中后回调 [onSelected]，编辑图标回调 [onEdit]。
@@ -123,6 +124,66 @@ Future<void> showWorldBookMenu({
                   onTap: () {
                     Navigator.pop(context);
                     onEdit(worldBook.id);
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }).toList(),
+  );
+}
+
+/// 显示正则规则组选择菜单。切换选中状态后回调 [onToggle]，编辑图标回调 [onEdit]。
+Future<void> showRegexRuleGroupMenu({
+  required BuildContext context,
+  required List<RegexRuleGroupSummary> groups,
+  required Set<String> selectedIds,
+  required Object inputTapRegionGroupId,
+  required ValueChanged<String> onToggle,
+  required ValueChanged<String> onEdit,
+}) async {
+  final colorScheme = Theme.of(context).colorScheme;
+  await showMenu<String>(
+    context: context,
+    requestFocus: false,
+    position: PopupMenuPositioning.positionAbove(context, groups.length),
+    constraints: PopupMenuPositioning.constraintsAbove(context),
+    items: groups.map((group) {
+      final isSelected = selectedIds.contains(group.id);
+      return PopupMenuItem<String>(
+        value: group.id,
+        padding: EdgeInsets.zero,
+        onTap: () => onToggle(group.id),
+        child: _TapRegionWrap(
+          groupId: inputTapRegionGroupId,
+          child: Container(
+            decoration: isSelected
+                ? BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.12),
+                  )
+                : null,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(group.name, overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(context);
+                    onEdit(group.id);
                   },
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(

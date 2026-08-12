@@ -16,7 +16,7 @@ class ChatDatabaseService {
   static final ChatDatabaseService instance = ChatDatabaseService._();
   final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
 
-  static const int _dbVersion = 3;
+  static const int _dbVersion = 4;
   static const String _dbName = 'pocket_inn_chat.db';
 
   Database? _database;
@@ -130,6 +130,17 @@ class ChatDatabaseService {
     }
     // v3: 仅调整 _dbVersion 占位，无 schema 变更。
     // 若未来需要在 v3 引入列/索引，请在此处添加 oldVersion < 3 分支。
+    if (oldVersion < 4 && newVersion >= 4) {
+      // v4: 引入 chat_session_regex_rule_groups 表，用于会话级正则规则组启用绑定。
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS chat_session_regex_rule_groups (
+          session_id TEXT NOT NULL,
+          regex_rule_group_id TEXT NOT NULL,
+          PRIMARY KEY (session_id, regex_rule_group_id),
+          FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+        )
+      ''');
+    }
   }
 
   Future<void> _createSchema(Database db) async {
@@ -152,6 +163,15 @@ class ChatDatabaseService {
         session_id TEXT NOT NULL,
         world_book_id TEXT NOT NULL,
         PRIMARY KEY (session_id, world_book_id),
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE chat_session_regex_rule_groups (
+        session_id TEXT NOT NULL,
+        regex_rule_group_id TEXT NOT NULL,
+        PRIMARY KEY (session_id, regex_rule_group_id),
         FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
       )
     ''');
@@ -196,6 +216,7 @@ class ChatDatabaseService {
     String? title,
     String? selectedUserSettingId,
     List<String> selectedWorldBookIds = const [],
+    List<String> selectedRegexRuleGroupIds = const [],
     String? selectedPresetId,
     List<String> openingAssistantMessages = const [],
     int activeOpeningMessageIndex = 0,
@@ -219,6 +240,7 @@ class ChatDatabaseService {
       characterId: characterId,
       selectedUserSettingId: selectedUserSettingId,
       selectedWorldBookIds: List<String>.from(selectedWorldBookIds),
+      selectedRegexRuleGroupIds: List<String>.from(selectedRegexRuleGroupIds),
       selectedPresetId: selectedPresetId,
       currentLeafMessageId: activeOpeningIndex >= 0
           ? openingMessageIds[activeOpeningIndex]
@@ -236,6 +258,11 @@ class ChatDatabaseService {
         tx,
         sessionId: session.id,
         worldBookIds: session.selectedWorldBookIds,
+      );
+      await _replaceSessionRegexRuleGroups(
+        tx,
+        sessionId: session.id,
+        regexRuleGroupIds: session.selectedRegexRuleGroupIds,
       );
       for (var i = 0; i < normalizedOpeningMessages.length; i++) {
         final openingNode = ChatNode(
@@ -295,7 +322,12 @@ class ChatDatabaseService {
     }
 
     final worldBookIds = await _loadSessionWorldBookIds(id);
-    return _sessionFromMap(rows.first, worldBookIds);
+    final regexRuleGroupIds = await _loadSessionRegexRuleGroupIds(id);
+    return _sessionFromMap(
+      rows.first,
+      worldBookIds,
+      regexRuleGroupIds,
+    );
   }
 
   Future<ChatSessionBundle?> loadSessionBundle(String id) async {
@@ -316,6 +348,7 @@ class ChatDatabaseService {
     required String sessionId,
     required String? selectedUserSettingId,
     required List<String> selectedWorldBookIds,
+    required List<String> selectedRegexRuleGroupIds,
     required String? selectedPresetId,
   }) async {
     await _db.transaction((tx) async {
@@ -333,6 +366,11 @@ class ChatDatabaseService {
         sessionId: sessionId,
         worldBookIds: selectedWorldBookIds,
       );
+      await _replaceSessionRegexRuleGroups(
+        tx,
+        sessionId: sessionId,
+        regexRuleGroupIds: selectedRegexRuleGroupIds,
+      );
     });
     _notifyChanged();
   }
@@ -342,6 +380,7 @@ class ChatDatabaseService {
     required String title,
     required String? selectedUserSettingId,
     required List<String> selectedWorldBookIds,
+    required List<String> selectedRegexRuleGroupIds,
     required String? selectedPresetId,
     List<String> openingAssistantMessages = const [],
   }) async {
@@ -416,6 +455,11 @@ class ChatDatabaseService {
         tx,
         sessionId: sessionId,
         worldBookIds: selectedWorldBookIds,
+      );
+      await _replaceSessionRegexRuleGroups(
+        tx,
+        sessionId: sessionId,
+        regexRuleGroupIds: selectedRegexRuleGroupIds,
       );
 
       for (var i = 0; i < normalizedOpeningMessages.length; i++) {
@@ -1048,6 +1092,40 @@ class ChatDatabaseService {
     }
   }
 
+  Future<List<String>> _loadSessionRegexRuleGroupIds(
+    String sessionId,
+  ) async {
+    final rows = await _db.query(
+      'chat_session_regex_rule_groups',
+      columns: ['regex_rule_group_id'],
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'regex_rule_group_id ASC',
+    );
+    return rows
+        .map((row) => row['regex_rule_group_id'] as String)
+        .toList(growable: false);
+  }
+
+  Future<void> _replaceSessionRegexRuleGroups(
+    DatabaseExecutor tx, {
+    required String sessionId,
+    required List<String> regexRuleGroupIds,
+  }) async {
+    await tx.delete(
+      'chat_session_regex_rule_groups',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+
+    for (final groupId in regexRuleGroupIds.toSet()) {
+      await tx.insert('chat_session_regex_rule_groups', {
+        'session_id': sessionId,
+        'regex_rule_group_id': groupId,
+      });
+    }
+  }
+
   Future<int> _nextSiblingOrder(
     DatabaseExecutor tx, {
     required String sessionId,
@@ -1276,6 +1354,7 @@ class ChatDatabaseService {
   ChatSession _sessionFromMap(
     Map<String, Object?> map,
     List<String> worldBookIds,
+    List<String> regexRuleGroupIds,
   ) {
     return ChatSession(
       id: map['id'] as String,
@@ -1283,6 +1362,7 @@ class ChatDatabaseService {
       characterId: map['character_id'] as String,
       selectedUserSettingId: map['selected_user_setting_id'] as String?,
       selectedWorldBookIds: worldBookIds,
+      selectedRegexRuleGroupIds: regexRuleGroupIds,
       selectedPresetId: map['selected_preset_id'] as String?,
       currentLeafMessageId: map['current_leaf_message_id'] as String?,
       lastMessagePreview: map['last_message_preview'] as String? ?? '',
