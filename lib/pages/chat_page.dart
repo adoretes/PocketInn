@@ -15,6 +15,7 @@ import '../pages/chat/widgets/chat_input_area.dart';
 import '../pages/chat/widgets/chat_message_list.dart';
 import '../pages/chat/widgets/chat_selector_menus.dart';
 import '../pages/chat/widgets/chat_title_dialog.dart';
+import '../pages/chat/widgets/gal_message_view.dart';
 import '../pages/chat/widgets/memory_tree_page.dart';
 import '../pages/chat/widgets/message_edit_dialog.dart';
 import '../pages/chat_sidebar_page.dart';
@@ -73,6 +74,7 @@ class _ChatPageState extends State<ChatPage> {
     keepScrollOffset: false,
   );
   String _inputText = '';
+  bool _galMode = false;
 
   late final ChatViewModel _viewModel;
 
@@ -667,6 +669,15 @@ class _ChatPageState extends State<ChatPage> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: Icon(
+              _galMode ? Icons.auto_stories : Icons.auto_stories_outlined,
+            ),
+            tooltip: _galMode ? '退出 gal 模式' : 'gal 模式',
+            onPressed: () {
+              setState(() => _galMode = !_galMode);
+            },
+          ),
           ListenableBuilder(
             listenable: _viewModel,
             builder: (context, _) {
@@ -727,7 +738,10 @@ class _ChatPageState extends State<ChatPage> {
                     Positioned.fill(
                       child: Container(
                         color: Theme.of(context).colorScheme.surface.withValues(
-                          alpha: settings.backgroundOpacity,
+                          // gal 模式下减半遮罩，让角色立绘更突出。
+                          alpha: _galMode
+                              ? settings.backgroundOpacity * 0.5
+                              : settings.backgroundOpacity,
                         ),
                       ),
                     ),
@@ -736,32 +750,65 @@ class _ChatPageState extends State<ChatPage> {
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(top: topContentPadding),
-                          child: ChatMessageList(
-                            visibleMessages: _viewModel.visibleMessages,
-                            scrollController: _scrollController,
-                            inputTapRegionGroupId: _inputTapRegionGroupId,
-                            isSending: _viewModel.isSending,
-                            isImpersonating: _viewModel.isImpersonating,
-                            regeneratingUserMessageId:
-                                _viewModel.regeneratingUserMessageId,
-                            isDraftSession: _viewModel.isDraftSession,
-                            activeCharacter: _viewModel.activeCharacter,
-                            currentUserSetting: _viewModel.currentUserSetting(),
-                            sessionId: session.id,
-                            selectedRegexRuleGroupIds:
+                          child: _galMode
+                              ? GalMessageView(
+                                  visibleMessages: _viewModel.visibleMessages,
+                                  updatesListenable: _viewModel,
+                                  visibleMessagesProvider: () =>
+                                      _viewModel.visibleMessages,
+                                  inputTapRegionGroupId: _inputTapRegionGroupId,
+                                  isSending: _viewModel.isSending,
+                                  isImpersonating: _viewModel.isImpersonating,
+                                  regeneratingUserMessageId:
+                                      _viewModel.regeneratingUserMessageId,
+                                  isDraftSession: _viewModel.isDraftSession,
+                                  activeCharacter: _viewModel.activeCharacter,
+                                  currentUserSetting: _viewModel
+                                      .currentUserSetting(),
+                                  sessionId: session.id,
+                                  selectedRegexRuleGroupIds:
+                                      _viewModel.selectedRegexRuleGroupIds,
+                                  onCopyMessage: _onCopyMessage,
+                                  onEditMessage: _onEditMessage,
+                                  onEditDraftOpeningMessage:
+                                      _onEditDraftOpeningMessage,
+                                  onDeleteMessage: _onDeleteMessage,
+                                  onRegenerateFromUserMessage:
+                                      _onRegenerateFromUserMessage,
+                                  onRegenerateMessage: _onRegenerateMessage,
+                                  onContinueMessage: _onContinueMessage,
+                                  onImpersonate: _onImpersonate,
+                                  onSwitchMessageVariant:
+                                      _onSwitchMessageVariant,
+                                )
+                              : ChatMessageList(
+                                  visibleMessages: _viewModel.visibleMessages,
+                                  scrollController: _scrollController,
+                                  inputTapRegionGroupId: _inputTapRegionGroupId,
+                                  isSending: _viewModel.isSending,
+                                  isImpersonating: _viewModel.isImpersonating,
+                                  regeneratingUserMessageId:
+                                      _viewModel.regeneratingUserMessageId,
+                                  isDraftSession: _viewModel.isDraftSession,
+                                  activeCharacter: _viewModel.activeCharacter,
+                                  currentUserSetting: _viewModel
+                                      .currentUserSetting(),
+                                  sessionId: session.id,
+                                  selectedRegexRuleGroupIds:
                                 _viewModel.selectedRegexRuleGroupIds,
                             onCopyMessage: _onCopyMessage,
-                            onEditMessage: _onEditMessage,
-                            onEditDraftOpeningMessage:
-                                _onEditDraftOpeningMessage,
-                            onDeleteMessage: _onDeleteMessage,
-                            onRegenerateFromUserMessage:
-                                _onRegenerateFromUserMessage,
-                            onRegenerateMessage: _onRegenerateMessage,
-                            onContinueMessage: _onContinueMessage,
-                            onImpersonate: _onImpersonate,
-                            onSwitchMessageVariant: _onSwitchMessageVariant,
-                          ),
+                                  onEditMessage: _onEditMessage,
+                                  onEditDraftOpeningMessage:
+                                      _onEditDraftOpeningMessage,
+                                  onDeleteMessage: _onDeleteMessage,
+                                  onRegenerateFromUserMessage:
+                                      _onRegenerateFromUserMessage,
+                                  onRegenerateMessage: _onRegenerateMessage,
+                                  onContinueMessage: _onContinueMessage,
+                                  onImpersonate: _onImpersonate,
+                                  onSwitchMessageVariant:
+                                      _onSwitchMessageVariant,
+                                ),
                         ),
                       ),
                       ChatInputArea(
