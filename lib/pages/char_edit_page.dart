@@ -429,6 +429,18 @@ class _RoleEditPageState extends State<RoleEditPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final surface = colorScheme.surface;
     final hasPortrait = _hasPortrait;
+    // 输入框底色：低不透明填充 + 外扩羽化，兼顾可读性与背景透出
+    final fieldFillColor = surface.withValues(alpha: 0.6);
+    // 为输入框添加外扩羽化光晕，使其边缘柔和融入立绘背景
+    Widget feathered(Widget child) => Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [
+          BoxShadow(color: fieldFillColor, blurRadius: 8, spreadRadius: 6),
+        ],
+      ),
+      child: child,
+    );
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -559,303 +571,286 @@ class _RoleEditPageState extends State<RoleEditPage> {
               bottom: false,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: Card(
-                  color: colorScheme.surfaceContainerLow.withValues(
-                    alpha: colorScheme.brightness == Brightness.dark
-                        ? 0.94
-                        : 0.9,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: colorScheme.outlineVariant),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        ExpandedTextEditorField(
-                          controller: descriptionController,
-                          maxLines: 8,
-                          dialogTitle: '编辑角色设定',
-                          decoration: InputDecoration(
-                            labelText: '角色设定',
-                            border: const OutlineInputBorder(),
-                            errorText:
-                                _showValidationError &&
-                                    descriptionController.text.trim().isEmpty
-                                ? '必填'
-                                : null,
-                          ),
+                child: Column(
+                  children: [
+                    feathered(
+                      ExpandedTextEditorField(
+                        controller: descriptionController,
+                        maxLines: 8,
+                        dialogTitle: '编辑角色设定',
+                        decoration: InputDecoration(
+                          labelText: '角色设定',
+                          border: const OutlineInputBorder(),
+                          errorText:
+                              _showValidationError &&
+                                  descriptionController.text.trim().isEmpty
+                              ? '必填'
+                              : null,
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: personalityController,
-                          maxLines: 2,
-                          decoration: const InputDecoration(
-                            labelText: '性格、好恶',
-                            border: OutlineInputBorder(),
-                          ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    feathered(
+                      TextFormField(
+                        controller: personalityController,
+                        maxLines: 2,
+                        decoration: InputDecoration(
+                          labelText: '性格、好恶',
+                          border: const OutlineInputBorder(),
                         ),
-                        const SizedBox(height: 16),
-                        ExpandedTextEditorField(
-                          controller: scenarioController,
-                          maxLines: 5,
-                          dialogTitle: '编辑当前场景',
-                          decoration: const InputDecoration(
-                            labelText: '当前场景',
-                            border: OutlineInputBorder(),
-                          ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    feathered(
+                      ExpandedTextEditorField(
+                        controller: scenarioController,
+                        maxLines: 5,
+                        dialogTitle: '编辑当前场景',
+                        decoration: InputDecoration(
+                          labelText: '当前场景',
+                          border: const OutlineInputBorder(),
                         ),
-                        const SizedBox(height: 16),
-                        ExpandedTextEditorField(
-                          controller: firstMesController,
-                          maxLines: 12,
-                          dialogTitle: '编辑初见开场',
-                          decoration: InputDecoration(
-                            labelText: '初见开场',
-                            border: const OutlineInputBorder(),
-                            errorText:
-                                _showValidationError &&
-                                    firstMesController.text.trim().isEmpty
-                                ? '必填'
-                                : null,
-                          ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    feathered(
+                      ExpandedTextEditorField(
+                        controller: firstMesController,
+                        maxLines: 12,
+                        dialogTitle: '编辑初见开场',
+                        decoration: InputDecoration(
+                          labelText: '初见开场',
+                          border: const OutlineInputBorder(),
+                          errorText:
+                              _showValidationError &&
+                                  firstMesController.text.trim().isEmpty
+                              ? '必填'
+                              : null,
                         ),
-                        const SizedBox(height: 8),
-                        Theme(
-                          data: Theme.of(
-                            context,
-                          ).copyWith(dividerColor: Colors.transparent),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.58),
-                              borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Theme(
+                      data: Theme.of(
+                        context,
+                      ).copyWith(dividerColor: Colors.transparent),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.58,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ExpansionTile(
+                          tilePadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          childrenPadding: const EdgeInsets.fromLTRB(
+                            12,
+                            12,
+                            12,
+                            12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide.none,
+                          ),
+                          collapsedShape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide.none,
+                          ),
+                          title: const Text(
+                            '高级设置',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          children: [
+                            TextFormField(
+                              controller: mesExampleController,
+                              maxLines: 4,
+                              decoration: const InputDecoration(
+                                labelText: '对话示例',
+                                border: OutlineInputBorder(),
+                              ),
                             ),
-                            child: ExpansionTile(
-                              tilePadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 4,
-                              ),
-                              childrenPadding: const EdgeInsets.fromLTRB(
-                                12,
-                                0,
-                                12,
-                                12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide.none,
-                              ),
-                              collapsedShape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide.none,
-                              ),
-                              title: const Text(
-                                '高级设置',
-                                style: TextStyle(fontWeight: FontWeight.w500),
-                              ),
+                            const SizedBox(height: 16),
+                            Row(
                               children: [
-                                TextFormField(
-                                  controller: mesExampleController,
-                                  maxLines: 4,
-                                  decoration: const InputDecoration(
-                                    labelText: '对话示例',
-                                    border: OutlineInputBorder(),
+                                const Text(
+                                  '替代问候语',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${_currentGreetingIndex + 1} / ${_greetingControllers.length}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: colorScheme.onSurfaceVariant,
                                   ),
-                                ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    const Text(
-                                      '替代问候语',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${_currentGreetingIndex + 1} / ${_greetingControllers.length}',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                TextFormField(
-                                  controller:
-                                      _greetingControllers[_currentGreetingIndex],
-                                  maxLines: 5,
-                                  minLines: 5,
-                                  decoration: InputDecoration(
-                                    border: const OutlineInputBorder(),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    suffixIconConstraints: const BoxConstraints(
-                                      minWidth: 36,
-                                      minHeight: 0,
-                                    ),
-                                    suffixIcon: Padding(
-                                      padding: const EdgeInsets.only(right: 4),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.keyboard_arrow_up,
-                                              size: 20,
-                                            ),
-                                            onPressed: _currentGreetingIndex > 0
-                                                ? _previousGreeting
-                                                : null,
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.keyboard_arrow_down,
-                                              size: 20,
-                                            ),
-                                            onPressed:
-                                                _currentGreetingIndex <
-                                                    _greetingControllers
-                                                            .length -
-                                                        1
-                                                ? _nextGreeting
-                                                : null,
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.add_circle_outline,
-                                              size: 20,
-                                            ),
-                                            onPressed: _addNewGreeting,
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                              size: 20,
-                                            ),
-                                            onPressed: _removeCurrentGreeting,
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: creatorNotesController,
-                                  maxLines: 2,
-                                  decoration: const InputDecoration(
-                                    labelText: '创作者注释',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: systemPromptController,
-                                  maxLines: 2,
-                                  decoration: const InputDecoration(
-                                    labelText: '系统提示词',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: postHistoryInstructionsController,
-                                  maxLines: 2,
-                                  decoration: const InputDecoration(
-                                    labelText: '对话历史后指令',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                const Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    '标签',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  children: tags.map((tag) {
-                                    return Chip(
-                                      label: Text(tag),
-                                      deleteIcon: const Icon(
-                                        Icons.close,
-                                        size: 18,
-                                      ),
-                                      onDeleted: () => _removeTag(tag),
-                                    );
-                                  }).toList(),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _newTagController,
-                                        decoration: const InputDecoration(
-                                          hintText: '新标签',
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.add_circle),
-                                      onPressed: _addTag,
-                                    ),
-                                  ],
                                 ),
                               ],
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller:
+                                  _greetingControllers[_currentGreetingIndex],
+                              maxLines: 5,
+                              minLines: 5,
+                              decoration: InputDecoration(
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 36,
+                                  minHeight: 0,
+                                ),
+                                suffixIcon: Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.keyboard_arrow_up,
+                                          size: 20,
+                                        ),
+                                        onPressed: _currentGreetingIndex > 0
+                                            ? _previousGreeting
+                                            : null,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.keyboard_arrow_down,
+                                          size: 20,
+                                        ),
+                                        onPressed:
+                                            _currentGreetingIndex <
+                                                _greetingControllers.length - 1
+                                            ? _nextGreeting
+                                            : null,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.add_circle_outline,
+                                          size: 20,
+                                        ),
+                                        onPressed: _addNewGreeting,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 20,
+                                        ),
+                                        onPressed: _removeCurrentGreeting,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: creatorNotesController,
+                              maxLines: 2,
+                              decoration: const InputDecoration(
+                                labelText: '创作者注释',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: systemPromptController,
+                              maxLines: 2,
+                              decoration: const InputDecoration(
+                                labelText: '系统提示词',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: postHistoryInstructionsController,
+                              maxLines: 2,
+                              decoration: const InputDecoration(
+                                labelText: '对话历史后指令',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '标签',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              children: tags.map((tag) {
+                                return Chip(
+                                  label: Text(tag),
+                                  deleteIcon: const Icon(Icons.close, size: 18),
+                                  onDeleted: () => _removeTag(tag),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _newTagController,
+                                    decoration: const InputDecoration(
+                                      hintText: '新标签',
+                                      border: OutlineInputBorder(),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle),
+                                  onPressed: _addTag,
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.menu_book_outlined),
-                          title: const Text('选择世界书'),
-                          subtitle: Text(_selectedWorldBookLabel),
-                          trailing: _selectedWorldBookId != null
-                              ? IconButton(
-                                  icon: const Icon(Icons.edit_outlined),
-                                  tooltip: '编辑世界书',
-                                  onPressed: () => _editWorldBook(_selectedWorldBookId!),
-                                )
-                              : const Icon(Icons.chevron_right),
-                          onTap: _pickWorldBook,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.menu_book_outlined),
+                      title: const Text('选择世界书'),
+                      subtitle: Text(_selectedWorldBookLabel),
+                      trailing: _selectedWorldBookId != null
+                          ? IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              tooltip: '编辑世界书',
+                              onPressed: () =>
+                                  _editWorldBook(_selectedWorldBookId!),
+                            )
+                          : const Icon(Icons.chevron_right),
+                      onTap: _pickWorldBook,
+                    ),
+                  ],
                 ),
               ),
             ),
