@@ -72,12 +72,15 @@ class GalMessageView extends StatefulWidget {
   final void Function(ChatMessage message, int delta) onSwitchMessageVariant;
 
   @override
-  State<GalMessageView> createState() => _GalMessageViewState();
+  State<GalMessageView> createState() => GalMessageViewState();
 }
 
-class _GalMessageViewState extends State<GalMessageView> {
+class GalMessageViewState extends State<GalMessageView> {
   /// 正在浏览的历史消息索引；null 表示跟随最新消息。
   int? _browsingIndex;
+
+  /// 当前正在浏览的历史消息索引；null 表示跟随最新消息。
+  int? get browsingIndex => _browsingIndex;
 
   @override
   void didUpdateWidget(covariant GalMessageView oldWidget) {
@@ -85,6 +88,10 @@ class _GalMessageViewState extends State<GalMessageView> {
     if (oldWidget.sessionId != widget.sessionId) {
       _browsingIndex = null;
       return;
+    }
+    // 开始发送/重新生成时，让视图跟随新分支的最新消息（即对当前展示消息的回复）。
+    if (!oldWidget.isSending && widget.isSending && _browsingIndex != null) {
+      _browsingIndex = null;
     }
     // 消息变少（删除等）导致索引越界时回退到跟随最新。
     if (_browsingIndex != null &&
@@ -126,6 +133,13 @@ class _GalMessageViewState extends State<GalMessageView> {
 
   void _jumpToLatest() {
     setState(() => _browsingIndex = null);
+  }
+
+  /// 跳回最新消息。
+  void jumpToLatest() {
+    if (_browsingIndex != null) {
+      _jumpToLatest();
+    }
   }
 
   // --- 消息操作菜单 ---

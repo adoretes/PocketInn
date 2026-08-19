@@ -73,6 +73,8 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
+  final GlobalKey<GalMessageViewState> _galMessageViewKey =
+      GlobalKey<GalMessageViewState>();
   String _inputText = '';
   bool _galMode = false;
 
@@ -353,9 +355,7 @@ class _ChatPageState extends State<ChatPage> {
     if (group == null || !mounted) return;
 
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RegexRuleGroupEditPage(group: group),
-      ),
+      MaterialPageRoute(builder: (_) => RegexRuleGroupEditPage(group: group)),
     );
 
     await _viewModel.loadRegexRuleGroups();
@@ -396,9 +396,22 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
+    // gal 模式下从当前展示的消息处回复；未浏览历史时保持追加到末尾。
+    final replyToMessageIndex = _galMode
+        ? _galMessageViewKey.currentState?.browsingIndex
+        : null;
+
     _textController.clear();
     try {
-      await _viewModel.sendMessage(text);
+      final sendFuture = _viewModel.sendMessage(
+        text,
+        replyToMessageIndex: replyToMessageIndex,
+      );
+      // 发送后让 gal 视图跟随新分支的最新消息（即对当前展示消息的回复）。
+      if (_viewModel.isSending) {
+        _galMessageViewKey.currentState?.jumpToLatest();
+      }
+      await sendFuture;
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -752,6 +765,7 @@ class _ChatPageState extends State<ChatPage> {
                           padding: EdgeInsets.only(top: topContentPadding),
                           child: _galMode
                               ? GalMessageView(
+                                  key: _galMessageViewKey,
                                   visibleMessages: _viewModel.visibleMessages,
                                   updatesListenable: _viewModel,
                                   visibleMessagesProvider: () =>
@@ -795,8 +809,8 @@ class _ChatPageState extends State<ChatPage> {
                                       .currentUserSetting(),
                                   sessionId: session.id,
                                   selectedRegexRuleGroupIds:
-                                _viewModel.selectedRegexRuleGroupIds,
-                            onCopyMessage: _onCopyMessage,
+                                      _viewModel.selectedRegexRuleGroupIds,
+                                  onCopyMessage: _onCopyMessage,
                                   onEditMessage: _onEditMessage,
                                   onEditDraftOpeningMessage:
                                       _onEditDraftOpeningMessage,

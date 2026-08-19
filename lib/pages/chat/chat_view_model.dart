@@ -87,6 +87,7 @@ class ChatViewModel extends ChangeNotifier {
   ApiConnectionTestResult? _apiStatusResult;
   ChatCompletionCancelToken? _activeCompletionCancelToken;
   ChatMessage? _pendingUserMessage;
+  int? _replyToMessageIndex;
   String? _regeneratingUserMessageId;
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
@@ -127,6 +128,7 @@ class ChatViewModel extends ChangeNotifier {
       _draftOpeningAssistantMessages;
   int get draftOpeningMessageIndex => _draftOpeningMessageIndex;
   ChatMessage? get pendingUserMessage => _pendingUserMessage;
+  int? get replyToMessageIndex => _replyToMessageIndex;
   String? get regeneratingUserMessageId => _regeneratingUserMessageId;
   String get streamingAssistantText => _streamingAssistantText;
   String get streamingThinkingChain => _streamingThinkingChain;
@@ -134,13 +136,30 @@ class ChatViewModel extends ChangeNotifier {
   /// 当前生效的可见消息列表（含待发送、流式中、重新生成占位）。
   List<ChatMessage> get visibleMessages {
     final items = List<ChatMessage>.from(_messages);
-    final regeneratingUserMessageId = _regeneratingUserMessageId;
-    if (regeneratingUserMessageId != null &&
-        items.isNotEmpty &&
-        !items.last.isMe &&
-        items.last.parentId == regeneratingUserMessageId) {
-      items.removeLast();
+
+    // 从历史消息处回复/重新生成时，旧分支尾部已不再属于新路径，
+    // 先截断到目标消息，保证流式占位显示在正确位置。
+    final replyToMessageIndex = _replyToMessageIndex;
+    if (replyToMessageIndex != null &&
+        replyToMessageIndex >= 0 &&
+        replyToMessageIndex < items.length - 1) {
+      items.removeRange(replyToMessageIndex + 1, items.length);
     }
+
+    final regeneratingUserMessageId = _regeneratingUserMessageId;
+    if (regeneratingUserMessageId != null) {
+      final regeneratingIndex = items.indexWhere(
+        (m) => m.id == regeneratingUserMessageId,
+      );
+      if (regeneratingIndex >= 0 && regeneratingIndex < items.length - 1) {
+        items.removeRange(regeneratingIndex + 1, items.length);
+      } else if (items.isNotEmpty &&
+          !items.last.isMe &&
+          items.last.parentId == regeneratingUserMessageId) {
+        items.removeLast();
+      }
+    }
+
     final pendingUserMessage = _pendingUserMessage;
     if (pendingUserMessage != null) {
       items.add(pendingUserMessage);
@@ -533,8 +552,7 @@ class ChatViewModel extends ChangeNotifier {
     final result = await getIt<OpenAICompatibleApiService>().testConnection(
       config,
     );
-    if (_isDisposed ||
-        selectedApiModelIdNotifier.value != _apiStatusModelId) {
+    if (_isDisposed || selectedApiModelIdNotifier.value != _apiStatusModelId) {
       return;
     }
 
@@ -558,7 +576,10 @@ class ChatViewModel extends ChangeNotifier {
   // --- 发送 / 重新生成 ---
 
   /// 发送一条用户消息。[rawText] 为未经变量替换的原始输入。
-  Future<void> sendMessage(String rawText) async {
+  ///
+  /// [replyToMessageIndex] 用于 gal 模式中从当前展示的历史消息处回复：
+  /// 传入非末尾消息索引时，会以该消息为父节点创建新分支，而不是追加到旧分支末尾。
+  Future<void> sendMessage(String rawText, {int? replyToMessageIndex}) async {
     final session = _activeSession;
     final character = _activeCharacter;
     final text = replaceChatVariables(rawText.trim()).trim();
@@ -571,9 +592,29 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
 
+    final effectiveReplyToIndex =
+        replyToMessageIndex != null &&
+            replyToMessageIndex >= 0 &&
+            replyToMessageIndex < _messages.length - 1 &&
+            _messages[replyToMessageIndex].id != null
+        ? replyToMessageIndex
+        : null;
+    final chatMessages = effectiveReplyToIndex != null
+        ? _messages.take(effectiveReplyToIndex + 1).toList(growable: false)
+        : _messages;
+    final sessionForSend = effectiveReplyToIndex != null
+        ? session.copyWith(
+            currentLeafMessageId: _messages[effectiveReplyToIndex].id,
+          )
+        : session;
+    final parentMessageId = effectiveReplyToIndex != null
+        ? _messages[effectiveReplyToIndex].id
+        : null;
+
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
     _isSending = true;
+    _replyToMessageIndex = effectiveReplyToIndex;
     _pendingUserMessage = ChatMessage(text: text, isMe: true);
     _streamingAssistantText = '';
     _streamingThinkingChain = '';
@@ -583,10 +624,11 @@ class ChatViewModel extends ChangeNotifier {
 
     try {
       await getIt<ChatService>().sendMessage(
-        session: session,
+        session: sessionForSend,
         character: character,
-        chatMessages: _messages,
+        chatMessages: chatMessages,
         input: text,
+        parentMessageId: parentMessageId,
         selectedPresetId: _selectedPresetId,
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
@@ -644,7 +686,10 @@ class ChatViewModel extends ChangeNotifier {
   }) async {
     final session = _activeSession;
     final character = _activeCharacter;
-    if (session == null || character == null || _isSending || _isImpersonating) {
+    if (session == null ||
+        character == null ||
+        _isSending ||
+        _isImpersonating) {
       return;
     }
     if (userMessageIndex < 0 || userMessageIndex >= _messages.length) {
@@ -1189,6 +1234,7 @@ class ChatViewModel extends ChangeNotifier {
     bool? isSwitchingSession,
     bool? useStreaming,
     ChatMessage? pendingUserMessage,
+    int? replyToMessageIndex,
     String? regeneratingUserMessageId,
     String? streamingAssistantText,
     String? streamingThinkingChain,
@@ -1203,6 +1249,7 @@ class ChatViewModel extends ChangeNotifier {
     if (isSwitchingSession != null) _isSwitchingSession = isSwitchingSession;
     if (useStreaming != null) _useStreaming = useStreaming;
     _pendingUserMessage = pendingUserMessage;
+    _replyToMessageIndex = replyToMessageIndex;
     _regeneratingUserMessageId = regeneratingUserMessageId;
     if (streamingAssistantText != null) {
       _streamingAssistantText = streamingAssistantText;
@@ -1221,6 +1268,7 @@ class ChatViewModel extends ChangeNotifier {
 
   void _resetPendingMessages() {
     _pendingUserMessage = null;
+    _replyToMessageIndex = null;
     _regeneratingUserMessageId = null;
     _streamingAssistantText = '';
     _streamingThinkingChain = '';

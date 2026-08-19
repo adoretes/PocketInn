@@ -167,7 +167,7 @@ void main() {
       expect(visible[1].text, '...');
     });
 
-    test('重新生成时末尾非助手消息则不移除', () {
+    test('重新生成历史消息时截断旧分支尾部并追加占位', () {
       final userMsgId = 'user-msg-1';
       viewModel = ChatViewModel();
       viewModel.setStateForTesting(
@@ -183,8 +183,51 @@ void main() {
         useStreaming: true,
       );
       final visible = viewModel.visibleMessages;
-      // 末尾是用户消息，不移除，但追加占位助手消息
+      // 旧分支尾部不再属于新路径，只保留到目标用户消息并追加助手占位
+      expect(visible.length, 2);
+      expect(visible[0].text, '问题');
+      expect(visible[1].isMe, isFalse);
+      expect(visible[1].text, '...');
+    });
+
+    test('回复历史消息时截断旧分支尾部并追加待发送用户消息', () {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [_user('历史1'), _assistant('历史2'), _user('历史3')],
+        replyToMessageIndex: 1,
+        pendingUserMessage: _user('回复当前'),
+        isSending: true,
+        useStreaming: false,
+      );
+      final visible = viewModel.visibleMessages;
+      expect(visible.length, 3);
+      expect(visible[0].text, '历史1');
+      expect(visible[1].text, '历史2');
+      expect(visible[2].text, '回复当前');
+      expect(visible[2].isMe, isTrue);
+    });
+
+    test('回复历史消息时流式助手占位显示在目标位置之后', () {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [_user('历史1'), _assistant('历史2'), _user('历史3')],
+        replyToMessageIndex: 1,
+        pendingUserMessage: _user('回复当前'),
+        isSending: true,
+        useStreaming: true,
+        streamingAssistantText: '流式回复',
+      );
+      final visible = viewModel.visibleMessages;
       expect(visible.length, 4);
+      expect(visible[0].text, '历史1');
+      expect(visible[1].text, '历史2');
+      expect(visible[2].text, '回复当前');
+      expect(visible[3].text, '流式回复');
+      expect(visible[3].isMe, isFalse);
     });
   });
 

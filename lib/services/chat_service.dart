@@ -55,6 +55,7 @@ class ChatService {
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
     Future<ChatSession> Function()? persistSession,
+    String? parentMessageId,
   }) async {
     final normalizedInput = input.trim();
     if (normalizedInput.isEmpty) {
@@ -119,7 +120,7 @@ class ChatService {
 
     final userNode = await ChatDatabaseService.instance.appendUserMessage(
       sessionId: activeSession.id,
-      parentMessageId: activeSession.currentLeafMessageId,
+      parentMessageId: parentMessageId ?? activeSession.currentLeafMessageId,
       text: storedInput,
     );
 
@@ -569,9 +570,7 @@ class ChatService {
     return books;
   }
 
-  Future<List<RegexRuleGroup>> _loadRegexGroups(
-    Set<String> selectedIds,
-  ) async {
+  Future<List<RegexRuleGroup>> _loadRegexGroups(Set<String> selectedIds) async {
     if (selectedIds.isEmpty) return const [];
     try {
       final all = await RegexRuleGroupService.instance.loadAll();
@@ -590,13 +589,15 @@ class ChatService {
   ) async {
     final groups = await _loadRegexGroups(selectedRegexRuleGroupIds);
     if (groups.isEmpty) return text;
-    return RegexReplacementService().applyToMessage(
-      text: text,
-      groups: groups,
-      isUserMessage: true,
-      depth: 0,
-      mode: RegexExecutionMode.store,
-    ).text;
+    return RegexReplacementService()
+        .applyToMessage(
+          text: text,
+          groups: groups,
+          isUserMessage: true,
+          depth: 0,
+          mode: RegexExecutionMode.store,
+        )
+        .text;
   }
 
   /// 助手输出「写入」规则：仅对最新一条助手消息生效。
@@ -606,13 +607,15 @@ class ChatService {
   ) async {
     final groups = await _loadRegexGroups(selectedRegexRuleGroupIds);
     if (groups.isEmpty) return text;
-    return RegexReplacementService().applyToMessage(
-      text: text,
-      groups: groups,
-      isUserMessage: false,
-      depth: 0,
-      mode: RegexExecutionMode.store,
-    ).text;
+    return RegexReplacementService()
+        .applyToMessage(
+          text: text,
+          groups: groups,
+          isUserMessage: false,
+          depth: 0,
+          mode: RegexExecutionMode.store,
+        )
+        .text;
   }
 
   Future<ChatCompletionResult> _createCompletion(
@@ -670,13 +673,12 @@ class ChatService {
     final textBuffer = StringBuffer();
     final thinkingBuffer = StringBuffer();
     try {
-      await for (final progress
-          in api.createStreamingChatCompletion(
-            config,
-            messages: requestMessages,
-            defaults: _buildCompletionDefaults(preset, useStreaming: true),
-            cancellationToken: cancellationToken,
-          )) {
+      await for (final progress in api.createStreamingChatCompletion(
+        config,
+        messages: requestMessages,
+        defaults: _buildCompletionDefaults(preset, useStreaming: true),
+        cancellationToken: cancellationToken,
+      )) {
         if (progress.textDelta.isNotEmpty) {
           textBuffer.write(progress.textDelta);
         }
