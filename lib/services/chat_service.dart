@@ -15,6 +15,7 @@ import 'chat_character_resolver.dart';
 import 'chat_database_service.dart';
 import 'chat_memory_service.dart';
 import 'chat_variable_service.dart';
+import 'gal_choice_parser.dart';
 import 'i_openai_api_service.dart';
 import 'openai_compatible_api_service.dart';
 import 'preset_service.dart';
@@ -426,6 +427,101 @@ class ChatService {
       rethrow;
     } catch (error) {
       throw StateError('继续推进失败: $error');
+    }
+  }
+
+  /// Gal 模式选项生成：基于当前对话（含最新角色回复）生成若干玩家选项。
+  ///
+  /// 独立的子 API 请求（非流式、不写数据库），要求模型只输出
+  /// `{"choices": ["…", "…"]}` 形式的 JSON；解析失败返回空列表。
+  Future<List<String>> generateGalChoices({
+    required ChatSession session,
+    required ResolvedChatCharacter character,
+    required List<ChatMessage> chatMessages,
+    String? selectedPresetId,
+    String? selectedUserSettingId,
+    Set<String> selectedWorldBookIds = const <String>{},
+    Set<String> selectedRegexRuleGroupIds = const <String>{},
+    ChatCompletionCancelToken? cancellationToken,
+  }) async {
+    final config = resolvedSelectedApi;
+    if (config == null) {
+      throw StateError('当前未选择 API 模型');
+    }
+    if (config.model.trim().isEmpty) {
+      throw const FormatException('当前选中的模型未填写 Model ID');
+    }
+
+    final effectiveRegexRuleGroupIds = selectedRegexRuleGroupIds.isNotEmpty
+        ? selectedRegexRuleGroupIds
+        : session.selectedRegexRuleGroupIds.toSet();
+
+    final preset = await _resolvePreset(
+      selectedPresetId ?? session.selectedPresetId,
+    );
+    final userSetting = _resolveUserSetting(
+      selectedUserSettingId ?? session.selectedUserSettingId,
+    );
+    final worldBooks = await _loadSelectedWorldBooks(
+      selectedWorldBookIds.isNotEmpty
+          ? selectedWorldBookIds
+          : session.selectedWorldBookIds.toSet(),
+    );
+
+    final memoryContext = await _buildMemoryContext(
+      sessionId: session.id,
+      chatMessages: chatMessages,
+    );
+
+    final truncatedChatMessages = _truncateChatMessages(chatMessages);
+
+    final promptAssembly = PromptAssembler.build(
+      PromptAssemblyContext(
+        characterName: character.name,
+        characterCardData: character.cardJson,
+        userName: userSetting.name,
+        userSettingPrompt: userSetting.prompt,
+        preset: preset,
+        selectedWorldBooks: worldBooks,
+        chatMessages: truncatedChatMessages,
+        currentInput: '',
+        memoryContext: memoryContext,
+      ),
+    );
+    cancellationToken?.throwIfCancelled();
+
+    final fixedRole = preset.extra['fixed_prompts_role'] as String? ?? 'system';
+    final choiceInstruction = ChatVariableService.replacePlaceholders(
+      '你正在运行一个视觉小说游戏。请根据以上剧情进展，为玩家（{{user}}）生成接下来 '
+      '3-4 个可以采取的行动或台词选项。要求：\n'
+      '- 只输出严格的 JSON，格式为 {"choices": ["选项1", "选项2", "选项3"]}，不要输出任何其他内容；\n'
+      '- 每个选项一句话，使用与剧情一致的语言，以玩家视角描述；\n'
+      '- 选项之间要有明显的方向差异，不要重复。',
+      characterName: character.name,
+      userName: userSetting.name,
+    );
+
+    final requestMessages = <Map<String, dynamic>>[
+      for (final message in promptAssembly.messages)
+        {'role': message.role, 'content': message.content},
+      {'role': fixedRole, 'content': choiceInstruction},
+    ];
+
+    try {
+      final completion = await _createCompletionFromMessages(
+        config,
+        messages: requestMessages,
+        preset: preset,
+        useStreaming: false,
+        selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
+        cancellationToken: cancellationToken,
+      );
+      return parseGalChoices(completion.text);
+    } on ChatCompletionCancelledException {
+      rethrow;
+    } catch (_) {
+      // 选项生成失败不应打断聊天，静默返回空列表。
+      return const <String>[];
     }
   }
 

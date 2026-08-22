@@ -498,4 +498,47 @@ void main() {
       viewModel = ChatViewModel();
     });
   });
+
+  group('gal 模式选项', () {
+    test('选项状态初始为空且非生成中', () {
+      viewModel = ChatViewModel();
+      expect(viewModel.galChoices, isEmpty);
+      expect(viewModel.isGeneratingGalChoices, isFalse);
+      expect(viewModel.galChoicesMessageId, isNull);
+      expect(viewModel.galModeEnabled, isFalse);
+    });
+
+    test('setGalMode 切换状态并通知监听', () {
+      viewModel = ChatViewModel();
+      var notified = 0;
+      viewModel.addListener(() => notified++);
+      viewModel.setGalMode(true);
+      expect(viewModel.galModeEnabled, isTrue);
+      expect(notified, greaterThan(0));
+      viewModel.setGalMode(true); // 重复设置不通知
+      final notifiedAfterRepeat = notified;
+      viewModel.setGalMode(false);
+      expect(viewModel.galModeEnabled, isFalse);
+      expect(notified, greaterThan(notifiedAfterRepeat));
+    });
+
+    test('pickGalChoice 无会话时静默返回（走 sendMessage 守卫）', () async {
+      viewModel = ChatViewModel();
+      await expectLater(viewModel.pickGalChoice('敲门'), completes);
+      expect(viewModel.isSending, isFalse);
+    });
+
+    test('refreshGalChoices 无会话或末尾为用户消息时不生成选项', () async {
+      viewModel = ChatViewModel();
+      viewModel.setGalMode(true);
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [_user('你好', id: 'u1'), _assistant('欢迎回来', id: 'a1')],
+      );
+      await expectLater(viewModel.refreshGalChoices(), completes);
+      // 无已选择 API 模型时生成失败被静默吞掉，选项保持为空。
+      expect(viewModel.isGeneratingGalChoices, isFalse);
+    });
+  });
 }

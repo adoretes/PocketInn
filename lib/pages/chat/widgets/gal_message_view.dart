@@ -41,6 +41,10 @@ class GalMessageView extends StatefulWidget {
     required this.onContinueMessage,
     required this.onImpersonate,
     required this.onSwitchMessageVariant,
+    required this.galChoices,
+    required this.isGeneratingGalChoices,
+    required this.galChoicesMessageId,
+    required this.onPickGalChoice,
   });
 
   final List<ChatMessage> visibleMessages;
@@ -70,6 +74,18 @@ class GalMessageView extends StatefulWidget {
   final void Function(int index) onContinueMessage;
   final VoidCallback onImpersonate;
   final void Function(ChatMessage message, int delta) onSwitchMessageVariant;
+
+  /// 当前可点击的 gal 选项；空列表表示不显示。
+  final List<String> galChoices;
+
+  /// 选项是否正在通过子 API 生成。
+  final bool isGeneratingGalChoices;
+
+  /// 选项归属的角色消息 ID；与当前展示消息不一致时不显示。
+  final String? galChoicesMessageId;
+
+  /// 点击选项：以选项文本作为用户消息发送。
+  final void Function(String choice) onPickGalChoice;
 
   @override
   State<GalMessageView> createState() => GalMessageViewState();
@@ -280,6 +296,108 @@ class GalMessageViewState extends State<GalMessageView> {
       },
     );
     scrollController.dispose();
+  }
+
+  // --- Gal 选项 ---
+
+  /// 选项区：跟随最新、非发送中、当前为角色消息且选项归属匹配时显示。
+  Widget? _buildGalChoicesPanel(
+    ColorScheme colorScheme,
+    ChatMessage message,
+    bool isBrowsing,
+  ) {
+    if (isBrowsing || widget.isSending || message.isMe) return null;
+    final messageId = message.id;
+    if (messageId == null) return null;
+    // 生成中时选项尚未归属任何消息，只要跟随最新角色消息即可显示指示器。
+    if (!widget.isGeneratingGalChoices &&
+        messageId != widget.galChoicesMessageId) {
+      return null;
+    }
+    if (widget.galChoices.isEmpty && !widget.isGeneratingGalChoices) {
+      return null;
+    }
+    if (widget.galChoices.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '正在生成选项…',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (index, choice) in widget.galChoices.indexed)
+            Padding(
+              padding: EdgeInsets.only(top: index == 0 ? 0 : 6),
+              child: Material(
+                color: colorScheme.surface.withValues(alpha: 0.82),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: colorScheme.outlineVariant,
+                    width: 0.5,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => widget.onPickGalChoice(choice),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            choice,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   // --- 构建 ---
@@ -560,15 +678,23 @@ class GalMessageViewState extends State<GalMessageView> {
           left: 12,
           right: 12,
           bottom: 4,
-          child: _buildDialogBox(
-            context,
-            colorScheme,
-            settings,
-            mediaSize,
-            messageIndex,
-            message,
-            isBrowsing,
-            showActions,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildGalChoicesPanel(colorScheme, message, isBrowsing) ??
+                  const SizedBox.shrink(),
+              _buildDialogBox(
+                context,
+                colorScheme,
+                settings,
+                mediaSize,
+                messageIndex,
+                message,
+                isBrowsing,
+                showActions,
+              ),
+            ],
           ),
         ),
       ],

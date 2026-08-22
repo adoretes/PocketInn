@@ -88,6 +88,11 @@ class ChatViewModel extends ChangeNotifier {
   ChatCompletionCancelToken? _activeCompletionCancelToken;
   ChatMessage? _pendingUserMessage;
   int? _replyToMessageIndex;
+  bool _galModeEnabled = false;
+  List<String> _galChoices = const [];
+  bool _isGeneratingGalChoices = false;
+  String? _galChoicesMessageId;
+  int _galChoicesRequestGeneration = 0;
   String? _regeneratingUserMessageId;
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
@@ -118,6 +123,12 @@ class ChatViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isSwitchingSession => _isSwitchingSession;
   bool get isSending => _isSending;
+  bool get galModeEnabled => _galModeEnabled;
+  List<String> get galChoices => _galChoices;
+  bool get isGeneratingGalChoices => _isGeneratingGalChoices;
+
+  /// 选项归属的角色消息 ID；与当前展示消息不一致时 UI 不显示选项。
+  String? get galChoicesMessageId => _galChoicesMessageId;
   bool get isImpersonating => _isImpersonating;
   bool get useStreaming => _useStreaming;
   bool get isCheckingApiStatus => _isCheckingApiStatus;
@@ -573,6 +584,86 @@ class ChatViewModel extends ChangeNotifier {
     await ApiConfigService.instance.saveSelectedModelId(modelId);
   }
 
+  // --- Gal 模式选项 ---
+
+  /// 开关 gal 模式。关闭时清空已生成的选项。
+  void setGalMode(bool enabled) {
+    if (_galModeEnabled == enabled) return;
+    _galModeEnabled = enabled;
+    if (!enabled) {
+      _clearGalChoices();
+    }
+    notifyListeners();
+  }
+
+  /// 点击选项：作为用户消息发送，复用现有分支机制。
+  ///
+  /// [replyToMessageIndex] 与直接输入一致：gal 模式下从浏览中的
+  /// 历史消息处回复时传入，否则追加到当前分支末尾。
+  Future<void> pickGalChoice(String choice, {int? replyToMessageIndex}) {
+    return sendMessage(choice, replyToMessageIndex: replyToMessageIndex);
+  }
+
+  /// 手动为最新角色消息重新生成选项。
+  Future<void> refreshGalChoices() async {
+    await _maybeGenerateGalChoices(force: true);
+  }
+
+  void _clearGalChoices() {
+    _galChoices = const [];
+    _galChoicesMessageId = null;
+  }
+
+  /// 发送/重新生成等完成后调用：gal 模式下为最新的角色回复生成选项。
+  Future<void> _maybeGenerateGalChoices({bool force = false}) async {
+    if (_isDisposed) return;
+    if (!_galModeEnabled && !force) return;
+    if (_isSending || _isImpersonating) return;
+
+    final session = _activeSession;
+    final character = _activeCharacter;
+    if (session == null || character == null || _isDraftSession) return;
+
+    // 只对末尾的角色消息生成选项。
+    if (_messages.isEmpty || _messages.last.isMe) return;
+    final targetMessageId = _messages.last.id;
+    if (targetMessageId == null) return;
+
+    final requestGeneration = ++_galChoicesRequestGeneration;
+    _clearGalChoices();
+    _isGeneratingGalChoices = true;
+    notifyListeners();
+
+    try {
+      final choices = await getIt<ChatService>().generateGalChoices(
+        session: session,
+        character: character,
+        chatMessages: _messages,
+        selectedPresetId: _selectedPresetId,
+        selectedUserSettingId: _selectedUserSettingId,
+        selectedWorldBookIds: _selectedWorldBookIds,
+        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
+      );
+      if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
+        return;
+      }
+      _galChoices = choices;
+      _galChoicesMessageId = choices.isEmpty ? null : targetMessageId;
+    } catch (_) {
+      // 静默失败：选项区不显示即可。
+      if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
+        return;
+      }
+      _galChoices = const [];
+      _galChoicesMessageId = null;
+    } finally {
+      if (!_isDisposed && requestGeneration == _galChoicesRequestGeneration) {
+        _isGeneratingGalChoices = false;
+        notifyListeners();
+      }
+    }
+  }
+
   // --- 发送 / 重新生成 ---
 
   /// 发送一条用户消息。[rawText] 为未经变量替换的原始输入。
@@ -614,6 +705,7 @@ class ChatViewModel extends ChangeNotifier {
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
     _isSending = true;
+    _clearGalChoices();
     _replyToMessageIndex = effectiveReplyToIndex;
     _pendingUserMessage = ChatMessage(text: text, isMe: true);
     _streamingAssistantText = '';
@@ -669,6 +761,8 @@ class ChatViewModel extends ChangeNotifier {
           _activeCompletionCancelToken = null;
         }
         notifyListeners();
+        // gal 模式下回复完成后自动生成选项。
+        unawaited(_maybeGenerateGalChoices());
       }
     }
   }
@@ -761,6 +855,8 @@ class ChatViewModel extends ChangeNotifier {
           _activeCompletionCancelToken = null;
         }
         notifyListeners();
+        // gal 模式下回复完成后自动生成选项。
+        unawaited(_maybeGenerateGalChoices());
       }
     }
   }
@@ -857,6 +953,8 @@ class ChatViewModel extends ChangeNotifier {
           _activeCompletionCancelToken = null;
         }
         notifyListeners();
+        // gal 模式下回复完成后自动生成选项。
+        unawaited(_maybeGenerateGalChoices());
       }
     }
   }

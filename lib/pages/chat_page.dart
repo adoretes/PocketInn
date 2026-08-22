@@ -426,6 +426,31 @@ class _ChatPageState extends State<ChatPage> {
     _viewModel.stopStreaming();
   }
 
+  /// 点击 gal 选项：作为用户消息发送（gal 模式下从浏览中的消息处回复）。
+  Future<void> _pickGalChoice(
+    String choice, {
+    int? replyToMessageIndex,
+  }) async {
+    try {
+      final sendFuture = _viewModel.pickGalChoice(
+        choice,
+        replyToMessageIndex: replyToMessageIndex,
+      );
+      // 发送后让 gal 视图跟随新分支的最新消息。
+      if (_viewModel.isSending) {
+        _galMessageViewKey.currentState?.jumpToLatest();
+      }
+      await sendFuture;
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
   // --- 消息操作 ---
 
   void _onCopyMessage(ChatMessage msg) {
@@ -689,6 +714,7 @@ class _ChatPageState extends State<ChatPage> {
             tooltip: _galMode ? '退出 gal 模式' : 'gal 模式',
             onPressed: () {
               setState(() => _galMode = !_galMode);
+              _viewModel.setGalMode(_galMode);
             },
           ),
           ListenableBuilder(
@@ -794,6 +820,21 @@ class _ChatPageState extends State<ChatPage> {
                                   onImpersonate: _onImpersonate,
                                   onSwitchMessageVariant:
                                       _onSwitchMessageVariant,
+                                  galChoices: _viewModel.galChoices,
+                                  isGeneratingGalChoices:
+                                      _viewModel.isGeneratingGalChoices,
+                                  galChoicesMessageId:
+                                      _viewModel.galChoicesMessageId,
+                                  onPickGalChoice: (choice) {
+                                    final replyToMessageIndex = _galMessageViewKey
+                                        .currentState
+                                        ?.browsingIndex;
+                                    _pickGalChoice(
+                                      choice,
+                                      replyToMessageIndex:
+                                          replyToMessageIndex,
+                                    );
+                                  },
                                 )
                               : ChatMessageList(
                                   visibleMessages: _viewModel.visibleMessages,
