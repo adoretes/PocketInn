@@ -330,8 +330,25 @@ abstract class AppSettings with _$AppSettings {
     @Default(true) bool inputGlassEffect,
     /// 是否在 API 状态弹窗中显示请求日志入口
     @Default(true) bool showApiRequestLogEntry,
+    /// Gal 模式选项生成专用模型 id，null 表示跟随当前选中的 API 模型
+    String? galChoiceApiModelId,
+    /// Gal 模式下是否在角色回复后自动生成选项
+    @Default(true) bool galChoiceAutoGenerate,
+    /// Gal 模式每次生成的选项数量（2-6）
+    @Default(4) int galChoiceCount,
+    /// Gal 模式选项生成自定义提示词，null 使用内置默认
+    String? galChoicePrompt,
   }) = _AppSettings;
 }
+
+/// Gal 模式选项生成的内置默认提示词。
+/// {{user}}/{{char}} 由 ChatVariableService 替换，{{count}} 由调用方替换为选项数量。
+const String kDefaultGalChoicePrompt =
+    '你正在运行一个视觉小说游戏。请根据以上剧情进展，为玩家（{{user}}）生成接下来 '
+    '{{count}} 个可以采取的行动或台词选项。要求：\n'
+    '- 只输出严格的 JSON，格式为 {"choices": ["选项1", "选项2", "选项3"]}，不要输出任何其他内容；\n'
+    '- 每个选项一句话，使用与剧情一致的语言，以玩家视角描述；\n'
+    '- 选项之间要有明显的方向差异，不要重复。';
 
 final ValueNotifier<AppSettings> appSettingsNotifier = ValueNotifier(
   const AppSettings(),
@@ -351,6 +368,10 @@ void updateAppSettings({
   double? backgroundOpacity,
   bool? inputGlassEffect,
   bool? showApiRequestLogEntry,
+  Object? galChoiceApiModelId = _unset,
+  bool? galChoiceAutoGenerate,
+  int? galChoiceCount,
+  Object? galChoicePrompt = _unset,
 }) {
   var newSettings = appSettingsNotifier.value;
   if (colorMode != null) {
@@ -374,6 +395,26 @@ void updateAppSettings({
   if (showApiRequestLogEntry != null) {
     newSettings = newSettings.copyWith(
       showApiRequestLogEntry: showApiRequestLogEntry,
+    );
+  }
+  if (galChoiceApiModelId != _unset) {
+    newSettings = newSettings.copyWith(
+      galChoiceApiModelId: galChoiceApiModelId as String?,
+    );
+  }
+  if (galChoiceAutoGenerate != null) {
+    newSettings = newSettings.copyWith(
+      galChoiceAutoGenerate: galChoiceAutoGenerate,
+    );
+  }
+  if (galChoiceCount != null) {
+    newSettings = newSettings.copyWith(
+      galChoiceCount: galChoiceCount.clamp(2, 6),
+    );
+  }
+  if (galChoicePrompt != _unset) {
+    newSettings = newSettings.copyWith(
+      galChoicePrompt: galChoicePrompt as String?,
     );
   }
   appSettingsNotifier.value = newSettings;

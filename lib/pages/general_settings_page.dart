@@ -83,6 +83,40 @@ class GeneralSettingsPage extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: 'Gal 模式',
+                subtitle: '视觉小说选项生成配置',
+                child: Column(
+                  children: [
+                    _SwitchTile(
+                      title: '自动生成选项',
+                      subtitle: '角色回复后自动生成选项，关闭后仅可通过刷新按钮手动生成',
+                      value: settings.galChoiceAutoGenerate,
+                      onChanged: (value) => updateAppSettings(
+                        galChoiceAutoGenerate: value,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _SliderTile(
+                      title: '选项数量',
+                      subtitle: '每次生成的玩家选项数量',
+                      value: settings.galChoiceCount.toDouble(),
+                      min: 2,
+                      max: 6,
+                      divisions: 4,
+                      displayValue: (value) => '${value.toInt()} 个',
+                      onChanged: (value) => updateAppSettings(
+                        galChoiceCount: value.toInt(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _GalChoiceApiTile(modelId: settings.galChoiceApiModelId),
+                    const SizedBox(height: 12),
+                    _GalChoicePromptTile(prompt: settings.galChoicePrompt),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -1037,6 +1071,256 @@ class _SliderTile extends StatelessWidget {
               onChanged: onChanged,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Gal 模式选项生成专用 API 选择。null 表示跟随当前选中的 API 模型。
+class _GalChoiceApiTile extends StatelessWidget {
+  const _GalChoiceApiTile({required this.modelId});
+
+  final String? modelId;
+
+  static String? _labelFor(List<ApiConfig> configs, String? modelId) {
+    if (modelId == null) return null;
+    for (final provider in configs) {
+      for (final model in provider.models) {
+        if (model.id == modelId) {
+          return '${provider.name} · ${model.modelId}';
+        }
+      }
+    }
+    return null;
+  }
+
+  void _showPicker(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ValueListenableBuilder<List<ApiConfig>>(
+            valueListenable: apiConfigsNotifier,
+            builder: (context, configs, _) {
+              return DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.6,
+                builder: (context, scrollController) {
+                  return ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          '选项生成 API',
+                          style: Theme.of(sheetContext).textTheme.titleMedium,
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.follow_the_signs_outlined),
+                        title: const Text('跟随当前选中模型'),
+                        subtitle: const Text('使用聊天当前选中的 API 模型'),
+                        trailing: modelId == null ? const Icon(Icons.check) : null,
+                        onTap: () {
+                          updateAppSettings(galChoiceApiModelId: null);
+                          Navigator.of(sheetContext).pop();
+                        },
+                      ),
+                      for (final provider in configs) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text(
+                            provider.name,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(sheetContext)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        for (final model in provider.models)
+                          ListTile(
+                            dense: true,
+                            title: Text(model.modelId),
+                            trailing: model.id == modelId
+                                ? const Icon(Icons.check)
+                                : null,
+                            onTap: () {
+                              updateAppSettings(galChoiceApiModelId: model.id);
+                              Navigator.of(sheetContext).pop();
+                            },
+                          ),
+                      ],
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final currentLabel = ValueListenableBuilder<List<ApiConfig>>(
+      valueListenable: apiConfigsNotifier,
+      builder: (context, configs, _) {
+        final label = _labelFor(configs, modelId) ?? '跟随当前选中模型';
+        return Text(
+          label,
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+        );
+      },
+    );
+
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: () => _showPicker(context),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '选项生成 API',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    currentLabel,
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Gal 模式选项生成自定义提示词。null 表示使用内置默认。
+class _GalChoicePromptTile extends StatelessWidget {
+  const _GalChoicePromptTile({required this.prompt});
+
+  final String? prompt;
+
+  Future<void> _edit(BuildContext context) async {
+    final controller = TextEditingController(
+      text: prompt ?? kDefaultGalChoicePrompt,
+    );
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('选项生成提示词'),
+          content: SizedBox(
+            width: 480,
+            child: TextField(
+              controller: controller,
+              maxLines: null,
+              minLines: 8,
+              decoration: const InputDecoration(
+                hintText: '支持 {{user}}、{{char}}、{{count}} 占位符',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                updateAppSettings(galChoicePrompt: null);
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('恢复默认'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+    if (result != null) {
+      final trimmed = result.trim();
+      updateAppSettings(
+        galChoicePrompt:
+            trimmed.isEmpty || trimmed == kDefaultGalChoicePrompt.trim()
+            ? null
+            : trimmed,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: () => _edit(context),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '自定义提示词',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      prompt == null ? '默认' : '已自定义',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+            ],
+          ),
         ),
       ),
     );

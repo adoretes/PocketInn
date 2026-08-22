@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:get_it/get_it.dart';
 
 import '../data/api_configs.dart';
+import '../data/app_settings.dart';
 import '../data/mock_user_settings.dart';
 import '../models/api_config.dart';
 import '../models/chat_message.dart';
@@ -444,7 +445,9 @@ class ChatService {
     Set<String> selectedRegexRuleGroupIds = const <String>{},
     ChatCompletionCancelToken? cancellationToken,
   }) async {
-    final config = resolvedSelectedApi;
+    final settings = appSettingsNotifier.value;
+    final config =
+        resolveApiByModelId(settings.galChoiceApiModelId) ?? resolvedSelectedApi;
     if (config == null) {
       throw StateError('当前未选择 API 模型');
     }
@@ -491,12 +494,9 @@ class ChatService {
     cancellationToken?.throwIfCancelled();
 
     final fixedRole = preset.extra['fixed_prompts_role'] as String? ?? 'system';
+    final rawPrompt = settings.galChoicePrompt ?? kDefaultGalChoicePrompt;
     final choiceInstruction = ChatVariableService.replacePlaceholders(
-      '你正在运行一个视觉小说游戏。请根据以上剧情进展，为玩家（{{user}}）生成接下来 '
-      '3-4 个可以采取的行动或台词选项。要求：\n'
-      '- 只输出严格的 JSON，格式为 {"choices": ["选项1", "选项2", "选项3"]}，不要输出任何其他内容；\n'
-      '- 每个选项一句话，使用与剧情一致的语言，以玩家视角描述；\n'
-      '- 选项之间要有明显的方向差异，不要重复。',
+      rawPrompt.replaceAll('{{count}}', '${settings.galChoiceCount}'),
       characterName: character.name,
       userName: userSetting.name,
     );

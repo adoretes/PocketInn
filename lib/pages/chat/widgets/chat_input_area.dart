@@ -27,6 +27,8 @@ class ChatInputArea extends StatelessWidget {
     required this.onWorldBookPressed,
     required this.onRegexRuleGroupPressed,
     required this.onPresetPressed,
+    required this.galModeEnabled,
+    required this.onGalModeToggle,
     required this.onSendPressed,
     required this.onStopGeneratingPressed,
   });
@@ -48,6 +50,8 @@ class ChatInputArea extends StatelessWidget {
   final ValueChanged<BuildContext> onWorldBookPressed;
   final ValueChanged<BuildContext> onRegexRuleGroupPressed;
   final ValueChanged<BuildContext> onPresetPressed;
+  final bool galModeEnabled;
+  final VoidCallback onGalModeToggle;
   final VoidCallback onSendPressed;
   final VoidCallback onStopGeneratingPressed;
 
@@ -70,6 +74,9 @@ class ChatInputArea extends StatelessWidget {
         .where((item) => selectedRegexRuleGroupIds.contains(item.id))
         .length;
     final regexRuleGroupColor = selectedRegexRuleGroupCount > 0
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
+    final galModeColor = galModeEnabled
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
     final useGlassEffect = hasBackground && settings.inputGlassEffect;
@@ -212,6 +219,23 @@ class ChatInputArea extends StatelessWidget {
                   ),
                   tooltip: '预设',
                 ),
+              ),
+              IconButton(
+                icon: Icon(
+                  galModeEnabled
+                      ? Icons.auto_stories
+                      : Icons.auto_stories_outlined,
+                  size: 22,
+                  color: galModeColor,
+                ),
+                onPressed: onGalModeToggle,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
+                tooltip: galModeEnabled ? '退出 gal 模式' : 'gal 模式',
               ),
               const Spacer(),
               IconButton(

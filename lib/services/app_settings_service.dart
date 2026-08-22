@@ -46,6 +46,12 @@ class AppSettingsService {
   static const String _keyCustomFontFilePath = 'app_custom_font_file_path';
   static const String _keyShowApiRequestLogEntry =
       'app_show_api_request_log_entry';
+  static const String _keyGalChoiceApiModelId =
+      'app_gal_choice_api_model_id';
+  static const String _keyGalChoiceAutoGenerate =
+      'app_gal_choice_auto_generate';
+  static const String _keyGalChoiceCount = 'app_gal_choice_count';
+  static const String _keyGalChoicePrompt = 'app_gal_choice_prompt';
 
   /// 加载应用设置
   Future<AppSettings> load() async {
@@ -83,6 +89,14 @@ class AppSettingsService {
       backgroundOpacity: backgroundOpacity ?? 0.85,
       inputGlassEffect: inputGlassEffect ?? true,
       showApiRequestLogEntry: showApiRequestLogEntry ?? true,
+      galChoiceApiModelId:
+          _normalizeOptionalString(storage.getString(_keyGalChoiceApiModelId)),
+      galChoiceAutoGenerate:
+          storage.getBool(_keyGalChoiceAutoGenerate) ?? true,
+      galChoiceCount: (storage.getInt(_keyGalChoiceCount) ?? 4).clamp(2, 6),
+      galChoicePrompt: _normalizeOptionalString(
+        storage.getString(_keyGalChoicePrompt),
+      ),
     );
   }
 
@@ -103,6 +117,19 @@ class AppSettingsService {
       storage.setBool(
         _keyShowApiRequestLogEntry,
         settings.showApiRequestLogEntry,
+      ),
+      storage.setString(
+        _keyGalChoiceApiModelId,
+        settings.galChoiceApiModelId ?? '',
+      ),
+      storage.setBool(
+        _keyGalChoiceAutoGenerate,
+        settings.galChoiceAutoGenerate,
+      ),
+      storage.setInt(_keyGalChoiceCount, settings.galChoiceCount),
+      storage.setString(
+        _keyGalChoicePrompt,
+        settings.galChoicePrompt ?? '',
       ),
     ]);
 
@@ -172,6 +199,12 @@ class AppSettingsService {
       return fallback;
     }
     return values[index];
+  }
+
+  /// 空字符串视为 null（未设置）
+  String? _normalizeOptionalString(String? value) {
+    final trimmed = value?.trim();
+    return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
   }
 
   Map<AppThemePreset, AppThemeConfig> _loadThemeConfigs({

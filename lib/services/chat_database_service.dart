@@ -16,7 +16,7 @@ class ChatDatabaseService {
   static final ChatDatabaseService instance = ChatDatabaseService._();
   final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
 
-  static const int _dbVersion = 4;
+  static const int _dbVersion = 5;
   static const String _dbName = 'pocket_inn_chat.db';
 
   Database? _database;
@@ -141,6 +141,12 @@ class ChatDatabaseService {
         )
       ''');
     }
+    if (oldVersion < 5 && newVersion >= 5) {
+      // v5: chat_sessions 新增 gal_mode_enabled 列，用于会话级 gal 模式开关状态。
+      await db.execute(
+        'ALTER TABLE chat_sessions ADD COLUMN gal_mode_enabled INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   Future<void> _createSchema(Database db) async {
@@ -151,6 +157,7 @@ class ChatDatabaseService {
         character_id TEXT NOT NULL,
         selected_user_setting_id TEXT,
         selected_preset_id TEXT,
+        gal_mode_enabled INTEGER NOT NULL DEFAULT 0,
         current_leaf_message_id TEXT,
         last_message_preview TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
@@ -218,6 +225,7 @@ class ChatDatabaseService {
     List<String> selectedWorldBookIds = const [],
     List<String> selectedRegexRuleGroupIds = const [],
     String? selectedPresetId,
+    bool galModeEnabled = false,
     List<String> openingAssistantMessages = const [],
     int activeOpeningMessageIndex = 0,
   }) async {
@@ -242,6 +250,7 @@ class ChatDatabaseService {
       selectedWorldBookIds: List<String>.from(selectedWorldBookIds),
       selectedRegexRuleGroupIds: List<String>.from(selectedRegexRuleGroupIds),
       selectedPresetId: selectedPresetId,
+      galModeEnabled: galModeEnabled,
       currentLeafMessageId: activeOpeningIndex >= 0
           ? openingMessageIds[activeOpeningIndex]
           : null,
@@ -350,6 +359,7 @@ class ChatDatabaseService {
     required List<String> selectedWorldBookIds,
     required List<String> selectedRegexRuleGroupIds,
     required String? selectedPresetId,
+    required bool galModeEnabled,
   }) async {
     await _db.transaction((tx) async {
       await tx.update(
@@ -357,6 +367,7 @@ class ChatDatabaseService {
         {
           'selected_user_setting_id': selectedUserSettingId,
           'selected_preset_id': selectedPresetId,
+          'gal_mode_enabled': galModeEnabled ? 1 : 0,
         },
         where: 'id = ?',
         whereArgs: [sessionId],
@@ -1344,6 +1355,7 @@ class ChatDatabaseService {
       'character_id': session.characterId,
       'selected_user_setting_id': session.selectedUserSettingId,
       'selected_preset_id': session.selectedPresetId,
+      'gal_mode_enabled': session.galModeEnabled ? 1 : 0,
       'current_leaf_message_id': session.currentLeafMessageId,
       'last_message_preview': session.lastMessagePreview,
       'created_at': session.createdAt.toIso8601String(),
@@ -1364,6 +1376,7 @@ class ChatDatabaseService {
       selectedWorldBookIds: worldBookIds,
       selectedRegexRuleGroupIds: regexRuleGroupIds,
       selectedPresetId: map['selected_preset_id'] as String?,
+      galModeEnabled: (map['gal_mode_enabled'] as int? ?? 0) == 1,
       currentLeafMessageId: map['current_leaf_message_id'] as String?,
       lastMessagePreview: map['last_message_preview'] as String? ?? '',
       createdAt: DateTime.parse(map['created_at'] as String),

@@ -31,6 +31,20 @@ ResolvedApiConfig? get resolvedSelectedApi {
   return t?.provider.resolve(t.model);
 }
 
+/// 按全局唯一的模型 id 解析 API 配置（如 Gal 模式选项生成专用模型）。
+/// 找不到（未设置、已被删除等）返回 null，由调用方回退到 [resolvedSelectedApi]。
+ResolvedApiConfig? resolveApiByModelId(String? modelId) {
+  if (modelId == null || modelId.isEmpty) return null;
+  for (final c in apiConfigsNotifier.value) {
+    for (final m in c.models) {
+      if (m.id == modelId) {
+        return c.resolve(m);
+      }
+    }
+  }
+  return null;
+}
+
 Future<void> initializeApiConfigs() async {
   final result = await ApiConfigService.instance.loadAllWithSelection();
   apiConfigsNotifier.value = List<ApiConfig>.unmodifiable(result.configs);

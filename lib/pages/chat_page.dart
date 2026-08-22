@@ -76,7 +76,6 @@ class _ChatPageState extends State<ChatPage> {
   final GlobalKey<GalMessageViewState> _galMessageViewKey =
       GlobalKey<GalMessageViewState>();
   String _inputText = '';
-  bool _galMode = false;
 
   late final ChatViewModel _viewModel;
 
@@ -385,6 +384,10 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  void _toggleGalMode() {
+    _viewModel.setGalMode(!_viewModel.galModeEnabled);
+  }
+
   // --- 发送 / 终止 ---
 
   Future<void> _onSendPressed() async {
@@ -397,7 +400,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     // gal 模式下从当前展示的消息处回复；未浏览历史时保持追加到末尾。
-    final replyToMessageIndex = _galMode
+    final replyToMessageIndex = _viewModel.galModeEnabled
         ? _galMessageViewKey.currentState?.browsingIndex
         : null;
 
@@ -707,16 +710,6 @@ class _ChatPageState extends State<ChatPage> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: Icon(
-              _galMode ? Icons.auto_stories : Icons.auto_stories_outlined,
-            ),
-            tooltip: _galMode ? '退出 gal 模式' : 'gal 模式',
-            onPressed: () {
-              setState(() => _galMode = !_galMode);
-              _viewModel.setGalMode(_galMode);
-            },
-          ),
           ListenableBuilder(
             listenable: _viewModel,
             builder: (context, _) {
@@ -778,7 +771,7 @@ class _ChatPageState extends State<ChatPage> {
                       child: Container(
                         color: Theme.of(context).colorScheme.surface.withValues(
                           // gal 模式下减半遮罩，让角色立绘更突出。
-                          alpha: _galMode
+                          alpha: _viewModel.galModeEnabled
                               ? settings.backgroundOpacity * 0.5
                               : settings.backgroundOpacity,
                         ),
@@ -789,7 +782,7 @@ class _ChatPageState extends State<ChatPage> {
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(top: topContentPadding),
-                          child: _galMode
+                          child: _viewModel.galModeEnabled
                               ? GalMessageView(
                                   key: _galMessageViewKey,
                                   visibleMessages: _viewModel.visibleMessages,
@@ -885,6 +878,8 @@ class _ChatPageState extends State<ChatPage> {
                         onWorldBookPressed: _onWorldBookPressed,
                         onRegexRuleGroupPressed: _onRegexRuleGroupPressed,
                         onPresetPressed: _onPresetPressed,
+                        galModeEnabled: _viewModel.galModeEnabled,
+                        onGalModeToggle: _toggleGalMode,
                         onSendPressed: _onSendPressed,
                         onStopGeneratingPressed: _onStopGeneratingPressed,
                       ),

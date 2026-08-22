@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/service_locator.dart';
 import '../../data/api_configs.dart';
+import '../../data/app_settings.dart';
 import '../../data/mock_user_settings.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
@@ -347,6 +348,8 @@ class ChatViewModel extends ChangeNotifier {
       ..clear()
       ..addAll(initialWorldBookIds);
     _selectedRegexRuleGroupIds.clear();
+    _galModeEnabled = false;
+    _clearGalChoices();
     _isDraftSession = true;
     _draftOpeningAssistantMessages = openingMessages;
     _isLoading = false;
@@ -405,6 +408,8 @@ class ChatViewModel extends ChangeNotifier {
       _selectedPresetId = null;
       _selectedWorldBookIds.clear();
       _selectedRegexRuleGroupIds.clear();
+      _galModeEnabled = false;
+      _clearGalChoices();
       _isDraftSession = false;
       _draftOpeningAssistantMessages = const [];
       _draftOpeningMessageIndex = 0;
@@ -449,6 +454,8 @@ class ChatViewModel extends ChangeNotifier {
     _selectedRegexRuleGroupIds
       ..clear()
       ..addAll(bundle.session.selectedRegexRuleGroupIds);
+    _galModeEnabled = bundle.session.galModeEnabled;
+    _clearGalChoices();
     _isDraftSession = false;
     _draftOpeningAssistantMessages = const [];
     _draftOpeningMessageIndex = 0;
@@ -487,6 +494,7 @@ class ChatViewModel extends ChangeNotifier {
         selectedWorldBookIds: _selectedWorldBookIds.toList(),
         selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
         selectedPresetId: _selectedPresetId,
+        galModeEnabled: _galModeEnabled,
       );
       notifyListeners();
       return;
@@ -498,6 +506,7 @@ class ChatViewModel extends ChangeNotifier {
       selectedWorldBookIds: _selectedWorldBookIds.toList(),
       selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
       selectedPresetId: _selectedPresetId,
+      galModeEnabled: _galModeEnabled,
     );
     if (_isDisposed) {
       return;
@@ -507,6 +516,7 @@ class ChatViewModel extends ChangeNotifier {
       selectedWorldBookIds: _selectedWorldBookIds.toList(),
       selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
       selectedPresetId: _selectedPresetId,
+      galModeEnabled: _galModeEnabled,
     );
     notifyListeners();
   }
@@ -528,6 +538,7 @@ class ChatViewModel extends ChangeNotifier {
       selectedWorldBookIds: _selectedWorldBookIds.toList(),
       selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds.toList(),
       selectedPresetId: _selectedPresetId,
+      galModeEnabled: _galModeEnabled,
       openingAssistantMessages: _draftOpeningAssistantMessages,
       activeOpeningMessageIndex: _draftOpeningMessageIndex,
     );
@@ -586,14 +597,15 @@ class ChatViewModel extends ChangeNotifier {
 
   // --- Gal 模式选项 ---
 
-  /// 开关 gal 模式。关闭时清空已生成的选项。
-  void setGalMode(bool enabled) {
+  /// 开关 gal 模式，状态按会话持久化。关闭时清空已生成的选项。
+  Future<void> setGalMode(bool enabled) async {
     if (_galModeEnabled == enabled) return;
     _galModeEnabled = enabled;
     if (!enabled) {
       _clearGalChoices();
     }
     notifyListeners();
+    await _persistSessionConfig();
   }
 
   /// 点击选项：作为用户消息发送，复用现有分支机制。
@@ -618,6 +630,7 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> _maybeGenerateGalChoices({bool force = false}) async {
     if (_isDisposed) return;
     if (!_galModeEnabled && !force) return;
+    if (!appSettingsNotifier.value.galChoiceAutoGenerate && !force) return;
     if (_isSending || _isImpersonating) return;
 
     final session = _activeSession;

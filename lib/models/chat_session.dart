@@ -28,6 +28,7 @@ abstract class ChatSession with _$ChatSession {
     required List<String> selectedWorldBookIds,
     @Default([]) List<String> selectedRegexRuleGroupIds,
     String? selectedPresetId,
+    @Default(false) bool galModeEnabled,
     String? currentLeafMessageId,
     @Default('') String lastMessagePreview,
     required DateTime createdAt,
