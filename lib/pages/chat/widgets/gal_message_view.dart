@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../data/app_settings.dart';
 import '../../../models/chat_message.dart';
-import '../../../models/user_setting.dart';
-import '../../../services/chat_character_resolver.dart';
 import '../../../widgets/chat_markdown_body.dart';
 import '../utils/pseudo_thinking_chain.dart';
 import 'chat_message_list.dart';
+import 'message_action_availability.dart';
+import 'message_view_params.dart';
+import 'regex_display_text.dart';
 import 'thinking_chain_widget.dart';
 
 /// Gal 模式消息视图（ADV 风格）。
@@ -16,38 +17,26 @@ import 'thinking_chain_widget.dart';
 /// 工具栏「更多」弹出与气泡一致的消息操作菜单；「记录」按钮打开内嵌
 /// [ChatMessageList] 的历史弹层。
 ///
-/// 参数与 [ChatMessageList] 对齐，便于在聊天页中直接互换。
+/// 公共参数见 [params]；浏览索引由外部（ChatViewModel）持有，
+/// 通过 [browsingIndex]/[onBrowsingIndexChanged] 受控传入。
 class GalMessageView extends StatefulWidget {
   const GalMessageView({
     super.key,
-    required this.visibleMessages,
+    required this.params,
     required this.updatesListenable,
     required this.visibleMessagesProvider,
-    required this.inputTapRegionGroupId,
-    required this.isSending,
-    required this.isImpersonating,
-    required this.regeneratingUserMessageId,
-    required this.isDraftSession,
-    required this.activeCharacter,
-    required this.currentUserSetting,
-    required this.sessionId,
-    required this.selectedRegexRuleGroupIds,
-    required this.onCopyMessage,
-    required this.onEditMessage,
-    required this.onEditDraftOpeningMessage,
-    required this.onDeleteMessage,
-    required this.onRegenerateFromUserMessage,
-    required this.onRegenerateMessage,
-    required this.onContinueMessage,
-    required this.onImpersonate,
-    required this.onSwitchMessageVariant,
+    required this.browsingIndex,
+    required this.onBrowsingIndexChanged,
     required this.galChoices,
     required this.isGeneratingGalChoices,
     required this.galChoicesMessageId,
+    required this.galChoicesError,
     required this.onPickGalChoice,
+    required this.onRefreshGalChoices,
   });
 
-  final List<ChatMessage> visibleMessages;
+  /// 与 ChatMessageList 共享的公共参数。
+  final MessageViewParams params;
 
   /// 历史弹层内监听消息变化用（传入 ChatViewModel 即可）。
   final Listenable updatesListenable;
@@ -55,25 +44,11 @@ class GalMessageView extends StatefulWidget {
   /// 历史弹层内重新读取最新可见消息列表。
   final List<ChatMessage> Function() visibleMessagesProvider;
 
-  final Object inputTapRegionGroupId;
-  final bool isSending;
-  final bool isImpersonating;
-  final String? regeneratingUserMessageId;
-  final bool isDraftSession;
-  final ResolvedChatCharacter? activeCharacter;
-  final UserSetting? currentUserSetting;
-  final String? sessionId;
-  final Set<String> selectedRegexRuleGroupIds;
+  /// 正在浏览的历史消息索引；null 表示跟随最新消息。
+  final int? browsingIndex;
 
-  final void Function(ChatMessage msg) onCopyMessage;
-  final void Function(int index) onEditMessage;
-  final VoidCallback onEditDraftOpeningMessage;
-  final void Function(int index) onDeleteMessage;
-  final void Function(int index) onRegenerateFromUserMessage;
-  final void Function(int index) onRegenerateMessage;
-  final void Function(int index) onContinueMessage;
-  final VoidCallback onImpersonate;
-  final void Function(ChatMessage message, int delta) onSwitchMessageVariant;
+  /// 浏览索引变化时回写（由 ChatViewModel 持有该状态）。
+  final ValueChanged<int?> onBrowsingIndexChanged;
 
   /// 当前可点击的 gal 选项；空列表表示不显示。
   final List<String> galChoices;
@@ -84,36 +59,30 @@ class GalMessageView extends StatefulWidget {
   /// 选项归属的角色消息 ID；与当前展示消息不一致时不显示。
   final String? galChoicesMessageId;
 
+  /// 上一次选项生成是否失败；失败时显示重试入口。
+  final bool galChoicesError;
+
   /// 点击选项：以选项文本作为用户消息发送。
   final void Function(String choice) onPickGalChoice;
 
+  /// 手动（重新）生成选项：供「生成选项」按钮与失败重试使用。
+  final VoidCallback onRefreshGalChoices;
+
   @override
-  State<GalMessageView> createState() => GalMessageViewState();
+  State<GalMessageView> createState() => _GalMessageViewState();
 }
 
-class GalMessageViewState extends State<GalMessageView> {
-  /// 正在浏览的历史消息索引；null 表示跟随最新消息。
-  int? _browsingIndex;
-
-  /// 当前正在浏览的历史消息索引；null 表示跟随最新消息。
-  int? get browsingIndex => _browsingIndex;
-
-  @override
-  void didUpdateWidget(covariant GalMessageView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.sessionId != widget.sessionId) {
-      _browsingIndex = null;
-      return;
+class _GalMessageViewState extends State<GalMessageView>
+    with RegexDisplayTextMixin<GalMessageView> {
+  /// 当前生效的浏览索引；越界（如消息被删除）时视为跟随最新。
+  int? get _browsingIndex {
+    final index = widget.browsingIndex;
+    if (index == null ||
+        index < 0 ||
+        index >= widget.params.visibleMessages.length) {
+      return null;
     }
-    // 开始发送/重新生成时，让视图跟随新分支的最新消息（即对当前展示消息的回复）。
-    if (!oldWidget.isSending && widget.isSending && _browsingIndex != null) {
-      _browsingIndex = null;
-    }
-    // 消息变少（删除等）导致索引越界时回退到跟随最新。
-    if (_browsingIndex != null &&
-        _browsingIndex! >= widget.visibleMessages.length) {
-      _browsingIndex = null;
-    }
+    return index;
   }
 
   int _effectiveIndex(int length) {
@@ -124,38 +93,25 @@ class GalMessageViewState extends State<GalMessageView> {
   }
 
   void _retreat() {
-    final length = widget.visibleMessages.length;
+    final length = widget.params.visibleMessages.length;
     if (length < 2) return;
-    setState(() {
-      final current = _browsingIndex ?? length - 1;
-      if (current > 0) {
-        _browsingIndex = current - 1;
-      }
-    });
+    final current = _browsingIndex ?? length - 1;
+    if (current > 0) {
+      widget.onBrowsingIndexChanged(current - 1);
+    }
   }
 
   void _advance() {
-    final length = widget.visibleMessages.length;
+    final length = widget.params.visibleMessages.length;
     final browsing = _browsingIndex;
     if (browsing == null) return;
-    setState(() {
-      // 推进到最新一条后恢复跟随。
-      _browsingIndex = browsing < length - 1 ? browsing + 1 : null;
-      if (_browsingIndex != null && _browsingIndex! >= length - 1) {
-        _browsingIndex = null;
-      }
-    });
+    // 推进到最新一条后恢复跟随。
+    final next = browsing + 1 >= length - 1 ? null : browsing + 1;
+    widget.onBrowsingIndexChanged(next);
   }
 
   void _jumpToLatest() {
-    setState(() => _browsingIndex = null);
-  }
-
-  /// 跳回最新消息。
-  void jumpToLatest() {
-    if (_browsingIndex != null) {
-      _jumpToLatest();
-    }
+    widget.onBrowsingIndexChanged(null);
   }
 
   // --- 消息操作菜单 ---
@@ -184,23 +140,15 @@ class GalMessageViewState extends State<GalMessageView> {
     required int messageIndex,
     required ChatMessage message,
   }) async {
-    // 与 ChatMessageList 一致的操作可用性判断。
-    final isLastMessage = messageIndex == widget.visibleMessages.length - 1;
-    final isLastUserMessageWithoutReply = isLastMessage && message.isMe;
-    final isLastCharacterMessage = isLastMessage && !message.isMe;
-    final isRegeneratingUserMessage =
-        widget.regeneratingUserMessageId != null &&
-        message.id == widget.regeneratingUserMessageId;
-    final hasPersistedMessage = message.id != null;
-    final hasDraftOpeningActions =
-        widget.isDraftSession && !hasPersistedMessage && !message.isMe;
-    final showActions =
-        (hasPersistedMessage || hasDraftOpeningActions) &&
-        (!widget.isSending || isRegeneratingUserMessage);
-    if (!showActions) return;
-    final canEdit =
-        (hasPersistedMessage || hasDraftOpeningActions) && !widget.isSending;
-    final canDelete = hasPersistedMessage && !widget.isSending;
+    final availability = evaluateMessageActions(
+      message: message,
+      messageIndex: messageIndex,
+      messageCount: widget.params.visibleMessages.length,
+      isSending: widget.params.isSending,
+      isDraftSession: widget.params.isDraftSession,
+      regeneratingUserMessageId: widget.params.regeneratingUserMessageId,
+    );
+    if (!availability.showActions) return;
 
     final overlayBox =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
@@ -214,43 +162,48 @@ class GalMessageViewState extends State<GalMessageView> {
       position: position,
       items: [
         _buildMenuItem('copy', Icons.copy_outlined, '复制'),
-        if (canEdit) _buildMenuItem('edit', Icons.edit_outlined, '编辑'),
-        if (canDelete) _buildMenuItem('delete', Icons.delete_outline, '删除'),
-        if (isLastUserMessageWithoutReply && !isRegeneratingUserMessage)
+        if (availability.canEdit)
+          _buildMenuItem('edit', Icons.edit_outlined, '编辑'),
+        if (availability.canDelete)
+          _buildMenuItem('delete', Icons.delete_outline, '删除'),
+        if (availability.isLastUserMessageWithoutReply &&
+            !availability.isRegeneratingUserMessage)
           _buildMenuItem('generate', Icons.auto_awesome, '生成回复'),
-        if (isLastCharacterMessage && !widget.isImpersonating)
+        if (availability.isLastCharacterMessage &&
+            !widget.params.isImpersonating)
           _buildMenuItem('regenerate', Icons.refresh, '重新生成'),
-        if (isLastCharacterMessage && !widget.isImpersonating)
+        if (availability.isLastCharacterMessage &&
+            !widget.params.isImpersonating)
           _buildMenuItem('continue', Icons.arrow_forward, '继续推进'),
-        if (isLastCharacterMessage)
+        if (availability.isLastCharacterMessage)
           _buildMenuItem(
             'impersonate',
             Icons.lightbulb_outline,
             '助手帮答',
-            enabled: !widget.isImpersonating,
+            enabled: !widget.params.isImpersonating,
           ),
       ],
     );
     if (!mounted || action == null) return;
 
     if (action == 'copy') {
-      widget.onCopyMessage(message);
+      widget.params.onCopyMessage(message);
     } else if (action == 'edit') {
-      if (hasDraftOpeningActions) {
-        widget.onEditDraftOpeningMessage();
+      if (availability.hasDraftOpeningActions) {
+        widget.params.onEditDraftOpeningMessage();
       } else {
-        widget.onEditMessage(messageIndex);
+        widget.params.onEditMessage(messageIndex);
       }
     } else if (action == 'delete') {
-      widget.onDeleteMessage(messageIndex);
+      widget.params.onDeleteMessage(messageIndex);
     } else if (action == 'generate') {
-      widget.onRegenerateFromUserMessage(messageIndex);
+      widget.params.onRegenerateFromUserMessage(messageIndex);
     } else if (action == 'regenerate') {
-      widget.onRegenerateMessage(messageIndex);
+      widget.params.onRegenerateMessage(messageIndex);
     } else if (action == 'continue') {
-      widget.onContinueMessage(messageIndex);
+      widget.params.onContinueMessage(messageIndex);
     } else if (action == 'impersonate') {
-      widget.onImpersonate();
+      widget.params.onImpersonate();
     }
   }
 
@@ -269,26 +222,10 @@ class GalMessageViewState extends State<GalMessageView> {
             listenable: widget.updatesListenable,
             builder: (context, _) {
               return ChatMessageList(
-                visibleMessages: widget.visibleMessagesProvider(),
+                params: widget.params.withVisibleMessages(
+                  widget.visibleMessagesProvider(),
+                ),
                 scrollController: scrollController,
-                inputTapRegionGroupId: widget.inputTapRegionGroupId,
-                isSending: widget.isSending,
-                isImpersonating: widget.isImpersonating,
-                regeneratingUserMessageId: widget.regeneratingUserMessageId,
-                isDraftSession: widget.isDraftSession,
-                activeCharacter: widget.activeCharacter,
-                currentUserSetting: widget.currentUserSetting,
-                sessionId: widget.sessionId,
-                selectedRegexRuleGroupIds: widget.selectedRegexRuleGroupIds,
-                onCopyMessage: widget.onCopyMessage,
-                onEditMessage: widget.onEditMessage,
-                onEditDraftOpeningMessage: widget.onEditDraftOpeningMessage,
-                onDeleteMessage: widget.onDeleteMessage,
-                onRegenerateFromUserMessage: widget.onRegenerateFromUserMessage,
-                onRegenerateMessage: widget.onRegenerateMessage,
-                onContinueMessage: widget.onContinueMessage,
-                onImpersonate: widget.onImpersonate,
-                onSwitchMessageVariant: widget.onSwitchMessageVariant,
               );
             },
           ),
@@ -300,24 +237,20 @@ class GalMessageViewState extends State<GalMessageView> {
 
   // --- Gal 选项 ---
 
-  /// 选项区：跟随最新、非发送中、当前为角色消息且选项归属匹配时显示。
+  /// 选项区：跟随最新、非发送中、当前为角色消息时显示。
+  ///
+  /// 依次呈现：生成中指示器 → 失败重试入口 → 选项列表；
+  /// 无选项且未在生成时给出手动生成入口（供关闭自动生成时使用）。
   Widget? _buildGalChoicesPanel(
     ColorScheme colorScheme,
     ChatMessage message,
     bool isBrowsing,
   ) {
-    if (isBrowsing || widget.isSending || message.isMe) return null;
+    if (isBrowsing || widget.params.isSending || message.isMe) return null;
     final messageId = message.id;
     if (messageId == null) return null;
-    // 生成中时选项尚未归属任何消息，只要跟随最新角色消息即可显示指示器。
-    if (!widget.isGeneratingGalChoices &&
-        messageId != widget.galChoicesMessageId) {
-      return null;
-    }
-    if (widget.galChoices.isEmpty && !widget.isGeneratingGalChoices) {
-      return null;
-    }
-    if (widget.galChoices.isEmpty) {
+
+    if (widget.isGeneratingGalChoices) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Row(
@@ -340,6 +273,60 @@ class GalMessageViewState extends State<GalMessageView> {
               ),
             ),
           ],
+        ),
+      );
+    }
+
+    if (widget.galChoicesError) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: widget.onRefreshGalChoices,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, size: 14, color: colorScheme.error),
+                const SizedBox(width: 6),
+                Text(
+                  '选项生成失败，点击重试',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (messageId != widget.galChoicesMessageId || widget.galChoices.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: widget.onRefreshGalChoices,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome, size: 14, color: colorScheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  '生成选项',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -431,7 +418,7 @@ class GalMessageViewState extends State<GalMessageView> {
     bool isBrowsing,
     bool showActions,
   ) {
-    final total = widget.visibleMessages.length;
+    final total = widget.params.visibleMessages.length;
     final positionStyle = TextStyle(
       fontSize: 12,
       color: colorScheme.onSurfaceVariant,
@@ -468,7 +455,7 @@ class GalMessageViewState extends State<GalMessageView> {
             icon: Icons.chevron_left,
             tooltip: '上一版本',
             onPressed: message.index > 1
-                ? () => widget.onSwitchMessageVariant(message, -1)
+                ? () => widget.params.onSwitchMessageVariant(message, -1)
                 : null,
             colorScheme: colorScheme,
           ),
@@ -483,7 +470,7 @@ class GalMessageViewState extends State<GalMessageView> {
             icon: Icons.chevron_right,
             tooltip: '下一版本',
             onPressed: message.index < message.total
-                ? () => widget.onSwitchMessageVariant(message, 1)
+                ? () => widget.params.onSwitchMessageVariant(message, 1)
                 : null,
             colorScheme: colorScheme,
           ),
@@ -516,7 +503,6 @@ class GalMessageViewState extends State<GalMessageView> {
   }
 
   Widget _buildDialogBox(
-    BuildContext context,
     ColorScheme colorScheme,
     AppSettings settings,
     Size mediaSize,
@@ -526,16 +512,22 @@ class GalMessageViewState extends State<GalMessageView> {
     bool showActions,
   ) {
     final isMe = message.isMe;
+    // 与 ChatMessageList 一致：先做正则显示替换，再做伪思维链提取。
+    final displayText = displayTextFor(
+      message,
+      widget.params.visibleMessages.length - 1 - messageIndex,
+      widget.params.selectedRegexRuleGroupIds,
+    );
     final (pseudoChain, cleanedText, pseudoChainComplete) = isMe
-        ? (null, message.text, true)
-        : extractPseudoThinkingChain(message.text);
+        ? (null, displayText, true)
+        : extractPseudoThinkingChain(displayText);
 
-    final userSettingName = widget.currentUserSetting?.name ?? '';
+    final userSettingName = widget.params.currentUserSetting?.name ?? '';
     final speakerName = isMe
         ? (userSettingName.isNotEmpty ? userSettingName : '我')
-        : (widget.activeCharacter?.name ?? '角色');
+        : (widget.params.activeCharacter?.name ?? '角色');
     final speakerColor = isMe
-        ? (widget.currentUserSetting?.color ?? colorScheme.primary)
+        ? (widget.params.currentUserSetting?.color ?? colorScheme.primary)
         : colorScheme.primary;
 
     return GestureDetector(
@@ -643,7 +635,7 @@ class GalMessageViewState extends State<GalMessageView> {
 
   @override
   Widget build(BuildContext context) {
-    final messages = widget.visibleMessages;
+    final messages = widget.params.visibleMessages;
     if (messages.isEmpty) {
       return const Center(child: Text('这段聊天还没有消息'));
     }
@@ -654,16 +646,14 @@ class GalMessageViewState extends State<GalMessageView> {
     final message = messages[messageIndex];
     final isBrowsing = _browsingIndex != null;
 
-    // 与 ChatMessageList 一致的操作可用性判断。
-    final isRegeneratingUserMessage =
-        widget.regeneratingUserMessageId != null &&
-        message.id == widget.regeneratingUserMessageId;
-    final hasPersistedMessage = message.id != null;
-    final hasDraftOpeningActions =
-        widget.isDraftSession && !hasPersistedMessage && !message.isMe;
-    final showActions =
-        (hasPersistedMessage || hasDraftOpeningActions) &&
-        (!widget.isSending || isRegeneratingUserMessage);
+    final availability = evaluateMessageActions(
+      message: message,
+      messageIndex: messageIndex,
+      messageCount: messages.length,
+      isSending: widget.params.isSending,
+      isDraftSession: widget.params.isDraftSession,
+      regeneratingUserMessageId: widget.params.regeneratingUserMessageId,
+    );
 
     return Stack(
       children: [
@@ -685,14 +675,13 @@ class GalMessageViewState extends State<GalMessageView> {
               _buildGalChoicesPanel(colorScheme, message, isBrowsing) ??
                   const SizedBox.shrink(),
               _buildDialogBox(
-                context,
                 colorScheme,
                 settings,
                 mediaSize,
                 messageIndex,
                 message,
                 isBrowsing,
-                showActions,
+                availability.showActions,
               ),
             ],
           ),

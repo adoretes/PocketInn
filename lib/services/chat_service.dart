@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 
 import '../data/api_configs.dart';
@@ -447,14 +448,14 @@ class ChatService {
   }) async {
     final settings = appSettingsNotifier.value;
     final config =
-        resolveApiByModelId(settings.galChoiceApiModelId) ?? resolvedSelectedApi;
+        resolveApiByModelId(settings.galChoiceApiModelId) ??
+        resolvedSelectedApi;
     if (config == null) {
       throw StateError('当前未选择 API 模型');
     }
     if (config.model.trim().isEmpty) {
       throw const FormatException('当前选中的模型未填写 Model ID');
     }
-
     final effectiveRegexRuleGroupIds = selectedRegexRuleGroupIds.isNotEmpty
         ? selectedRegexRuleGroupIds
         : session.selectedRegexRuleGroupIds.toSet();
@@ -519,9 +520,11 @@ class ChatService {
       return parseGalChoices(completion.text);
     } on ChatCompletionCancelledException {
       rethrow;
-    } catch (_) {
-      // 选项生成失败不应打断聊天，静默返回空列表。
-      return const <String>[];
+    } catch (error) {
+      // 记录失败原因并上抛：由 ViewModel 转为失败态并提示重试，
+      // 不影响聊天主流程。
+      debugPrint('gal 选项生成失败: $error');
+      rethrow;
     }
   }
 

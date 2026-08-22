@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,21 +10,21 @@ import 'package:pocket_inn/models/api_config.dart';
 import 'package:pocket_inn/pages/general_settings_page.dart';
 import 'package:pocket_inn/services/storage_service.dart';
 
-const MethodChannel _pathProviderChannel = MethodChannel(
-  'plugins.flutter.io/path_provider',
-);
+import '../helpers/test_env.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  late Directory tempDir;
+
   setUpAll(() async {
-    final tempDir = await Directory.systemTemp.createTemp('pocket_inn_gal_');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(_pathProviderChannel, (methodCall) async {
-          return tempDir.path;
-        });
+    tempDir = setUpPathProviderMocks();
     SharedPreferences.setMockInitialValues({});
     await StorageService.instance.initialize();
+  });
+
+  tearDownAll(() {
+    tearDownPathProviderMocks(tempDir);
   });
 
   testWidgets('Gal 模式设置分组渲染与交互', (tester) async {
@@ -40,9 +39,7 @@ void main() {
       ),
     ];
 
-    await tester.pumpWidget(
-      const MaterialApp(home: GeneralSettingsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: GeneralSettingsPage()));
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
@@ -55,10 +52,7 @@ void main() {
 
     // 切换自动生成开关
     final autoSwitchTile = find
-        .ancestor(
-          of: find.text('自动生成选项'),
-          matching: find.byType(InkWell),
-        )
+        .ancestor(of: find.text('自动生成选项'), matching: find.byType(InkWell))
         .first;
     await tester.ensureVisible(autoSwitchTile);
     await tester.pumpAndSettle();
@@ -74,8 +68,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(appSettingsNotifier.value.galChoiceApiModelId, 'm1');
     expect(
-      resolveApiByModelId(appSettingsNotifier.value.galChoiceApiModelId)
-          ?.model,
+      resolveApiByModelId(appSettingsNotifier.value.galChoiceApiModelId)?.model,
       'gpt-x',
     );
 
@@ -111,17 +104,21 @@ void main() {
 
   testWidgets('选项数量滑块更新设置', (tester) async {
     await initializeAppSettings();
-    await tester.pumpWidget(
-      const MaterialApp(home: GeneralSettingsPage()),
+    await tester.pumpWidget(const MaterialApp(home: GeneralSettingsPage()));
+    await tester.pumpAndSettle();
+    // 直接触发滑块的 onChanged（手势模拟在测试环境不稳定），
+    // 验证滑块到最大值时设置随之更新。
+    // 列表惰性构建：先滚到 gal 分区，再取最后一个（列表最下方的）滑块。
+    await tester.scrollUntilVisible(
+      find.text('选项数量'),
+      200,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-
-    final sliderCenter = tester.getCenter(find.byType(Slider));
-    await tester.dragFrom(
-      sliderCenter,
-      const Offset(120, 0),
-    ); // 拖到最右侧 => 6
+    expect(appSettingsNotifier.value.galChoiceCount, kGalChoiceCountMin + 2);
+    final slider = tester.widget<Slider>(find.byType(Slider).last);
+    slider.onChanged!(kGalChoiceCountMax.toDouble());
     await tester.pumpAndSettle();
-    expect(appSettingsNotifier.value.galChoiceCount, inInclusiveRange(2, 6));
+    expect(appSettingsNotifier.value.galChoiceCount, kGalChoiceCountMax);
   });
 }

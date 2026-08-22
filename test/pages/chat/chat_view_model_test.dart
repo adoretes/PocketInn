@@ -1,13 +1,24 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pocket_inn/core/service_locator.dart';
 import 'package:pocket_inn/data/api_configs.dart';
 import 'package:pocket_inn/data/mock_user_settings.dart';
+import 'package:pocket_inn/models/api_config.dart';
 import 'package:pocket_inn/models/chat_message.dart';
 import 'package:pocket_inn/models/chat_session.dart';
 import 'package:pocket_inn/pages/chat/chat_view_model.dart';
 import 'package:pocket_inn/services/chat_character_resolver.dart';
 import 'package:pocket_inn/services/chat_database_service.dart';
+import 'package:pocket_inn/services/chat_service.dart';
+import 'package:pocket_inn/services/i_openai_api_service.dart';
+import 'package:pocket_inn/services/openai_compatible_api_service.dart';
 import 'package:pocket_inn/services/preset_service.dart';
+import 'package:pocket_inn/services/storage_service.dart';
+
+import '../../helpers/test_env.dart';
 
 /// 构建一个最小可用的 [ChatSession]，供测试使用。
 ChatSession _makeSession({String id = 'session-1'}) {
@@ -38,11 +49,49 @@ ChatMessage _user(String text, {String? id}) =>
 ChatMessage _assistant(String text, {String? id, String? parentId}) =>
     ChatMessage(text: text, isMe: false, id: id, parentId: parentId);
 
+/// 选项生成成功路径用的假 API：非流式补全由 [behavior] 控制。
+class _FakeOpenAiApiService implements IOpenAiApiService {
+  Future<ChatCompletionResult> Function() behavior = () async =>
+      const ChatCompletionResult(text: '');
+  int callCount = 0;
+
+  @override
+  Future<ChatCompletionResult> createChatCompletion(
+    ResolvedApiConfig config, {
+    required List<Map<String, dynamic>> messages,
+    Map<String, dynamic>? defaults,
+    ChatCompletionCancelToken? cancellationToken,
+  }) async {
+    callCount++;
+    return await behavior();
+  }
+
+  @override
+  Stream<ChatCompletionProgress> createStreamingChatCompletion(
+    ResolvedApiConfig config, {
+    required List<Map<String, dynamic>> messages,
+    Map<String, dynamic>? defaults,
+    ChatCompletionCancelToken? cancellationToken,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<FetchedModelInfo>> fetchModels(ResolvedApiConfig config) =>
+      throw UnimplementedError();
+
+  @override
+  Future<ApiConnectionTestResult> testConnection(ResolvedApiConfig config) =>
+      throw UnimplementedError();
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late ChatViewModel viewModel;
 
-  setUp(() {
-    getIt.reset();
+  setUp(() async {
+    // reset 内部有 await，必须等它完成再注册，否则其延续任务会把
+    // 随后注册的服务全部清掉。
+    await getIt.reset();
     // VM 构造函数访问 changeNotifier 字段，无需 initialize()。
     getIt.registerSingleton<ChatDatabaseService>(ChatDatabaseService.instance);
     getIt.registerSingleton<PresetService>(PresetService.instance);
@@ -528,17 +577,134 @@ void main() {
       expect(viewModel.isSending, isFalse);
     });
 
-    test('refreshGalChoices 无会话或末尾为用户消息时不生成选项', () async {
+    test('refreshGalChoices 在 ChatService 缺失时置失败态而不抛出', () async {
       viewModel = ChatViewModel();
       viewModel.setGalMode(true);
       viewModel.setStateForTesting(
         activeSession: _makeSession(),
         activeCharacter: _makeCharacter(),
-        messages: [_user('你好', id: 'u1'), _assistant('欢迎回来', id: 'a1')],
+        messages: [
+          _user('你好', id: 'u1'),
+          _assistant('欢迎回来', id: 'a1'),
+        ],
+      );
+      // 本组 setUp 未注册 ChatService，getIt 解析抛错由 VM 转为失败态。
+      await expectLater(viewModel.refreshGalChoices(), completes);
+      expect(viewModel.galChoicesError, isTrue);
+      expect(viewModel.galChoices, isEmpty);
+      expect(viewModel.isGeneratingGalChoices, isFalse);
+    });
+  });
+
+  group('gal 选项生成', () {
+    late Directory tempDir;
+    late _FakeOpenAiApiService api;
+
+    setUpAll(() async {
+      tempDir = setUpPathProviderMocks();
+      SharedPreferences.setMockInitialValues({});
+      await StorageService.instance.initialize();
+      await PresetService.instance.initialize();
+      // 竞态用例中 setGalMode 会触发会话配置持久化。
+      await ChatDatabaseService.instance.initialize();
+    });
+
+    tearDownAll(() {
+      tearDownPathProviderMocks(tempDir);
+    });
+
+    setUp(() {
+      api = _FakeOpenAiApiService();
+      getIt.registerSingleton<ChatService>(ChatService.instance);
+      getIt.registerSingleton<IOpenAiApiService>(api);
+      apiConfigsNotifier.value = [
+        const ApiConfig(
+          id: 'p1',
+          name: 'Provider A',
+          baseUrl: 'https://a.example.com',
+          apiKey: 'sk-test',
+          models: [ApiModel(id: 'm1', modelId: 'gpt-x')],
+        ),
+      ];
+      selectedApiModelIdNotifier.value = 'm1';
+    });
+
+    tearDown(() {
+      selectedApiModelIdNotifier.value = null;
+      apiConfigsNotifier.value = [];
+    });
+
+    /// 开启 gal 模式并注入末尾为角色消息的会话状态。
+    ChatViewModel makeGalViewModel() {
+      viewModel = ChatViewModel();
+      // 会话尚未注入时切换开关：_persistSessionConfig 直接返回，不触 DB。
+      viewModel.setGalMode(true);
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [
+          _user('你好', id: 'u1'),
+          _assistant('欢迎回来', id: 'a1'),
+        ],
+      );
+      return viewModel;
+    }
+
+    test('成功生成选项并记录归属消息', () async {
+      api.behavior = () async =>
+          const ChatCompletionResult(text: '{"choices": ["推开房门", "转身离开"]}');
+      final vm = makeGalViewModel();
+      await vm.refreshGalChoices();
+      expect(api.callCount, 1);
+      expect(vm.galChoices, ['推开房门', '转身离开']);
+      expect(vm.galChoicesMessageId, 'a1');
+      expect(vm.galChoicesError, isFalse);
+      expect(vm.isGeneratingGalChoices, isFalse);
+    });
+
+    test('生成失败时置失败态且不抛出', () async {
+      api.behavior = () async => throw const FormatException('boom');
+      final vm = makeGalViewModel();
+      await expectLater(vm.refreshGalChoices(), completes);
+      expect(vm.galChoicesError, isTrue);
+      expect(vm.galChoices, isEmpty);
+      expect(vm.isGeneratingGalChoices, isFalse);
+    });
+
+    test('gal 模式关闭时手动刷新也不发起请求', () async {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [
+          _user('你好', id: 'u1'),
+          _assistant('欢迎回来', id: 'a1'),
+        ],
       );
       await expectLater(viewModel.refreshGalChoices(), completes);
-      // 无已选择 API 模型时生成失败被静默吞掉，选项保持为空。
+      expect(api.callCount, 0, reason: 'force 不应绕过 gal 模式开关');
       expect(viewModel.isGeneratingGalChoices, isFalse);
+    });
+
+    test('生成中关闭 gal 模式后过期响应被丢弃', () async {
+      final completer = Completer<ChatCompletionResult>();
+      api.behavior = () => completer.future;
+      final vm = makeGalViewModel();
+      expect(vm.isGeneratingGalChoices, isFalse);
+
+      final pending = vm.refreshGalChoices();
+      expect(vm.isGeneratingGalChoices, isTrue);
+
+      await vm.setGalMode(false);
+      expect(vm.isGeneratingGalChoices, isFalse);
+
+      completer.complete(
+        const ChatCompletionResult(text: '{"choices": ["过期选项"]}'),
+      );
+      await pending;
+      expect(vm.galChoices, isEmpty, reason: '过期响应不应写入已清空的状态');
+      expect(vm.galChoicesMessageId, isNull);
+      expect(vm.galChoicesError, isFalse);
     });
   });
 }

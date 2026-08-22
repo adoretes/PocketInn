@@ -4,17 +4,15 @@ import 'package:pocket_inn/services/gal_choice_parser.dart';
 void main() {
   group('parseGalChoices', () {
     test('解析标准 JSON 对象', () {
-      expect(
-        parseGalChoices('{"choices": ["推开房门", "询问她的名字", "保持沉默"]}'),
-        ['推开房门', '询问她的名字', '保持沉默'],
-      );
+      expect(parseGalChoices('{"choices": ["推开房门", "询问她的名字", "保持沉默"]}'), [
+        '推开房门',
+        '询问她的名字',
+        '保持沉默',
+      ]);
     });
 
     test('解析纯数组', () {
-      expect(
-        parseGalChoices('["选项一", "选项二"]'),
-        ['选项一', '选项二'],
-      );
+      expect(parseGalChoices('["选项一", "选项二"]'), ['选项一', '选项二']);
     });
 
     test('剥除 Markdown 围栏与前后杂文本', () {
@@ -25,10 +23,7 @@ void main() {
     test('接受对象数组形式', () {
       const raw =
           '[{"text": "进门"}, {"label": "离开"}, {"content": "等待"}, {"choice": "回头"}]';
-      expect(
-        parseGalChoices(raw),
-        ['进门', '离开', '等待', '回头'],
-      );
+      expect(parseGalChoices(raw), ['进门', '离开', '等待', '回头']);
     });
 
     test('接受映射形式的 choices', () {
@@ -49,6 +44,25 @@ void main() {
 
     test('未闭合 JSON 返回空列表', () {
       expect(parseGalChoices('{"choices": ["a"'), isEmpty);
+    });
+
+    test('前文孤立花括号时尝试后续候选块', () {
+      const raw = '好的，选项{1}：{"choices": ["继续追问", "转身离开"]}';
+      expect(parseGalChoices(raw), ['继续追问', '转身离开']);
+    });
+
+    test('首个候选非法 JSON 时回退到后续候选', () {
+      const raw = '结果 {"a" "b"} 然后 {"choices": ["动手", "观望"]}';
+      expect(parseGalChoices(raw), ['动手', '观望']);
+    });
+
+    test('接受 options 与中文「选项」键', () {
+      expect(parseGalChoices('{"options": ["前进"]}'), ['前进']);
+      expect(parseGalChoices('{"选项": ["后退"]}'), ['后退']);
+    });
+
+    test('num 与 bool 项转为字符串', () {
+      expect(parseGalChoices('["true", 1]'), ['true', '1']);
     });
   });
 }

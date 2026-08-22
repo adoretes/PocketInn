@@ -135,29 +135,37 @@ abstract class ChatTextThemeSettings with _$ChatTextThemeSettings {
     @Default(false) bool enableMessageTextShadow,
     int? bodyTextColorPaletteIndex,
     int? bodyTextColorDarkPaletteIndex,
-    @Default(ChatTextStyleConfig(
-      paletteIndex: 0,
-      fontStyleMode: ChatTextFontStyleMode.bold,
-      opacity: 1.0,
-    ))
+    @Default(
+      ChatTextStyleConfig(
+        paletteIndex: 0,
+        fontStyleMode: ChatTextFontStyleMode.bold,
+        opacity: 1.0,
+      ),
+    )
     ChatTextStyleConfig quotedTextStyle,
-    @Default(ChatTextStyleConfig(
-      paletteIndex: 6,
-      fontStyleMode: ChatTextFontStyleMode.platform,
-      opacity: 0.9,
-    ))
+    @Default(
+      ChatTextStyleConfig(
+        paletteIndex: 6,
+        fontStyleMode: ChatTextFontStyleMode.platform,
+        opacity: 0.9,
+      ),
+    )
     ChatTextStyleConfig bracketTextStyle,
-    @Default(ChatTextStyleConfig(
-      paletteIndex: 1,
-      fontStyleMode: ChatTextFontStyleMode.italic,
-      opacity: 0.65,
-    ))
+    @Default(
+      ChatTextStyleConfig(
+        paletteIndex: 1,
+        fontStyleMode: ChatTextFontStyleMode.italic,
+        opacity: 0.65,
+      ),
+    )
     ChatTextStyleConfig italicTextStyle,
-    @Default(ChatTextStyleConfig(
-      paletteIndex: 4,
-      fontStyleMode: ChatTextFontStyleMode.bold,
-      opacity: 1.0,
-    ))
+    @Default(
+      ChatTextStyleConfig(
+        paletteIndex: 4,
+        fontStyleMode: ChatTextFontStyleMode.bold,
+        opacity: 1.0,
+      ),
+    )
     ChatTextStyleConfig boldTextStyle,
   }) = _ChatTextThemeSettings;
 
@@ -174,6 +182,7 @@ abstract class AppThemeConfig with _$AppThemeConfig {
 
   const factory AppThemeConfig({
     required int themeColorIndex,
+
     /// 用户自定义字体族名称，null 表示使用系统默认字体
     String? customFontFamily,
     @Default(ChatTextThemeSettings()) ChatTextThemeSettings chatTextTheme,
@@ -322,24 +331,36 @@ abstract class AppSettings with _$AppSettings {
     @Default(AppThemePreset.sunset) AppThemePreset themePreset,
     @Default(defaultAppThemeConfigs)
     Map<AppThemePreset, AppThemeConfig> themeConfigs,
+
     /// 是否显示聊天头像
     @Default(true) bool showAvatar,
+
     /// 聊天背景透明度 (0.0 - 1.0)
     @Default(0.85) double backgroundOpacity,
+
     /// 输入框是否使用毛玻璃效果
     @Default(true) bool inputGlassEffect,
+
     /// 是否在 API 状态弹窗中显示请求日志入口
     @Default(true) bool showApiRequestLogEntry,
+
     /// Gal 模式选项生成专用模型 id，null 表示跟随当前选中的 API 模型
     String? galChoiceApiModelId,
+
     /// Gal 模式下是否在角色回复后自动生成选项
     @Default(true) bool galChoiceAutoGenerate,
+
     /// Gal 模式每次生成的选项数量（2-6）
     @Default(4) int galChoiceCount,
+
     /// Gal 模式选项生成自定义提示词，null 使用内置默认
     String? galChoicePrompt,
   }) = _AppSettings;
 }
+
+/// Gal 模式每次生成选项数量的取值范围。
+const int kGalChoiceCountMin = 2;
+const int kGalChoiceCountMax = 6;
 
 /// Gal 模式选项生成的内置默认提示词。
 /// {{user}}/{{char}} 由 ChatVariableService 替换，{{count}} 由调用方替换为选项数量。
@@ -409,7 +430,10 @@ void updateAppSettings({
   }
   if (galChoiceCount != null) {
     newSettings = newSettings.copyWith(
-      galChoiceCount: galChoiceCount.clamp(2, 6),
+      galChoiceCount: galChoiceCount.clamp(
+        kGalChoiceCountMin,
+        kGalChoiceCountMax,
+      ),
     );
   }
   if (galChoicePrompt != _unset) {

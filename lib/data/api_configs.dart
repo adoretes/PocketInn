@@ -15,14 +15,7 @@ final ValueNotifier<String?> selectedApiModelIdNotifier =
 ({ApiConfig provider, ApiModel model})? get selectedApiModelTuple {
   final id = selectedApiModelIdNotifier.value;
   if (id == null || id.isEmpty) return null;
-  for (final c in apiConfigsNotifier.value) {
-    for (final m in c.models) {
-      if (m.id == id) {
-        return (provider: c, model: m);
-      }
-    }
-  }
-  return null;
+  return findModelEntryById(id);
 }
 
 /// 当前生效的 ResolvedApiConfig（provider + 选中 model 的组合），供 service 调用。
@@ -31,18 +24,36 @@ ResolvedApiConfig? get resolvedSelectedApi {
   return t?.provider.resolve(t.model);
 }
 
+/// 列出所有 (provider, model) 对，供选择器 UI 展示用。
+/// [configs] 缺省时取当前 [apiConfigsNotifier] 的值。
+List<({ApiConfig provider, ApiModel model})> flattenModelEntries([
+  List<ApiConfig>? configs,
+]) {
+  final list = configs ?? apiConfigsNotifier.value;
+  return [
+    for (final c in list)
+      for (final m in c.models) (provider: c, model: m),
+  ];
+}
+
+/// 按全局唯一的模型 id 查找 (provider, model) 对；找不到返回 null。
+/// 供选中态展示、失效 id 判定等 UI 逻辑与 [resolveApiByModelId] 复用。
+({ApiConfig provider, ApiModel model})? findModelEntryById(
+  String? modelId, [
+  List<ApiConfig>? configs,
+]) {
+  if (modelId == null || modelId.isEmpty) return null;
+  for (final entry in flattenModelEntries(configs)) {
+    if (entry.model.id == modelId) return entry;
+  }
+  return null;
+}
+
 /// 按全局唯一的模型 id 解析 API 配置（如 Gal 模式选项生成专用模型）。
 /// 找不到（未设置、已被删除等）返回 null，由调用方回退到 [resolvedSelectedApi]。
 ResolvedApiConfig? resolveApiByModelId(String? modelId) {
-  if (modelId == null || modelId.isEmpty) return null;
-  for (final c in apiConfigsNotifier.value) {
-    for (final m in c.models) {
-      if (m.id == modelId) {
-        return c.resolve(m);
-      }
-    }
-  }
-  return null;
+  final entry = findModelEntryById(modelId);
+  return entry?.provider.resolve(entry.model);
 }
 
 Future<void> initializeApiConfigs() async {
@@ -89,11 +100,5 @@ String? _validateSelectedId(List<ApiConfig> configs, String? selectedId) {
 }
 
 bool _modelExists(List<ApiConfig> configs, String? modelId) {
-  if (modelId == null || modelId.isEmpty) return false;
-  for (final c in configs) {
-    for (final m in c.models) {
-      if (m.id == modelId) return true;
-    }
-  }
-  return false;
+  return findModelEntryById(modelId, configs) != null;
 }

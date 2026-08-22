@@ -93,22 +93,20 @@ class GeneralSettingsPage extends StatelessWidget {
                       title: '自动生成选项',
                       subtitle: '角色回复后自动生成选项，关闭后仅可通过刷新按钮手动生成',
                       value: settings.galChoiceAutoGenerate,
-                      onChanged: (value) => updateAppSettings(
-                        galChoiceAutoGenerate: value,
-                      ),
+                      onChanged: (value) =>
+                          updateAppSettings(galChoiceAutoGenerate: value),
                     ),
                     const SizedBox(height: 12),
                     _SliderTile(
                       title: '选项数量',
                       subtitle: '每次生成的玩家选项数量',
                       value: settings.galChoiceCount.toDouble(),
-                      min: 2,
-                      max: 6,
-                      divisions: 4,
+                      min: kGalChoiceCountMin.toDouble(),
+                      max: kGalChoiceCountMax.toDouble(),
+                      divisions: kGalChoiceCountMax - kGalChoiceCountMin,
                       displayValue: (value) => '${value.toInt()} 个',
-                      onChanged: (value) => updateAppSettings(
-                        galChoiceCount: value.toInt(),
-                      ),
+                      onChanged: (value) =>
+                          updateAppSettings(galChoiceCount: value.toInt()),
                     ),
                     const SizedBox(height: 12),
                     _GalChoiceApiTile(modelId: settings.galChoiceApiModelId),
@@ -527,8 +525,7 @@ class MemorySettingsCard extends StatelessWidget {
             title: '启用长期记忆',
             subtitle: '系统自动提取和管理记忆点',
             value: memoryConfig.enabled,
-            onChanged: (value) =>
-                updateMemoryExtractionConfig(enabled: value),
+            onChanged: (value) => updateMemoryExtractionConfig(enabled: value),
           ),
           if (memoryConfig.enabled) ...[
             const SizedBox(height: 12),
@@ -572,24 +569,21 @@ class MemorySettingsCard extends StatelessWidget {
               _ExtractionModelSelector(
                 apiConfigs: apiConfigs,
                 selectedModelId: memoryConfig.extractionModelId,
-                onChanged: (id) => updateMemoryExtractionConfig(
-                  extractionModelId: id,
-                ),
+                onChanged: (id) =>
+                    updateMemoryExtractionConfig(extractionModelId: id),
               ),
             ],
             const SizedBox(height: 12),
             _CustomExtractionPromptTile(
               prompt: memoryConfig.customExtractionPrompt,
-              onChanged: (value) => updateMemoryExtractionConfig(
-                customExtractionPrompt: value,
-              ),
+              onChanged: (value) =>
+                  updateMemoryExtractionConfig(customExtractionPrompt: value),
             ),
             const SizedBox(height: 12),
             _CustomInjectionPromptTile(
               prompt: memoryConfig.customInjectionPrompt,
-              onChanged: (value) => updateMemoryExtractionConfig(
-                customInjectionPrompt: value,
-              ),
+              onChanged: (value) =>
+                  updateMemoryExtractionConfig(customInjectionPrompt: value),
             ),
           ],
         ],
@@ -679,7 +673,9 @@ class _CustomExtractionPromptTile extends StatelessWidget {
   }
 
   Future<void> _showEditDialog(BuildContext context) async {
-    final initialText = prompt.isNotEmpty ? prompt : ChatMemoryService.memoryExtractionPrompt;
+    final initialText = prompt.isNotEmpty
+        ? prompt
+        : ChatMemoryService.memoryExtractionPrompt;
     final controller = TextEditingController(text: initialText);
     final result = await showDialog<String>(
       context: context,
@@ -862,16 +858,11 @@ class _ExtractionModelSelector extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     // 收集所有 (provider, model) 对，用于下拉项展示
-    final entries = <({ApiConfig provider, ApiModel model})>[];
-    for (final c in apiConfigs) {
-      for (final m in c.models) {
-        entries.add((provider: c, model: m));
-      }
-    }
+    final entries = flattenModelEntries(apiConfigs);
 
     // 校验当前选中的 id 是否仍有效，无效则视为未选（回退到"当前选中模型"）
-    final currentValid = selectedModelId != null &&
-        entries.any((e) => e.model.id == selectedModelId);
+    final currentValid =
+        findModelEntryById(selectedModelId, apiConfigs) != null;
 
     return Material(
       color: colorScheme.surfaceContainerLow,
@@ -933,28 +924,32 @@ class _ExtractionModelSelector extends StatelessWidget {
   }
 }
 
-class _SwitchTile extends StatelessWidget {
-  const _SwitchTile({
+/// 设置项卡片外壳：圆角卡片 + 标题/副标题 + 右侧控件或箭头。
+///
+/// [subtitle] 为 Widget 以支持需要监听外部状态的副标题（如 API 选择）。
+class _SettingTileShell extends StatelessWidget {
+  const _SettingTileShell({
     required this.title,
     required this.subtitle,
-    required this.value,
-    required this.onChanged,
+    this.onTap,
+    this.trailing,
+    this.showChevron = false,
   });
 
   final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  final Widget subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     return Material(
       color: colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        onTap: () => onChanged(!value),
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.all(14),
@@ -976,21 +971,45 @@ class _SwitchTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                    subtitle,
                   ],
                 ),
               ),
-              Switch(value: value, onChanged: onChanged),
+              ?trailing,
+              if (showChevron)
+                Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SwitchTile extends StatelessWidget {
+  const _SwitchTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return _SettingTileShell(
+      title: title,
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+      ),
+      onTap: () => onChanged(!value),
+      trailing: Switch(value: value, onChanged: onChanged),
     );
   }
 }
@@ -1083,18 +1102,6 @@ class _GalChoiceApiTile extends StatelessWidget {
 
   final String? modelId;
 
-  static String? _labelFor(List<ApiConfig> configs, String? modelId) {
-    if (modelId == null) return null;
-    for (final provider in configs) {
-      for (final model in provider.models) {
-        if (model.id == modelId) {
-          return '${provider.name} · ${model.modelId}';
-        }
-      }
-    }
-    return null;
-  }
-
   void _showPicker(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -1123,7 +1130,9 @@ class _GalChoiceApiTile extends StatelessWidget {
                         leading: const Icon(Icons.follow_the_signs_outlined),
                         title: const Text('跟随当前选中模型'),
                         subtitle: const Text('使用聊天当前选中的 API 模型'),
-                        trailing: modelId == null ? const Icon(Icons.check) : null,
+                        trailing: modelId == null
+                            ? const Icon(Icons.check)
+                            : null,
                         onTap: () {
                           updateAppSettings(galChoiceApiModelId: null);
                           Navigator.of(sheetContext).pop();
@@ -1137,9 +1146,9 @@ class _GalChoiceApiTile extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: Theme.of(sheetContext)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(
+                                sheetContext,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -1173,49 +1182,29 @@ class _GalChoiceApiTile extends StatelessWidget {
     final currentLabel = ValueListenableBuilder<List<ApiConfig>>(
       valueListenable: apiConfigsNotifier,
       builder: (context, configs, _) {
-        final label = _labelFor(configs, modelId) ?? '跟随当前选中模型';
-        return Text(
-          label,
-          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-        );
+        // 已删除的模型 id 明确提示，避免被误认为「跟随当前选中模型」。
+        final entry = findModelEntryById(modelId, configs);
+        final String label;
+        final Color labelColor;
+        if (entry != null) {
+          label = '${entry.provider.name} · ${entry.model.modelId}';
+          labelColor = colorScheme.onSurfaceVariant;
+        } else if (modelId != null) {
+          label = '已选择的模型已被删除，将回退到当前选中模型';
+          labelColor = colorScheme.error;
+        } else {
+          label = '跟随当前选中模型';
+          labelColor = colorScheme.onSurfaceVariant;
+        }
+        return Text(label, style: TextStyle(fontSize: 13, color: labelColor));
       },
     );
 
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: () => _showPicker(context),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colorScheme.outlineVariant),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '选项生成 API',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    currentLabel,
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
-            ],
-          ),
-        ),
-      ),
+    return _SettingTileShell(
+      title: '选项生成 API',
+      subtitle: currentLabel,
+      onTap: () => _showPicker(context),
+      showChevron: true,
     );
   }
 }
@@ -1282,47 +1271,14 @@ class _GalChoicePromptTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: () => _edit(context),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colorScheme.outlineVariant),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '自定义提示词',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      prompt == null ? '默认' : '已自定义',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
-            ],
-          ),
-        ),
+    return _SettingTileShell(
+      title: '自定义提示词',
+      subtitle: Text(
+        prompt == null ? '默认' : '已自定义',
+        style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
       ),
+      onTap: () => _edit(context),
+      showChevron: true,
     );
   }
 }

@@ -90,10 +90,13 @@ class ChatViewModel extends ChangeNotifier {
   ChatMessage? _pendingUserMessage;
   int? _replyToMessageIndex;
   bool _galModeEnabled = false;
+  int? _galBrowsingIndex;
   List<String> _galChoices = const [];
   bool _isGeneratingGalChoices = false;
   String? _galChoicesMessageId;
   int _galChoicesRequestGeneration = 0;
+  bool _galChoicesError = false;
+  ChatCompletionCancelToken? _galChoicesCancelToken;
   String? _regeneratingUserMessageId;
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
@@ -125,11 +128,25 @@ class ChatViewModel extends ChangeNotifier {
   bool get isSwitchingSession => _isSwitchingSession;
   bool get isSending => _isSending;
   bool get galModeEnabled => _galModeEnabled;
+
+  /// Gal 模式下正在浏览的历史消息索引；null 表示跟随最新消息。
+  int? get galBrowsingIndex => _galBrowsingIndex;
+
+  /// 更新浏览索引（Gal 视图回看/推进时回写）。
+  void setGalBrowsingIndex(int? index) {
+    if (_galBrowsingIndex == index) return;
+    _galBrowsingIndex = index;
+    notifyListeners();
+  }
+
   List<String> get galChoices => _galChoices;
   bool get isGeneratingGalChoices => _isGeneratingGalChoices;
 
   /// 选项归属的角色消息 ID；与当前展示消息不一致时 UI 不显示选项。
   String? get galChoicesMessageId => _galChoicesMessageId;
+
+  /// 上一次选项生成是否失败；UI 据此显示重试入口。
+  bool get galChoicesError => _galChoicesError;
   bool get isImpersonating => _isImpersonating;
   bool get useStreaming => _useStreaming;
   bool get isCheckingApiStatus => _isCheckingApiStatus;
@@ -349,6 +366,7 @@ class ChatViewModel extends ChangeNotifier {
       ..addAll(initialWorldBookIds);
     _selectedRegexRuleGroupIds.clear();
     _galModeEnabled = false;
+    _galBrowsingIndex = null;
     _clearGalChoices();
     _isDraftSession = true;
     _draftOpeningAssistantMessages = openingMessages;
@@ -409,6 +427,7 @@ class ChatViewModel extends ChangeNotifier {
       _selectedWorldBookIds.clear();
       _selectedRegexRuleGroupIds.clear();
       _galModeEnabled = false;
+      _galBrowsingIndex = null;
       _clearGalChoices();
       _isDraftSession = false;
       _draftOpeningAssistantMessages = const [];
@@ -455,6 +474,7 @@ class ChatViewModel extends ChangeNotifier {
       ..clear()
       ..addAll(bundle.session.selectedRegexRuleGroupIds);
     _galModeEnabled = bundle.session.galModeEnabled;
+    _galBrowsingIndex = null;
     _clearGalChoices();
     _isDraftSession = false;
     _draftOpeningAssistantMessages = const [];
@@ -622,14 +642,27 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void _clearGalChoices() {
+    // 递增 generation 使仍在途的旧响应作废，并取消其请求，
+    // 避免切会话/关闭 gal 模式后旧选项写入新状态。
+    _galChoicesRequestGeneration++;
+    _galChoicesCancelToken?.cancel();
+    _galChoicesCancelToken = null;
     _galChoices = const [];
     _galChoicesMessageId = null;
+    if (_isGeneratingGalChoices || _galChoicesError) {
+      _isGeneratingGalChoices = false;
+      _galChoicesError = false;
+      notifyListeners();
+    }
   }
 
   /// 发送/重新生成等完成后调用：gal 模式下为最新的角色回复生成选项。
+  ///
+  /// [force] 仅跳过「自动生成」设置检查，供手动刷新使用；
+  /// 不会绕过 gal 模式开关。
   Future<void> _maybeGenerateGalChoices({bool force = false}) async {
     if (_isDisposed) return;
-    if (!_galModeEnabled && !force) return;
+    if (!_galModeEnabled) return;
     if (!appSettingsNotifier.value.galChoiceAutoGenerate && !force) return;
     if (_isSending || _isImpersonating) return;
 
@@ -642,8 +675,10 @@ class ChatViewModel extends ChangeNotifier {
     final targetMessageId = _messages.last.id;
     if (targetMessageId == null) return;
 
-    final requestGeneration = ++_galChoicesRequestGeneration;
     _clearGalChoices();
+    final requestGeneration = ++_galChoicesRequestGeneration;
+    final cancelToken = ChatCompletionCancelToken();
+    _galChoicesCancelToken = cancelToken;
     _isGeneratingGalChoices = true;
     notifyListeners();
 
@@ -656,22 +691,28 @@ class ChatViewModel extends ChangeNotifier {
         selectedUserSettingId: _selectedUserSettingId,
         selectedWorldBookIds: _selectedWorldBookIds,
         selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
+        cancellationToken: cancelToken,
       );
       if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
         return;
       }
       _galChoices = choices;
       _galChoicesMessageId = choices.isEmpty ? null : targetMessageId;
+      _galChoicesError = false;
     } catch (_) {
-      // 静默失败：选项区不显示即可。
+      // 选项生成失败不打断聊天：记录失败态供 UI 显示重试入口。
       if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
         return;
       }
       _galChoices = const [];
       _galChoicesMessageId = null;
+      _galChoicesError = true;
     } finally {
       if (!_isDisposed && requestGeneration == _galChoicesRequestGeneration) {
         _isGeneratingGalChoices = false;
+        if (identical(_galChoicesCancelToken, cancelToken)) {
+          _galChoicesCancelToken = null;
+        }
         notifyListeners();
       }
     }
@@ -719,6 +760,7 @@ class ChatViewModel extends ChangeNotifier {
     _activeCompletionCancelToken = cancellationToken;
     _isSending = true;
     _clearGalChoices();
+    _galBrowsingIndex = null;
     _replyToMessageIndex = effectiveReplyToIndex;
     _pendingUserMessage = ChatMessage(text: text, isMe: true);
     _streamingAssistantText = '';
@@ -828,6 +870,8 @@ class ChatViewModel extends ChangeNotifier {
     _regeneratingUserMessageId = userMessage.id;
     _streamingAssistantText = '';
     _streamingThinkingChain = '';
+    _clearGalChoices();
+    _galBrowsingIndex = null;
     notifyListeners();
 
     final cancellationToken = ChatCompletionCancelToken();
@@ -929,6 +973,8 @@ class ChatViewModel extends ChangeNotifier {
     _regeneratingUserMessageId = null;
     _streamingAssistantText = '';
     _streamingThinkingChain = '';
+    _clearGalChoices();
+    _galBrowsingIndex = null;
     notifyListeners();
 
     try {
@@ -1393,6 +1439,7 @@ class ChatViewModel extends ChangeNotifier {
     _chatDbChangeNotifier.removeListener(onChatDatabaseChanged);
     _presetChangeNotifier.removeListener(onPresetsChanged);
     _activeCompletionCancelToken?.cancel();
+    _galChoicesCancelToken?.cancel();
     super.dispose();
   }
 }

@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../../models/chat_message.dart';
-import '../../../models/regex_rule_group.dart';
-import '../../../models/user_setting.dart';
-import '../../../services/chat_character_resolver.dart';
-import '../../../services/regex_rule_group_service.dart';
-import '../../../services/regex_replacement_service.dart';
 import '../../../widgets/scroll_float_button.dart';
+import 'message_action_availability.dart';
 import 'message_bubble.dart';
+import 'message_view_params.dart';
+import 'regex_display_text.dart';
 
 /// 聊天消息列表（含滚动浮动按钮）。
 ///
@@ -16,107 +13,24 @@ import 'message_bubble.dart';
 class ChatMessageList extends StatefulWidget {
   const ChatMessageList({
     super.key,
-    required this.visibleMessages,
+    required this.params,
     required this.scrollController,
-    required this.inputTapRegionGroupId,
-    required this.isSending,
-    required this.isImpersonating,
-    required this.regeneratingUserMessageId,
-    required this.isDraftSession,
-    required this.activeCharacter,
-    required this.currentUserSetting,
-    required this.sessionId,
-    required this.selectedRegexRuleGroupIds,
-    required this.onCopyMessage,
-    required this.onEditMessage,
-    required this.onEditDraftOpeningMessage,
-    required this.onDeleteMessage,
-    required this.onRegenerateFromUserMessage,
-    required this.onRegenerateMessage,
-    required this.onContinueMessage,
-    required this.onImpersonate,
-    required this.onSwitchMessageVariant,
   });
 
-  final List<ChatMessage> visibleMessages;
+  /// 与 GalMessageView 共享的公共参数。
+  final MessageViewParams params;
   final ScrollController scrollController;
-  final Object inputTapRegionGroupId;
-  final bool isSending;
-  final bool isImpersonating;
-  final String? regeneratingUserMessageId;
-  final bool isDraftSession;
-  final ResolvedChatCharacter? activeCharacter;
-  final UserSetting? currentUserSetting;
-  final String? sessionId;
-  final Set<String> selectedRegexRuleGroupIds;
-
-  final void Function(ChatMessage msg) onCopyMessage;
-  final void Function(int index) onEditMessage;
-  final VoidCallback onEditDraftOpeningMessage;
-  final void Function(int index) onDeleteMessage;
-  final void Function(int index) onRegenerateFromUserMessage;
-  final void Function(int index) onRegenerateMessage;
-  final void Function(int index) onContinueMessage;
-  final VoidCallback onImpersonate;
-  final void Function(ChatMessage message, int delta) onSwitchMessageVariant;
 
   @override
   State<ChatMessageList> createState() => _ChatMessageListState();
 }
 
-class _ChatMessageListState extends State<ChatMessageList> {
-  static const RegexReplacementService _regexService =
-      RegexReplacementService();
-
-  List<RegexRuleGroup> _ruleGroups = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadRuleGroups();
-    RegexRuleGroupService.instance.changeNotifier.addListener(_loadRuleGroups);
-  }
-
-  @override
-  void dispose() {
-    RegexRuleGroupService.instance.changeNotifier.removeListener(
-      _loadRuleGroups,
-    );
-    super.dispose();
-  }
-
-  Future<void> _loadRuleGroups() async {
-    final groups = await RegexRuleGroupService.instance.loadAll();
-    if (mounted) {
-      setState(() {
-        _ruleGroups = groups;
-      });
-    }
-  }
-
-  String _displayTextFor(ChatMessage msg, int depth) {
-    if (_ruleGroups.isEmpty) return msg.text;
-    final selectedIds = widget.selectedRegexRuleGroupIds;
-    final groups = selectedIds.isEmpty
-        ? const <RegexRuleGroup>[]
-        : _ruleGroups
-              .where((group) => selectedIds.contains(group.id))
-              .toList();
-    if (groups.isEmpty) return msg.text;
-    return _regexService
-        .applyToMessage(
-          text: msg.text,
-          groups: groups,
-          isUserMessage: msg.isMe,
-          depth: depth,
-          mode: RegexExecutionMode.display,
-        )
-        .text;
-  }
-
+class _ChatMessageListState extends State<ChatMessageList>
+    with RegexDisplayTextMixin<ChatMessageList> {
   @override
   Widget build(BuildContext context) {
-    if (widget.visibleMessages.isEmpty) {
+    final messages = widget.params.visibleMessages;
+    if (messages.isEmpty) {
       return const Center(child: Text('这段聊天还没有消息'));
     }
     return Stack(
@@ -135,81 +49,83 @@ class _ChatMessageListState extends State<ChatMessageList> {
           ).createShader(bounds),
           blendMode: BlendMode.dstIn,
           child: ListView.builder(
-          key: ValueKey(widget.sessionId),
-          controller: widget.scrollController,
-          reverse: true,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          itemCount: widget.visibleMessages.length,
-          itemBuilder: (context, index) {
-            final messageIndex = widget.visibleMessages.length - 1 - index;
-            final msg = widget.visibleMessages[messageIndex];
-            final isLastMessage = messageIndex == widget.visibleMessages.length - 1;
-            final isLastUserMessageWithoutReply = isLastMessage && msg.isMe;
-            final isLastCharacterMessage = isLastMessage && !msg.isMe;
-            final isRegeneratingUserMessage =
-                widget.regeneratingUserMessageId != null &&
-                msg.id == widget.regeneratingUserMessageId;
-            final hasPersistedMessage = msg.id != null;
-            final hasDraftOpeningActions =
-                widget.isDraftSession && !hasPersistedMessage && !msg.isMe;
-            final showActions =
-                (hasPersistedMessage || hasDraftOpeningActions) &&
-                (!widget.isSending || isRegeneratingUserMessage);
-            final canEditMessage =
-                (hasPersistedMessage || hasDraftOpeningActions) &&
-                !widget.isSending;
-            final canDeleteMessage =
-                hasPersistedMessage && !widget.isSending;
-            final displayText = _displayTextFor(
-              msg,
-              widget.visibleMessages.length - 1 - messageIndex,
-            );
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: MessageBubble(
-                key: ValueKey(msg.id ?? messageIndex),
+            key: ValueKey(widget.params.sessionId),
+            controller: widget.scrollController,
+            reverse: true,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            itemCount: messages.length,
+            itemBuilder: (context, index) {
+              final messageIndex = messages.length - 1 - index;
+              final msg = messages[messageIndex];
+              final availability = evaluateMessageActions(
                 message: msg,
-                userSetting: widget.currentUserSetting,
-                character: widget.activeCharacter,
-                inputTapRegionGroupId: widget.inputTapRegionGroupId,
-                isLastUserMessageWithoutReply: isLastUserMessageWithoutReply,
-                isLastCharacterMessage: isLastCharacterMessage,
-                showActions: showActions,
-                canEdit: canEditMessage,
-                canDelete: canDeleteMessage,
-                isBusyRegenerating: isRegeneratingUserMessage,
-                isBusyImpersonating: widget.isImpersonating,
-                displayText: displayText == msg.text ? null : displayText,
-                onCopy: () => widget.onCopyMessage(msg),
-                onEdit: hasDraftOpeningActions
-                    ? widget.onEditDraftOpeningMessage
-                    : () => widget.onEditMessage(messageIndex),
-                onDelete: () => widget.onDeleteMessage(messageIndex),
-                onGenerate:
-                    isLastUserMessageWithoutReply &&
-                        showActions &&
-                        !isRegeneratingUserMessage
-                    ? () => widget.onRegenerateFromUserMessage(messageIndex)
-                    : null,
-                onRegenerate: isLastCharacterMessage && showActions
-                    ? () => widget.onRegenerateMessage(messageIndex)
-                    : null,
-                onContinue: isLastCharacterMessage && showActions
-                    ? () => widget.onContinueMessage(messageIndex)
-                    : null,
-                onImpersonate: isLastCharacterMessage && showActions
-                    ? widget.onImpersonate
-                    : null,
-                onSelectPreviousVariant: msg.hasMultiple
-                    ? () => widget.onSwitchMessageVariant(msg, -1)
-                    : null,
-                onSelectNextVariant: msg.hasMultiple
-                    ? () => widget.onSwitchMessageVariant(msg, 1)
-                    : null,
-              ),
-            );
-          },
-        ),
+                messageIndex: messageIndex,
+                messageCount: messages.length,
+                isSending: widget.params.isSending,
+                isDraftSession: widget.params.isDraftSession,
+                regeneratingUserMessageId:
+                    widget.params.regeneratingUserMessageId,
+              );
+              final displayText = displayTextFor(
+                msg,
+                messages.length - 1 - messageIndex,
+                widget.params.selectedRegexRuleGroupIds,
+              );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: MessageBubble(
+                  key: ValueKey(msg.id ?? messageIndex),
+                  message: msg,
+                  userSetting: widget.params.currentUserSetting,
+                  character: widget.params.activeCharacter,
+                  inputTapRegionGroupId: widget.params.inputTapRegionGroupId,
+                  isLastUserMessageWithoutReply:
+                      availability.isLastUserMessageWithoutReply,
+                  isLastCharacterMessage: availability.isLastCharacterMessage,
+                  showActions: availability.showActions,
+                  canEdit: availability.canEdit,
+                  canDelete: availability.canDelete,
+                  isBusyRegenerating: availability.isRegeneratingUserMessage,
+                  isBusyImpersonating: widget.params.isImpersonating,
+                  displayText: displayText == msg.text ? null : displayText,
+                  onCopy: () => widget.params.onCopyMessage(msg),
+                  onEdit: availability.hasDraftOpeningActions
+                      ? widget.params.onEditDraftOpeningMessage
+                      : () => widget.params.onEditMessage(messageIndex),
+                  onDelete: () => widget.params.onDeleteMessage(messageIndex),
+                  onGenerate:
+                      availability.isLastUserMessageWithoutReply &&
+                          availability.showActions &&
+                          !availability.isRegeneratingUserMessage
+                      ? () => widget.params.onRegenerateFromUserMessage(
+                          messageIndex,
+                        )
+                      : null,
+                  onRegenerate:
+                      availability.isLastCharacterMessage &&
+                          availability.showActions
+                      ? () => widget.params.onRegenerateMessage(messageIndex)
+                      : null,
+                  onContinue:
+                      availability.isLastCharacterMessage &&
+                          availability.showActions
+                      ? () => widget.params.onContinueMessage(messageIndex)
+                      : null,
+                  onImpersonate:
+                      availability.isLastCharacterMessage &&
+                          availability.showActions
+                      ? widget.params.onImpersonate
+                      : null,
+                  onSelectPreviousVariant: msg.hasMultiple
+                      ? () => widget.params.onSwitchMessageVariant(msg, -1)
+                      : null,
+                  onSelectNextVariant: msg.hasMultiple
+                      ? () => widget.params.onSwitchMessageVariant(msg, 1)
+                      : null,
+                ),
+              );
+            },
+          ),
         ),
         Positioned(
           right: 16,

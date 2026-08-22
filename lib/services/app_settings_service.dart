@@ -46,8 +46,7 @@ class AppSettingsService {
   static const String _keyCustomFontFilePath = 'app_custom_font_file_path';
   static const String _keyShowApiRequestLogEntry =
       'app_show_api_request_log_entry';
-  static const String _keyGalChoiceApiModelId =
-      'app_gal_choice_api_model_id';
+  static const String _keyGalChoiceApiModelId = 'app_gal_choice_api_model_id';
   static const String _keyGalChoiceAutoGenerate =
       'app_gal_choice_auto_generate';
   static const String _keyGalChoiceCount = 'app_gal_choice_count';
@@ -89,11 +88,14 @@ class AppSettingsService {
       backgroundOpacity: backgroundOpacity ?? 0.85,
       inputGlassEffect: inputGlassEffect ?? true,
       showApiRequestLogEntry: showApiRequestLogEntry ?? true,
-      galChoiceApiModelId:
-          _normalizeOptionalString(storage.getString(_keyGalChoiceApiModelId)),
-      galChoiceAutoGenerate:
-          storage.getBool(_keyGalChoiceAutoGenerate) ?? true,
-      galChoiceCount: (storage.getInt(_keyGalChoiceCount) ?? 4).clamp(2, 6),
+      galChoiceApiModelId: _normalizeOptionalString(
+        storage.getString(_keyGalChoiceApiModelId),
+      ),
+      galChoiceAutoGenerate: storage.getBool(_keyGalChoiceAutoGenerate) ?? true,
+      galChoiceCount: (storage.getInt(_keyGalChoiceCount) ?? 4).clamp(
+        kGalChoiceCountMin,
+        kGalChoiceCountMax,
+      ),
       galChoicePrompt: _normalizeOptionalString(
         storage.getString(_keyGalChoicePrompt),
       ),
@@ -127,10 +129,7 @@ class AppSettingsService {
         settings.galChoiceAutoGenerate,
       ),
       storage.setInt(_keyGalChoiceCount, settings.galChoiceCount),
-      storage.setString(
-        _keyGalChoicePrompt,
-        settings.galChoicePrompt ?? '',
-      ),
+      storage.setString(_keyGalChoicePrompt, settings.galChoicePrompt ?? ''),
     ]);
 
     final currentConfig = resolveThemeConfig(settings);

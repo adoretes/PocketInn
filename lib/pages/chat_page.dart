@@ -18,6 +18,7 @@ import '../pages/chat/widgets/chat_title_dialog.dart';
 import '../pages/chat/widgets/gal_message_view.dart';
 import '../pages/chat/widgets/memory_tree_page.dart';
 import '../pages/chat/widgets/message_edit_dialog.dart';
+import '../pages/chat/widgets/message_view_params.dart';
 import '../pages/chat_sidebar_page.dart';
 import '../pages/preset_edit_page.dart';
 import '../pages/regex_rule_group_edit_page.dart';
@@ -73,8 +74,6 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
-  final GlobalKey<GalMessageViewState> _galMessageViewKey =
-      GlobalKey<GalMessageViewState>();
   String _inputText = '';
 
   late final ChatViewModel _viewModel;
@@ -390,6 +389,23 @@ class _ChatPageState extends State<ChatPage> {
 
   // --- 发送 / 终止 ---
 
+  /// 发送文本并统一处理错误提示（直接输入与点击 gal 选项共用）。
+  Future<void> _sendText(String text, {int? replyToMessageIndex}) async {
+    try {
+      await _viewModel.sendMessage(
+        text,
+        replyToMessageIndex: replyToMessageIndex,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
   Future<void> _onSendPressed() async {
     final text = _inputText.trim();
     if (text.isEmpty ||
@@ -401,57 +417,15 @@ class _ChatPageState extends State<ChatPage> {
 
     // gal 模式下从当前展示的消息处回复；未浏览历史时保持追加到末尾。
     final replyToMessageIndex = _viewModel.galModeEnabled
-        ? _galMessageViewKey.currentState?.browsingIndex
+        ? _viewModel.galBrowsingIndex
         : null;
 
     _textController.clear();
-    try {
-      final sendFuture = _viewModel.sendMessage(
-        text,
-        replyToMessageIndex: replyToMessageIndex,
-      );
-      // 发送后让 gal 视图跟随新分支的最新消息（即对当前展示消息的回复）。
-      if (_viewModel.isSending) {
-        _galMessageViewKey.currentState?.jumpToLatest();
-      }
-      await sendFuture;
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-        ),
-      );
-    }
+    await _sendText(text, replyToMessageIndex: replyToMessageIndex);
   }
 
   void _onStopGeneratingPressed() {
     _viewModel.stopStreaming();
-  }
-
-  /// 点击 gal 选项：作为用户消息发送（gal 模式下从浏览中的消息处回复）。
-  Future<void> _pickGalChoice(
-    String choice, {
-    int? replyToMessageIndex,
-  }) async {
-    try {
-      final sendFuture = _viewModel.pickGalChoice(
-        choice,
-        replyToMessageIndex: replyToMessageIndex,
-      );
-      // 发送后让 gal 视图跟随新分支的最新消息。
-      if (_viewModel.isSending) {
-        _galMessageViewKey.currentState?.jumpToLatest();
-      }
-      await sendFuture;
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-        ),
-      );
-    }
   }
 
   // --- 消息操作 ---
@@ -782,81 +756,60 @@ class _ChatPageState extends State<ChatPage> {
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(top: topContentPadding),
-                          child: _viewModel.galModeEnabled
-                              ? GalMessageView(
-                                  key: _galMessageViewKey,
-                                  visibleMessages: _viewModel.visibleMessages,
-                                  updatesListenable: _viewModel,
-                                  visibleMessagesProvider: () =>
-                                      _viewModel.visibleMessages,
-                                  inputTapRegionGroupId: _inputTapRegionGroupId,
-                                  isSending: _viewModel.isSending,
-                                  isImpersonating: _viewModel.isImpersonating,
-                                  regeneratingUserMessageId:
-                                      _viewModel.regeneratingUserMessageId,
-                                  isDraftSession: _viewModel.isDraftSession,
-                                  activeCharacter: _viewModel.activeCharacter,
-                                  currentUserSetting: _viewModel
-                                      .currentUserSetting(),
-                                  sessionId: session.id,
-                                  selectedRegexRuleGroupIds:
-                                      _viewModel.selectedRegexRuleGroupIds,
-                                  onCopyMessage: _onCopyMessage,
-                                  onEditMessage: _onEditMessage,
-                                  onEditDraftOpeningMessage:
-                                      _onEditDraftOpeningMessage,
-                                  onDeleteMessage: _onDeleteMessage,
-                                  onRegenerateFromUserMessage:
-                                      _onRegenerateFromUserMessage,
-                                  onRegenerateMessage: _onRegenerateMessage,
-                                  onContinueMessage: _onContinueMessage,
-                                  onImpersonate: _onImpersonate,
-                                  onSwitchMessageVariant:
-                                      _onSwitchMessageVariant,
-                                  galChoices: _viewModel.galChoices,
-                                  isGeneratingGalChoices:
-                                      _viewModel.isGeneratingGalChoices,
-                                  galChoicesMessageId:
-                                      _viewModel.galChoicesMessageId,
-                                  onPickGalChoice: (choice) {
-                                    final replyToMessageIndex = _galMessageViewKey
-                                        .currentState
-                                        ?.browsingIndex;
-                                    _pickGalChoice(
-                                      choice,
-                                      replyToMessageIndex:
-                                          replyToMessageIndex,
-                                    );
-                                  },
-                                )
-                              : ChatMessageList(
-                                  visibleMessages: _viewModel.visibleMessages,
+                          child: Builder(
+                            builder: (context) {
+                              final messageViewParams = MessageViewParams(
+                                visibleMessages: _viewModel.visibleMessages,
+                                inputTapRegionGroupId: _inputTapRegionGroupId,
+                                isSending: _viewModel.isSending,
+                                isImpersonating: _viewModel.isImpersonating,
+                                regeneratingUserMessageId:
+                                    _viewModel.regeneratingUserMessageId,
+                                isDraftSession: _viewModel.isDraftSession,
+                                activeCharacter: _viewModel.activeCharacter,
+                                currentUserSetting: _viewModel
+                                    .currentUserSetting(),
+                                sessionId: session.id,
+                                selectedRegexRuleGroupIds:
+                                    _viewModel.selectedRegexRuleGroupIds,
+                                onCopyMessage: _onCopyMessage,
+                                onEditMessage: _onEditMessage,
+                                onEditDraftOpeningMessage:
+                                    _onEditDraftOpeningMessage,
+                                onDeleteMessage: _onDeleteMessage,
+                                onRegenerateFromUserMessage:
+                                    _onRegenerateFromUserMessage,
+                                onRegenerateMessage: _onRegenerateMessage,
+                                onContinueMessage: _onContinueMessage,
+                                onImpersonate: _onImpersonate,
+                                onSwitchMessageVariant: _onSwitchMessageVariant,
+                              );
+                              if (!_viewModel.galModeEnabled) {
+                                return ChatMessageList(
+                                  params: messageViewParams,
                                   scrollController: _scrollController,
-                                  inputTapRegionGroupId: _inputTapRegionGroupId,
-                                  isSending: _viewModel.isSending,
-                                  isImpersonating: _viewModel.isImpersonating,
-                                  regeneratingUserMessageId:
-                                      _viewModel.regeneratingUserMessageId,
-                                  isDraftSession: _viewModel.isDraftSession,
-                                  activeCharacter: _viewModel.activeCharacter,
-                                  currentUserSetting: _viewModel
-                                      .currentUserSetting(),
-                                  sessionId: session.id,
-                                  selectedRegexRuleGroupIds:
-                                      _viewModel.selectedRegexRuleGroupIds,
-                                  onCopyMessage: _onCopyMessage,
-                                  onEditMessage: _onEditMessage,
-                                  onEditDraftOpeningMessage:
-                                      _onEditDraftOpeningMessage,
-                                  onDeleteMessage: _onDeleteMessage,
-                                  onRegenerateFromUserMessage:
-                                      _onRegenerateFromUserMessage,
-                                  onRegenerateMessage: _onRegenerateMessage,
-                                  onContinueMessage: _onContinueMessage,
-                                  onImpersonate: _onImpersonate,
-                                  onSwitchMessageVariant:
-                                      _onSwitchMessageVariant,
-                                ),
+                                );
+                              }
+                              return GalMessageView(
+                                params: messageViewParams,
+                                updatesListenable: _viewModel,
+                                visibleMessagesProvider: () =>
+                                    _viewModel.visibleMessages,
+                                browsingIndex: _viewModel.galBrowsingIndex,
+                                onBrowsingIndexChanged:
+                                    _viewModel.setGalBrowsingIndex,
+                                galChoices: _viewModel.galChoices,
+                                isGeneratingGalChoices:
+                                    _viewModel.isGeneratingGalChoices,
+                                galChoicesMessageId:
+                                    _viewModel.galChoicesMessageId,
+                                galChoicesError: _viewModel.galChoicesError,
+                                onPickGalChoice: (choice) => _sendText(choice),
+                                onRefreshGalChoices:
+                                    _viewModel.refreshGalChoices,
+                              );
+                            },
+                          ),
                         ),
                       ),
                       ChatInputArea(
