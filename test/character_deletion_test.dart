@@ -38,11 +38,17 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_pathProviderChannel, null);
     if (await tempDir.exists()) {
-      await tempDir.delete(recursive: true);
+      try {
+        await tempDir.delete(recursive: true);
+      } on FileSystemException {
+        // Windows 下文件句柄可能延迟释放，临时目录留给系统清理即可。
+      }
     }
   });
 
   setUp(() async {
+    // 先关闭数据库，释放文件锁，避免 Windows 上删除目录时文件被占用
+    await ChatDatabaseService.instance.close();
     await StorageService.instance.clearAllData();
     await WorldBookService.instance.clearAllData();
     await CharacterService.instance.clearAllData();
