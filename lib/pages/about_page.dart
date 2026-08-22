@@ -72,9 +72,9 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.4.0',
-                  date: '2026-08-12',
-                  changes: ['新增正则替换功能，兼容导入ST原生正则', '角色编辑页面提升可读性与视觉体验', '优化角色编辑页面', '优化导出功能，添加 PNG 文件格式检测与错误处理', '为 API 请求日志添加用量信息'],
+                  version: 'v1.5.0',
+                  date: '2026-08-22',
+                  changes: ['新增 gal 模式，提供沉浸式视觉小说对话体验', 'gal 模式支持回复历史消息，可回溯并切换旧分支', '新增选项生成功能，支持选项生成配置与会话状态持久化', '统一 gal 模式下的正则显示替换', '修复 Windows 下临时目录删除失败的问题'],
                 ),
               ],
             ),
