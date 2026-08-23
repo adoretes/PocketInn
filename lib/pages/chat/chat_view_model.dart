@@ -19,6 +19,7 @@ import '../../services/chat_variable_service.dart';
 import '../../services/openai_compatible_api_service.dart';
 import '../../services/preset_service.dart';
 import '../../services/regex_rule_group_service.dart';
+import '../../services/status_extraction_service.dart';
 import '../../services/world_book_service.dart';
 import 'widgets/message_edit_dialog.dart';
 
@@ -1134,6 +1135,20 @@ class ChatViewModel extends ChangeNotifier {
       clearThinkingChain:
           editingMessage.isMe || editingMessage.thinkingChain == null,
     );
+
+    // 角色消息文本变了，其上的状态变量差量随之过期：清空旧差量并重提。
+    if (!editingMessage.isMe) {
+      unawaited(
+        StatusExtractionService.instance.extractForAssistantMessage(
+          sessionId: session.id,
+          assistantMessageId: editingMessage.id!,
+          assistantText: normalizedText,
+          recentMessages: _messages.take(index).toList(growable: false),
+          characterName: _activeCharacter?.name ?? '角色',
+          userName: resolvedUserName(),
+        ),
+      );
+    }
 
     if (action == MessageEditAction.saveAndSend) {
       await regenerateFromUserMessage(

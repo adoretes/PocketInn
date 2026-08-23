@@ -21,6 +21,7 @@ import '../services/preset_service.dart';
 import '../services/regex_rule_group_service.dart';
 import '../services/remote_backup_settings_service.dart';
 import '../services/remote_backup_service.dart';
+import '../services/status_extraction_service.dart' as status_extraction;
 import '../services/storage_service.dart';
 import '../services/user_settings_service.dart';
 import '../services/world_book_service.dart';
@@ -85,7 +86,10 @@ Future<void> setupServiceLocator() async {
   // 11. 长期记忆配置（顶层函数）
   await chat_memory.initializeMemoryConfig();
 
-  // 12. API 配置列表（顶层函数）
+  // 12. 状态提取配置（顶层函数）
+  await status_extraction.initializeStatusExtractionConfig();
+
+  // 13. API 配置列表（顶层函数）
   await api_configs.initializeApiConfigs();
 
   // 其余无 initialize() 的 service 注册为懒加载单例（保持与 instance 同一实例）

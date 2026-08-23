@@ -606,6 +606,7 @@ class PromptAssembler {
       lastUserMessage: _lastUserMessage(context),
       lastCharMessage: _lastCharacterMessage(context),
       memoryContext: context.memoryContext,
+      localVariables: context.chatVariables,
     );
   }
 

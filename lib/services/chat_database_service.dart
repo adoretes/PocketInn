@@ -16,7 +16,7 @@ class ChatDatabaseService {
   static final ChatDatabaseService instance = ChatDatabaseService._();
   final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
 
-  static const int _dbVersion = 5;
+  static const int _dbVersion = 6;
   static const String _dbName = 'pocket_inn_chat.db';
 
   Database? _database;
@@ -147,6 +147,30 @@ class ChatDatabaseService {
         'ALTER TABLE chat_sessions ADD COLUMN gal_mode_enabled INTEGER NOT NULL DEFAULT 0',
       );
     }
+    if (oldVersion < 6 && newVersion >= 6) {
+      // v6: 引入状态变量事件溯源表。
+      // chat_variable_init 存会话初始变量；chat_variable_diffs 把变量差量
+      // 挂在产生它的助手消息上，随消息删除级联清理，随分支各归各路。
+      await _createVariableSchema(db);
+    }
+  }
+
+  Future<void> _createVariableSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_variable_init (
+        session_id TEXT PRIMARY KEY,
+        variables TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_variable_diffs (
+        message_id TEXT PRIMARY KEY,
+        ops TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   Future<void> _createSchema(Database db) async {
@@ -216,6 +240,7 @@ class ChatDatabaseService {
     );
 
     await _createMemoriesSchema(db);
+    await _createVariableSchema(db);
   }
 
   Future<ChatSession> createSession({
@@ -1061,6 +1086,120 @@ class ChatDatabaseService {
   Future<void> deleteMemory(String memoryId) async {
     await _db.delete('chat_memories', where: 'id = ?', whereArgs: [memoryId]);
     _notifyChanged();
+  }
+
+  // ==================== 状态变量（事件溯源） ====================
+
+  /// 读取会话初始变量的 JSON 快照；未设置时返回 null。
+  Future<String?> loadVariableInit(String sessionId) async {
+    final rows = await _db.query(
+      'chat_variable_init',
+      columns: ['variables'],
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first['variables'] as String?;
+  }
+
+  /// 写入（或覆盖）会话初始变量。
+  Future<void> saveVariableInit({
+    required String sessionId,
+    required String valuesJson,
+  }) async {
+    await _db.insert(
+      'chat_variable_init',
+      {'session_id': sessionId, 'variables': valuesJson},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    _notifyChanged();
+  }
+
+  /// 读取挂在某条消息上的变量差量 JSON；无差量返回 null。
+  Future<String?> loadVariableDiff(String messageId) async {
+    final rows = await _db.query(
+      'chat_variable_diffs',
+      columns: ['ops'],
+      where: 'message_id = ?',
+      whereArgs: [messageId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first['ops'] as String?;
+  }
+
+  /// 批量读取多条消息的变量差量（用于沿路径折叠，避免逐条查询）。
+  Future<Map<String, String>> loadVariableDiffBatch(
+    List<String> messageIds,
+  ) async {
+    if (messageIds.isEmpty) {
+      return const {};
+    }
+    final placeholders = List.filled(messageIds.length, '?').join(',');
+    final rows = await _db.query(
+      'chat_variable_diffs',
+      columns: ['message_id', 'ops'],
+      where: 'message_id IN ($placeholders)',
+      whereArgs: messageIds,
+    );
+    return {
+      for (final row in rows)
+        row['message_id'] as String: row['ops'] as String? ?? '[]',
+    };
+  }
+
+  /// 写入（或覆盖）消息的变量差量。
+  Future<void> saveVariableDiff({
+    required String messageId,
+    required String opsJson,
+  }) async {
+    await _db.insert(
+      'chat_variable_diffs',
+      {
+        'message_id': messageId,
+        'ops': opsJson,
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    _notifyChanged();
+  }
+
+  /// 删除消息的变量差量（原地编辑后旧差量即过期）。
+  Future<void> deleteVariableDiff(String messageId) async {
+    await _db.delete(
+      'chat_variable_diffs',
+      where: 'message_id = ?',
+      whereArgs: [messageId],
+    );
+    _notifyChanged();
+  }
+
+  /// 从 [messageId] 沿 parent 链回溯到根，返回顺序为
+  /// `[messageId, parent, ..., root]`；消息不存在返回空列表。
+  Future<List<String>> loadMessageAncestorIds(String messageId) async {
+    final ids = <String>[];
+    String? currentId = messageId;
+    while (currentId != null) {
+      final rows = await _db.query(
+        'chat_messages',
+        columns: ['id', 'parent_id'],
+        where: 'id = ?',
+        whereArgs: [currentId],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        break;
+      }
+      ids.add(rows.first['id'] as String);
+      currentId = rows.first['parent_id'] as String?;
+    }
+    return ids;
   }
 
   void notifyDataChanged() {

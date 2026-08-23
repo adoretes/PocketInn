@@ -19,6 +19,7 @@ import '../pages/chat/widgets/gal_message_view.dart';
 import '../pages/chat/widgets/memory_tree_page.dart';
 import '../pages/chat/widgets/message_edit_dialog.dart';
 import '../pages/chat/widgets/message_view_params.dart';
+import '../pages/chat/widgets/variable_debug_page.dart';
 import '../pages/chat_sidebar_page.dart';
 import '../pages/preset_edit_page.dart';
 import '../pages/regex_rule_group_edit_page.dart';
@@ -182,6 +183,25 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _openVariableManager() async {
+    final session = _viewModel.activeSession;
+    if (session == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VariableDebugPage(
+          sessionId: session.id,
+          leafMessageId: _viewModel.messages.isNotEmpty
+              ? _viewModel.messages.last.id
+              : null,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (_viewModel.activeSession?.id == session.id) {
+      await _viewModel.onChatDatabaseChanged();
+    }
+  }
+
   Future<void> _showApiSelectorSheet() async {
     await showApiSelectorSheet(
       context: context,
@@ -198,6 +218,7 @@ class _ChatPageState extends State<ChatPage> {
       onOpenConfigPage: _openApiConfigPage,
       onOpenRequestLogPage: _openApiRequestLogPage,
       onOpenMemoryManager: _openMemoryManager,
+      onOpenVariableManager: _openVariableManager,
     );
   }
 

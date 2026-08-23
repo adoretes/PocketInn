@@ -13,6 +13,7 @@ class PromptAssemblyContext {
     required this.chatMessages,
     required this.currentInput,
     this.memoryContext = const [],
+    this.chatVariables = const <String, String>{},
   });
 
   final String characterName;
@@ -24,6 +25,10 @@ class PromptAssemblyContext {
   final List<ChatMessage> chatMessages;
   final String currentInput;
   final List<String> memoryContext;
+
+  /// 分支正确的状态变量表（求值到本次发送的父消息时刻），
+  /// 注入宏状态供 `{{getvar}}` 读取。
+  final Map<String, String> chatVariables;
 }
 
 class PromptSegment {

@@ -24,6 +24,8 @@ import 'preset_service.dart';
 import 'prompt_assembler.dart';
 import 'regex_rule_group_service.dart';
 import 'regex_replacement_service.dart';
+import 'status_extraction_service.dart';
+import 'variable_state_service.dart';
 import 'world_book_service.dart';
 
 class ChatSendResult {
@@ -102,6 +104,13 @@ class ChatService {
 
     final truncatedChatMessages = _truncateChatMessages(chatMessages);
 
+    // 分支正确的状态变量：求值到本次发送父消息（gal 回复历史时为
+    // 分支点消息）的时刻，供 {{getvar}} 读取。
+    final chatVariables = await _resolveChatVariables(
+      sessionId: session.id,
+      messageId: parentMessageId ?? session.currentLeafMessageId,
+    );
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -113,6 +122,7 @@ class ChatService {
         chatMessages: truncatedChatMessages,
         currentInput: storedInput,
         memoryContext: memoryContext,
+        chatVariables: chatVariables,
       ),
     );
     cancellationToken?.throwIfCancelled();
@@ -168,6 +178,21 @@ class ChatService {
           userName: userSetting.name,
           currentInput: userNode.text,
           cardData: _extractCardData(character.cardJson),
+        ),
+      );
+
+      // 状态提取（二次调用）：失败静默跳过，不影响聊天主流程。
+      unawaited(
+        StatusExtractionService.instance.extractForAssistantMessage(
+          sessionId: activeSession.id,
+          assistantMessageId: assistantNode.id,
+          assistantText: assistantNode.text,
+          recentMessages: [
+            ...chatMessages,
+            ChatMessage(id: userNode.id, text: userNode.text, isMe: true),
+          ],
+          characterName: character.name,
+          userName: userSetting.name,
         ),
       );
 
@@ -235,6 +260,12 @@ class ChatService {
 
     final truncatedHistory = _truncateChatMessages(historyBeforeUserMessage);
 
+    // 重新生成的新版本从用户消息时刻的状态出发，与旧版本的差量互不干扰。
+    final chatVariables = await _resolveChatVariables(
+      sessionId: session.id,
+      messageId: userMessage.id,
+    );
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -246,6 +277,7 @@ class ChatService {
         chatMessages: truncatedHistory,
         currentInput: userMessage.text,
         memoryContext: memoryContext,
+        chatVariables: chatVariables,
       ),
     );
     cancellationToken?.throwIfCancelled();
@@ -291,6 +323,21 @@ class ChatService {
           userName: userSetting.name,
           currentInput: userMessage.text,
           cardData: _extractCardData(character.cardJson),
+        ),
+      );
+
+      // 状态提取（二次调用）：失败静默跳过，不影响聊天主流程。
+      unawaited(
+        StatusExtractionService.instance.extractForAssistantMessage(
+          sessionId: session.id,
+          assistantMessageId: assistantNode.id,
+          assistantText: assistantNode.text,
+          recentMessages: [
+            ...historyBeforeUserMessage,
+            ChatMessage(id: userMessage.id, text: userMessage.text, isMe: true),
+          ],
+          characterName: character.name,
+          userName: userSetting.name,
         ),
       );
 
@@ -372,6 +419,12 @@ class ChatService {
 
     final truncatedChatMessages = _truncateChatMessages(chatMessages);
 
+    // 继续推进从最后一条角色消息时刻的状态出发。
+    final chatVariables = await _resolveChatVariables(
+      sessionId: session.id,
+      messageId: lastMessageId,
+    );
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -383,6 +436,7 @@ class ChatService {
         chatMessages: truncatedChatMessages,
         currentInput: '',
         memoryContext: memoryContext,
+        chatVariables: chatVariables,
       ),
     );
     cancellationToken?.throwIfCancelled();
@@ -414,14 +468,28 @@ class ChatService {
         onStreamProgress: onStreamProgress,
       );
 
-      await ChatDatabaseService.instance.appendAssistantMessage(
-        sessionId: session.id,
-        parentMessageId: lastMessageId,
-        text: await _applyAssistantOutputRules(
-          completion.text,
-          effectiveRegexRuleGroupIds,
+      final storedAssistantText = await _applyAssistantOutputRules(
+        completion.text,
+        effectiveRegexRuleGroupIds,
+      );
+      final assistantNode = await ChatDatabaseService.instance
+          .appendAssistantMessage(
+            sessionId: session.id,
+            parentMessageId: lastMessageId,
+            text: storedAssistantText,
+            thinkingChain: completion.thinkingChain,
+          );
+
+      // 状态提取（二次调用）：失败静默跳过，不影响聊天主流程。
+      unawaited(
+        StatusExtractionService.instance.extractForAssistantMessage(
+          sessionId: session.id,
+          assistantMessageId: assistantNode.id,
+          assistantText: assistantNode.text,
+          recentMessages: chatMessages,
+          characterName: character.name,
+          userName: userSetting.name,
         ),
-        thinkingChain: completion.thinkingChain,
       );
 
       return completion;
@@ -814,6 +882,24 @@ class ChatService {
       messages,
       memoryExtractionNotifier.value.recentRounds,
     );
+  }
+
+  /// 求值分支正确的状态变量（求值到 [messageId] 时刻），供 {{getvar}} 读取。
+  ///
+  /// 求值失败（如草稿会话尚未落库）时返回空表，不阻断发送。
+  Future<Map<String, String>> _resolveChatVariables({
+    required String sessionId,
+    String? messageId,
+  }) async {
+    try {
+      final state = await VariableStateService.instance.resolveState(
+        sessionId: sessionId,
+        messageId: messageId,
+      );
+      return state.macroMap;
+    } catch (_) {
+      return const <String, String>{};
+    }
   }
 
   Future<List<String>> _buildMemoryContext({
