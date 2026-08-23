@@ -20,6 +20,7 @@ import '../../services/openai_compatible_api_service.dart';
 import '../../services/preset_service.dart';
 import '../../services/regex_rule_group_service.dart';
 import '../../services/status_extraction_service.dart';
+import '../../services/variable_state_service.dart';
 import '../../services/world_book_service.dart';
 import 'widgets/message_edit_dialog.dart';
 
@@ -463,6 +464,17 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
 
+    // 旧会话回填：早于状态系统的会话在加载时补写角色卡声明的
+    // 初始变量（仅补一次，不覆盖已有记录）。
+    if (resolvedCharacter != null) {
+      try {
+        await VariableStateService.instance.ensureCardInit(
+          sessionId: bundle.session.id,
+          cardJson: resolvedCharacter.cardJson,
+        );
+      } catch (_) {}
+    }
+
     _activeSession = bundle.session;
     _activeCharacter = resolvedCharacter;
     _messages = bundle.activeMessages;
@@ -574,6 +586,14 @@ class ChatViewModel extends ChangeNotifier {
       openingAssistantMessages: _draftOpeningAssistantMessages,
       activeOpeningMessageIndex: _draftOpeningMessageIndex,
     );
+
+    // 正式开始聊天：应用角色卡声明的初始状态变量。
+    try {
+      await VariableStateService.instance.applyCardInit(
+        sessionId: createdSession.id,
+        cardJson: character.cardJson,
+      );
+    } catch (_) {}
 
     _activeSession = createdSession;
     _isDraftSession = false;
@@ -1377,6 +1397,14 @@ class ChatViewModel extends ChangeNotifier {
         selectedPresetId: _selectedPresetId,
         openingAssistantMessages: openingMessages,
       );
+      // 消息已全部清空（diff 随之级联消失），
+      // 按角色卡当前声明的初始变量重新开始。
+      try {
+        await VariableStateService.instance.applyCardInit(
+          sessionId: session.id,
+          cardJson: character.cardJson,
+        );
+      } catch (_) {}
       await _loadSession(preferredSessionId: session.id);
     } catch (error) {
       if (!_isDisposed) {

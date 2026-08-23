@@ -367,6 +367,95 @@ void main() {
     );
   });
 
+  test('applyCardInit：正式开聊应用角色卡声明，重置时覆盖旧值', () async {
+    final db = ChatDatabaseService.instance;
+    final service = VariableStateService.instance;
+    final session = await db.createSession(
+      characterId: 'char-1',
+      openingAssistantMessages: ['开场白'],
+    );
+
+    Map<String, Object?> cardWith(String name, String value) => {
+      'data': {
+        'extensions': {
+          'variables': {
+            name: {'type': 'number', 'value': value, 'max': 100},
+          },
+        },
+      },
+    };
+
+    // 正式开始聊天：应用角色卡声明。
+    await service.applyCardInit(
+      sessionId: session.id,
+      cardJson: cardWith('好感度', '0'),
+    );
+    var state = await service.resolveState(sessionId: session.id);
+    expect(state['好感度']?.value, '0');
+    expect(state['好感度']?.metadata?.maxValue, 100);
+
+    // 角色卡声明被修改后重置聊天：初始值按新卡覆盖。
+    await service.applyCardInit(
+      sessionId: session.id,
+      cardJson: cardWith('好感度', '20'),
+    );
+    state = await service.resolveState(sessionId: session.id);
+    expect(state['好感度']?.value, '20');
+
+    // 角色卡移除声明后重置：初始状态清空，系统回到未启用。
+    await service.applyCardInit(sessionId: session.id, cardJson: {});
+    state = await service.resolveState(sessionId: session.id);
+    expect(state.isEmpty, isTrue);
+  });
+
+  test('ensureCardInit：旧会话仅在无记录且卡有声明时补写一次', () async {
+    final db = ChatDatabaseService.instance;
+    final service = VariableStateService.instance;
+    final session = await db.createSession(
+      characterId: 'char-1',
+      openingAssistantMessages: ['开场白'],
+    );
+    final card = {
+      'data': {
+        'extensions': {
+          'variables': {
+            '金币': {'type': 'number', 'value': '50'},
+          },
+        },
+      },
+    };
+
+    await service.ensureCardInit(sessionId: session.id, cardJson: card);
+    expect((await service.loadInitState(session.id))['金币']?.value, '50');
+
+    // 第二次调用（卡值已变）不得覆盖已存在的记录。
+    await service.ensureCardInit(
+      sessionId: session.id,
+      cardJson: {
+        'data': {
+          'extensions': {
+            'variables': {
+              '金币': {'type': 'number', 'value': '999'},
+            },
+          },
+        },
+      },
+    );
+    expect((await service.loadInitState(session.id))['金币']?.value, '50');
+
+    // 卡未声明变量时不写入记录。
+    final other = await db.createSession(
+      characterId: 'char-1',
+      openingAssistantMessages: ['开场白'],
+    );
+    await service.ensureCardInit(sessionId: other.id, cardJson: {});
+    expect(
+      await db.loadVariableInit(other.id),
+      isNull,
+      reason: '无声明的旧会话不应产生空的初始变量记录',
+    );
+  });
+
   test('v5 旧库升级 v6 后变量表可用', () async {
     final service = ChatDatabaseService.instance;
     await service.deleteDatabaseFiles();

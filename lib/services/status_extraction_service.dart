@@ -197,11 +197,6 @@ class StatusExtractionService {
       return false;
     }
 
-    final apiConfig = _extractionConfig;
-    if (apiConfig == null) {
-      return false;
-    }
-
     // 原地编辑后的重提：旧差量随旧文本作废。
     final existingOps = await VariableStateService.instance.readDiff(
       assistantMessageId,
@@ -216,6 +211,15 @@ class StatusExtractionService {
       messageId: assistantMessageId,
       includeSelf: false,
     );
+    // 角色卡未声明初始变量（状态系统未启用）时不发起提取调用。
+    if (parentState.isEmpty) {
+      return false;
+    }
+
+    final apiConfig = _extractionConfig;
+    if (apiConfig == null) {
+      return false;
+    }
 
     final prompt = _buildExtractionPrompt(parentState);
     final userContent = _buildDialogueContext(

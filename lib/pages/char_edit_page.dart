@@ -4,9 +4,11 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../models/chat_variables.dart';
 import '../models/world_book.dart';
 import '../services/world_book_service.dart';
 import '../widgets/expanded_text_editor_field.dart';
+import '../widgets/variable_edit_dialog.dart';
 import 'world_book_edit_page.dart';
 
 class RoleEditPage extends StatefulWidget {
@@ -46,6 +48,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
   late List<TextEditingController> _greetingControllers;
   int _currentGreetingIndex = 0;
   late List<String> tags;
+  List<ChatVariable> _variables = [];
 
   final TextEditingController _newTagController = TextEditingController();
   final FocusNode _nameFocusNode = FocusNode();
@@ -96,6 +99,11 @@ class _RoleEditPageState extends State<RoleEditPage> {
       alternateGreetings = [''];
     }
     tags = List<String>.from(data['tags'] as List? ?? const []);
+    // decodeCardVariables 无声明时返回不可变空表，这里复制为可变列表，
+    // 供「添加变量」直接增删。
+    _variables = List<ChatVariable>.from(
+      decodeCardVariables({'data': data}),
+    );
     _selectedWorldBookId = widget.initialWorldBookId;
     _initialBackgroundImage = _imageProviderForPath(widget.imagePath);
     _nameFocusNode.addListener(_onNameFocusChange);
@@ -167,6 +175,18 @@ class _RoleEditPageState extends State<RoleEditPage> {
         .toSet()
         .toList();
 
+    final normalizedVariables = _dedupeVariablesByName(_variables);
+    final extensions = Map<String, dynamic>.from(
+      data['extensions'] as Map? ?? <String, dynamic>{},
+    );
+    if (normalizedVariables.isEmpty) {
+      extensions.remove(kCardVariablesExtensionKey);
+    } else {
+      extensions[kCardVariablesExtensionKey] = encodeCardVariables(
+        normalizedVariables,
+      );
+    }
+
     final updatedData = {
       ...data,
       'name': trimmedName,
@@ -184,7 +204,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
       'character_book':
           data['character_book'] ??
           <String, dynamic>{'entries': {}, 'extensions': {}},
-      'extensions': data['extensions'] ?? <String, dynamic>{},
+      'extensions': extensions,
     };
 
     final updatedCard = {
@@ -206,6 +226,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
 
     setState(() {
       data = Map<String, dynamic>.from(updatedData);
+      _variables = normalizedVariables;
       _showValidationError = false;
     });
 
@@ -422,6 +443,42 @@ class _RoleEditPageState extends State<RoleEditPage> {
     return path.startsWith('assets/')
         ? AssetImage(path) as ImageProvider
         : FileImage(File(path));
+  }
+
+  static List<ChatVariable> _dedupeVariablesByName(List<ChatVariable> list) {
+    final byName = <String, ChatVariable>{};
+    for (final variable in list) {
+      byName[variable.name] = variable;
+    }
+    return [
+      for (final variable in list)
+        if (identical(byName[variable.name], variable)) variable,
+    ];
+  }
+
+  Future<void> _editVariable([ChatVariable? existing]) async {
+    final result = await showVariableEditDialog(context, initial: existing);
+    if (result == null) {
+      return;
+    }
+    // 整体替换而非原地修改：初始列表可能来自 decodeCardVariables 的
+    // const 空表，removeWhere 会抛 UnsupportedError。
+    setState(() {
+      _variables = [
+        for (final item in _variables)
+          if (item.name != result.name) item,
+        result,
+      ];
+    });
+  }
+
+  void _removeVariable(String name) {
+    setState(() {
+      _variables = [
+        for (final item in _variables)
+          if (item.name != name) item,
+      ];
+    });
   }
 
   @override
@@ -830,6 +887,79 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                const Text(
+                                  '初始状态变量',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  tooltip: '添加变量',
+                                  icon: const Icon(Icons.add),
+                                  onPressed: () => _editVariable(),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '正式开始聊天时应用为初始状态；未声明变量时状态系统不启用。'
+                              '预设/世界书可用 {{getstate}} 引用全部当前变量，'
+                              '{{getvar::名称}} 引用单个变量。',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            if (_variables.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              for (final variable in _variables)
+                                ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(variable.name),
+                                  subtitle: Text(
+                                    [
+                                      variable.type.label,
+                                      if (variable.metadata?.minValue !=
+                                              null ||
+                                          variable.metadata?.maxValue != null)
+                                        '${variable.metadata?.minValue ?? '-∞'} ~ '
+                                            '${variable.metadata?.maxValue ?? '+∞'}',
+                                    ].join(' · '),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        variable.value,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        tooltip: '编辑',
+                                        icon: const Icon(
+                                          Icons.edit_outlined,
+                                          size: 20,
+                                        ),
+                                        onPressed: () => _editVariable(variable),
+                                      ),
+                                      IconButton(
+                                        tooltip: '删除',
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 20,
+                                        ),
+                                        onPressed: () =>
+                                            _removeVariable(variable.name),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
                           ],
                         ),
                       ),

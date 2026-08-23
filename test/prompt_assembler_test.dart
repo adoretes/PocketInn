@@ -151,6 +151,52 @@ void main() {
       expect(result.mergedText, isNot(contains('备注不会发送')));
     });
 
+    test('getstate 展开全部注入的状态变量，无变量时为空', () {
+      Preset buildPreset() => Preset(
+        id: 'preset-1',
+        name: '测试预设',
+        updatedAt: DateTime(2026),
+        prompts: [
+          PresetPrompt(
+            identifier: 'main',
+            name: 'Main',
+            content: '当前状态：\n{{getstate}}',
+          ),
+        ],
+      );
+
+      final withVars = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(),
+          userName: '林澈',
+          userSettingPrompt: '',
+          preset: buildPreset(),
+          selectedWorldBooks: const [],
+          chatMessages: const [],
+          currentInput: '',
+          chatVariables: const {'好感度': '85', '心情': '心动'},
+        ),
+      );
+      expect(withVars.mergedText, contains('好感度: 85'));
+      expect(withVars.mergedText, contains('心情: 心动'));
+
+      final withoutVars = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(),
+          userName: '林澈',
+          userSettingPrompt: '',
+          preset: buildPreset(),
+          selectedWorldBooks: const [],
+          chatMessages: const [],
+          currentInput: '',
+        ),
+      );
+      expect(withoutVars.mergedText, isNot(contains('好感度')));
+      expect(withoutVars.mergedText, contains('当前状态：'));
+    });
+
     test('resolves input lastusermessage and lastcharmessage macros', () {
       final result = PromptAssembler.build(
         PromptAssemblyContext(

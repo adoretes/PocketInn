@@ -194,4 +194,78 @@ void main() {
       expect(VariableOp.fromJson('set'), isNull);
     });
   });
+
+  group('角色卡编解码', () {
+    test('encode/decode 往返保留类型与元数据', () {
+      final variables = [
+        const ChatVariable(
+          name: '好感度',
+          type: ChatVariableType.number,
+          value: '0',
+          metadata: ChatVariableMetadata(minValue: 0, maxValue: 100),
+        ),
+        const ChatVariable(
+          name: '状态',
+          type: ChatVariableType.enumType,
+          value: '平静',
+          metadata: ChatVariableMetadata(enumOptions: ['平静', '心动']),
+        ),
+      ];
+
+      final cardJson = {
+        'data': {
+          'extensions': {kCardVariablesExtensionKey: encodeCardVariables(variables)},
+        },
+      };
+
+      expect(decodeCardVariables(cardJson), variables);
+    });
+
+    test('兼容手写列表形态与宽松字段', () {
+      final cardJson = {
+        'data': {
+          'extensions': {
+            'variables': [
+              {'name': '金币', 'type': 'number', 'value': 20, 'max': 999},
+              {'var': '心情', 'value': '平静'},
+              {'invalid': true},
+              'junk',
+            ],
+          },
+        },
+      };
+
+      final decoded = decodeCardVariables(cardJson);
+      expect(decoded.length, 2);
+      expect(decoded[0].name, '金币');
+      expect(decoded[0].metadata?.maxValue, 999);
+      expect(decoded[1].type, ChatVariableType.text);
+      expect(decoded[1].value, '平静');
+    });
+
+    test('无声明或结构缺失返回空列表', () {
+      expect(decodeCardVariables({}), isEmpty);
+      expect(decodeCardVariables({'data': {}}), isEmpty);
+      expect(
+        decodeCardVariables({
+          'data': {'extensions': {'others': 1}},
+        }),
+        isEmpty,
+      );
+    });
+
+    test('返回可变列表（编辑页可直接增删，修复添加变量崩溃）', () {
+      final list = decodeCardVariables({});
+      expect(
+        () => list.add(
+          const ChatVariable(
+            name: '新变量',
+            type: ChatVariableType.number,
+            value: '1',
+          ),
+        ),
+        returnsNormally,
+      );
+    });
+  });
 }

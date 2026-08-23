@@ -41,6 +41,31 @@ class ChatVariableMetadata {
   final String? unit;
   final List<String> enumOptions;
 
+  @override
+  bool operator ==(Object other) {
+    if (other is! ChatVariableMetadata) {
+      return false;
+    }
+    if (other.minValue != minValue ||
+        other.maxValue != maxValue ||
+        other.unit != unit) {
+      return false;
+    }
+    if (other.enumOptions.length != enumOptions.length) {
+      return false;
+    }
+    for (var i = 0; i < enumOptions.length; i++) {
+      if (other.enumOptions[i] != enumOptions[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(minValue, maxValue, unit, Object.hashAll(enumOptions));
+
   ChatVariableMetadata copyWith({
     double? minValue,
     double? maxValue,
@@ -91,6 +116,18 @@ class ChatVariable {
   final String value;
   final ChatVariableMetadata? metadata;
 
+  @override
+  bool operator ==(Object other) {
+    return other is ChatVariable &&
+        other.name == name &&
+        other.type == type &&
+        other.value == value &&
+        other.metadata == metadata;
+  }
+
+  @override
+  int get hashCode => Object.hash(name, type, value, metadata);
+
   ChatVariable copyWith({
     ChatVariableType? type,
     String? value,
@@ -121,6 +158,54 @@ class ChatVariable {
       metadata: metadataJson is Map<String, dynamic>
           ? ChatVariableMetadata.fromJson(metadataJson)
           : null,
+    );
+  }
+
+  /// 角色卡 `extensions.variables` 内的扁平形态。
+  Map<String, dynamic> toCardJson() {
+    final metadata = this.metadata;
+    return {
+      'type': type.value,
+      'value': value,
+      if (metadata?.minValue != null) 'min': metadata!.minValue,
+      if (metadata?.maxValue != null) 'max': metadata!.maxValue,
+      if (metadata?.unit != null && metadata!.unit!.isNotEmpty)
+        'unit': metadata.unit,
+      if (metadata?.enumOptions.isNotEmpty == true)
+        'enumOptions': metadata!.enumOptions,
+    };
+  }
+
+  /// 解析角色卡内声明的变量（字段名宽松：min/max/unit/enumOptions
+  /// 可在顶层或 metadata 内）；名称缺失或整体非法返回 null。
+  static ChatVariable? fromCardJson(dynamic json) {
+    if (json is! Map) {
+      return null;
+    }
+    final map = Map<String, dynamic>.from(json);
+    final dynamic nameRaw = map['name'] ?? map['var'];
+    final name = nameRaw?.toString().trim() ?? '';
+    if (name.isEmpty) {
+      return null;
+    }
+    final metadataJson = map['metadata'];
+    final merged = <String, dynamic>{
+      if (metadataJson is Map) ...metadataJson,
+      ...map,
+    };
+    return ChatVariable(
+      name: name,
+      type: ChatVariableType.fromValue(map['type'] as String?),
+      value: map['value']?.toString() ?? '',
+      metadata: ChatVariableMetadata(
+        minValue: (merged['min'] as num?)?.toDouble(),
+        maxValue: (merged['max'] as num?)?.toDouble(),
+        unit: merged['unit'] as String?,
+        enumOptions: (merged['enumOptions'] as List?)
+                ?.map((item) => item.toString())
+                .toList(growable: false) ??
+            const <String>[],
+      ),
     );
   }
 }
@@ -371,4 +456,57 @@ class VariableState {
     } catch (_) {}
     return VariableState.empty();
   }
+
+  /// 序列化为角色卡 `data.extensions.variables` 使用的扁平结构（保序列表）。
+  List<Map<String, dynamic>> toCardJsonList() {
+    return [
+      for (final variable in _variables.values) variable.toCardJson(),
+    ];
+  }
+
+  /// 从角色卡声明的变量列表构建初始状态。
+  static VariableState fromCardVariables(List<ChatVariable> variables) {
+    return VariableState.fromVariables({
+      for (final variable in variables) variable.name: variable,
+    });
+  }
+}
+
+// ==================== 角色卡变量编解码 ====================
+
+/// 角色卡中声明初始状态变量的扩展键（位于 `data.extensions` 下）。
+const String kCardVariablesExtensionKey = 'variables';
+
+/// 序列化为角色卡 `data.extensions.variables` 的取值。
+Map<String, dynamic> encodeCardVariables(List<ChatVariable> variables) {
+  return {
+    for (final variable in variables) variable.name: variable.toCardJson(),
+  };
+}
+
+/// 从角色卡 JSON（含 `data.extensions.variables`）解析声明的变量列表。
+///
+/// 兼容两种形态：`{名称: {…}}` 映射（本应用保存的形态）与
+/// `[{name: …}, …]` 列表（手写卡/导入的形态）；非法条目静默跳过。
+/// 返回可增长列表（空声明时也为可增长），调用方可安全持有与追加。
+List<ChatVariable> decodeCardVariables(Map<String, dynamic> cardJson) {
+  final data = cardJson['data'];
+  if (data is! Map<String, dynamic>) {
+    return <ChatVariable>[];
+  }
+  final extensions = data['extensions'];
+  if (extensions is! Map<String, dynamic>) {
+    return <ChatVariable>[];
+  }
+  final raw = extensions[kCardVariablesExtensionKey];
+  if (raw is Map<String, dynamic>) {
+    return [
+      for (final entry in raw.entries)
+        ?ChatVariable.fromCardJson({...entry.value, 'name': entry.key}),
+    ];
+  }
+  if (raw is List) {
+    return [for (final item in raw) ?ChatVariable.fromCardJson(item)];
+  }
+  return <ChatVariable>[];
 }

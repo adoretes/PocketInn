@@ -9,6 +9,7 @@ import '../data/mock_user_settings.dart';
 import '../models/api_config.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
+import '../models/chat_variables.dart';
 import '../models/preset.dart';
 import '../models/prompt_assembly.dart';
 import '../models/regex_rule_group.dart';
@@ -109,6 +110,7 @@ class ChatService {
     final chatVariables = await _resolveChatVariables(
       sessionId: session.id,
       messageId: parentMessageId ?? session.currentLeafMessageId,
+      fallbackCardJson: character.cardJson,
     );
 
     final promptAssembly = PromptAssembler.build(
@@ -887,15 +889,23 @@ class ChatService {
   /// 求值分支正确的状态变量（求值到 [messageId] 时刻），供 {{getvar}} 读取。
   ///
   /// 求值失败（如草稿会话尚未落库）时返回空表，不阻断发送。
+  /// [fallbackCardJson]：草稿会话首条消息时会话尚不存在、初始变量
+  /// 未写入，回退到角色卡声明的变量，保证首条 prompt 即可引用。
   Future<Map<String, String>> _resolveChatVariables({
     required String sessionId,
     String? messageId,
+    Map<String, dynamic>? fallbackCardJson,
   }) async {
     try {
-      final state = await VariableStateService.instance.resolveState(
+      var state = await VariableStateService.instance.resolveState(
         sessionId: sessionId,
         messageId: messageId,
       );
+      if (state.isEmpty && fallbackCardJson != null) {
+        state = VariableState.fromCardVariables(
+          decodeCardVariables(fallbackCardJson),
+        );
+      }
       return state.macroMap;
     } catch (_) {
       return const <String, String>{};

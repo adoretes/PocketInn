@@ -9,6 +9,10 @@ import 'chat_database_service.dart';
 /// 「某条消息时刻的变量状态」= 会话初始变量 + 从根到该消息路径上
 /// 所有 diff 按序折叠。切换版本、gal 回复历史、记忆树跳转等操作
 /// 改变激活路径后，只需重新求值即可得到分支正确的状态，无需回滚。
+///
+/// 会话初始变量来自角色卡声明（`data.extensions.variables`），
+/// 在正式开始聊天（草稿落库）与重置聊天时应用；角色卡未声明变量
+/// 时初始状态为空，整套状态系统不启用（提取调用直接跳过）。
 class VariableStateService {
   VariableStateService._();
 
@@ -21,6 +25,40 @@ class VariableStateService {
       return VariableState.empty();
     }
     return VariableState.decodeJson(raw);
+  }
+
+  /// 将角色卡声明的初始变量写入会话（覆盖现有初始状态）。
+  ///
+  /// 用于「正式开始聊天」与「重置聊天」：重置后消息全清（diff 级联
+  /// 消失），状态从新的初始值重新开始。
+  Future<void> applyCardInit({
+    required String sessionId,
+    required Map<String, dynamic> cardJson,
+  }) async {
+    final variables = decodeCardVariables(cardJson);
+    await saveInitState(
+      sessionId,
+      VariableState.fromCardVariables(variables),
+    );
+  }
+
+  /// 为早于本功能创建的旧会话补写初始变量：
+  /// 仅当会话尚无初始变量记录且角色卡声明了变量时写入一次。
+  Future<void> ensureCardInit({
+    required String sessionId,
+    required Map<String, dynamic> cardJson,
+  }) async {
+    final existing = await ChatDatabaseService.instance.loadVariableInit(
+      sessionId,
+    );
+    if (existing != null) {
+      return;
+    }
+    final variables = decodeCardVariables(cardJson);
+    if (variables.isEmpty) {
+      return;
+    }
+    await saveInitState(sessionId, VariableState.fromCardVariables(variables));
   }
 
   /// 写入（或覆盖）会话初始变量。

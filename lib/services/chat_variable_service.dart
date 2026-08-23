@@ -141,6 +141,9 @@ class ChatVariableService {
           return '';
         }
         return state.localVariables[variableName] ?? '';
+      case 'getstate':
+      case 'getvars':
+        return _formatStateVariables(state.localVariables);
       case 'setvar':
         final parsed = _parseVariableAssignment(body);
         if (parsed.name.isNotEmpty) {
@@ -174,6 +177,19 @@ class ChatVariableService {
         .replaceAllMapped(_charPlaceholderPattern, (_) => characterName)
         .replaceAllMapped(_userAliasPattern, (_) => userName)
         .replaceAllMapped(_charAliasPattern, (_) => characterName);
+  }
+
+  /// `{{getstate}}` 的渲染：把全部当前变量按「名称: 值」逐行展开。
+  ///
+  /// 变量表来自分支正确的求值结果（[PromptMacroState.localVariables]），
+  /// 无变量时展开为空串。预设/世界书可用它把当前状态整体注入 prompt。
+  static String _formatStateVariables(Map<String, String> variables) {
+    if (variables.isEmpty) {
+      return '';
+    }
+    return [
+      for (final entry in variables.entries) '${entry.key}: ${entry.value}',
+    ].join('\n');
   }
 
   static String _applyTrimMarkers(String input) {
