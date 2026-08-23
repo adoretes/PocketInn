@@ -335,6 +335,38 @@ void main() {
     expect(await service.readDiff(assistant.id), isEmpty);
   });
 
+  test('变量写入不广播 DB 变化（避免会话重载清掉 gal 选项等瞬态 UI）', () async {
+    final db = ChatDatabaseService.instance;
+    final service = VariableStateService.instance;
+    final session = await db.createSession(
+      characterId: 'char-1',
+      openingAssistantMessages: ['开场白'],
+    );
+
+    final assistant = await db.appendAssistantMessage(
+      sessionId: session.id,
+      parentMessageId: session.currentLeafMessageId,
+      text: '回复',
+    );
+
+    // 基线取在消息写入之后：只断言变量操作本身不广播。
+    final notifyCountBefore = db.changeNotifier.value;
+    await service.saveInitState(session.id, initState());
+    await service.writeDiff(
+      messageId: assistant.id,
+      ops: [
+        const VariableOp(kind: VariableOpKind.add, variable: '好感度', value: '5'),
+      ],
+    );
+    await service.clearDiff(assistant.id);
+
+    expect(
+      db.changeNotifier.value,
+      notifyCountBefore,
+      reason: '变量 init/diff 的写入与删除都不应触发 changeNotifier',
+    );
+  });
+
   test('v5 旧库升级 v6 后变量表可用', () async {
     final service = ChatDatabaseService.instance;
     await service.deleteDatabaseFiles();

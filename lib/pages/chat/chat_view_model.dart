@@ -476,7 +476,18 @@ class ChatViewModel extends ChangeNotifier {
       ..addAll(bundle.session.selectedRegexRuleGroupIds);
     _galModeEnabled = bundle.session.galModeEnabled;
     _galBrowsingIndex = null;
-    _clearGalChoices();
+    // 后台数据写入（记忆提取、状态提取等）触发的重载不应打断或清掉
+    // gal 选项：生成中跳过清理；选项归属的消息仍是当前叶子时保留。
+    // 叶子变化（发送/重新生成/删除分支）或会话切换时照常清空。
+    final lastMessageId = bundle.activeMessages.isNotEmpty
+        ? bundle.activeMessages.last.id
+        : null;
+    final keepGalChoices =
+        _isGeneratingGalChoices ||
+        (_galChoicesMessageId != null && _galChoicesMessageId == lastMessageId);
+    if (!keepGalChoices) {
+      _clearGalChoices();
+    }
     _isDraftSession = false;
     _draftOpeningAssistantMessages = const [];
     _draftOpeningMessageIndex = 0;
@@ -1402,6 +1413,7 @@ class ChatViewModel extends ChangeNotifier {
     ChatSession? activeSession,
     ResolvedChatCharacter? activeCharacter,
     List<ChatMessage>? messages,
+    bool? isLoading,
     bool? isSending,
     bool? isSwitchingSession,
     bool? useStreaming,
@@ -1417,6 +1429,7 @@ class ChatViewModel extends ChangeNotifier {
     if (activeSession != null) _activeSession = activeSession;
     if (activeCharacter != null) _activeCharacter = activeCharacter;
     if (messages != null) _messages = messages;
+    if (isLoading != null) _isLoading = isLoading;
     if (isSending != null) _isSending = isSending;
     if (isSwitchingSession != null) _isSwitchingSession = isSwitchingSession;
     if (useStreaming != null) _useStreaming = useStreaming;

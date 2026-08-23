@@ -1106,6 +1106,10 @@ class ChatDatabaseService {
   }
 
   /// 写入（或覆盖）会话初始变量。
+  ///
+  /// 变量属按需求值的派生数据，不广播 DB 变化：广播会触发会话重载，
+  /// 进而清掉 gal 选项等瞬态 UI 状态（发送时的 {{getvar}} 与调试页
+  /// 均为读取时求值，无需通知）。
   Future<void> saveVariableInit({
     required String sessionId,
     required String valuesJson,
@@ -1115,7 +1119,6 @@ class ChatDatabaseService {
       {'session_id': sessionId, 'variables': valuesJson},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-    _notifyChanged();
   }
 
   /// 读取挂在某条消息上的变量差量 JSON；无差量返回 null。
@@ -1153,7 +1156,7 @@ class ChatDatabaseService {
     };
   }
 
-  /// 写入（或覆盖）消息的变量差量。
+  /// 写入（或覆盖）消息的变量差量。不广播 DB 变化，见 [saveVariableInit]。
   Future<void> saveVariableDiff({
     required String messageId,
     required String opsJson,
@@ -1167,17 +1170,15 @@ class ChatDatabaseService {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-    _notifyChanged();
   }
 
-  /// 删除消息的变量差量（原地编辑后旧差量即过期）。
+  /// 删除消息的变量差量（原地编辑后旧差量即过期）。不广播 DB 变化。
   Future<void> deleteVariableDiff(String messageId) async {
     await _db.delete(
       'chat_variable_diffs',
       where: 'message_id = ?',
       whereArgs: [messageId],
     );
-    _notifyChanged();
   }
 
   /// 从 [messageId] 沿 parent 链回溯到根，返回顺序为

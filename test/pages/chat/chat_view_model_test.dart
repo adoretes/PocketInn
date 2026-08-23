@@ -7,9 +7,11 @@ import 'package:pocket_inn/core/service_locator.dart';
 import 'package:pocket_inn/data/api_configs.dart';
 import 'package:pocket_inn/data/mock_user_settings.dart';
 import 'package:pocket_inn/models/api_config.dart';
+import 'package:pocket_inn/models/character_card.dart';
 import 'package:pocket_inn/models/chat_message.dart';
 import 'package:pocket_inn/models/chat_session.dart';
 import 'package:pocket_inn/pages/chat/chat_view_model.dart';
+import 'package:pocket_inn/services/character_service.dart';
 import 'package:pocket_inn/services/chat_character_resolver.dart';
 import 'package:pocket_inn/services/chat_database_service.dart';
 import 'package:pocket_inn/services/chat_service.dart';
@@ -605,6 +607,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       await StorageService.instance.initialize();
       await PresetService.instance.initialize();
+      await CharacterService.instance.initialize();
       // 竞态用例中 setGalMode 会触发会话配置持久化。
       await ChatDatabaseService.instance.initialize();
     });
@@ -617,6 +620,9 @@ void main() {
       api = _FakeOpenAiApiService();
       getIt.registerSingleton<ChatService>(ChatService.instance);
       getIt.registerSingleton<IOpenAiApiService>(api);
+      getIt.registerLazySingleton<ChatCharacterResolver>(
+        () => ChatCharacterResolver.instance,
+      );
       apiConfigsNotifier.value = [
         const ApiConfig(
           id: 'p1',
@@ -705,6 +711,59 @@ void main() {
       expect(vm.galChoices, isEmpty, reason: '过期响应不应写入已清空的状态');
       expect(vm.galChoicesMessageId, isNull);
       expect(vm.galChoicesError, isFalse);
+    });
+
+    test('后台数据写入触发的重载不清空已生成的选项', () async {
+      final db = ChatDatabaseService.instance;
+      await db.clearAllData();
+      // 重载会用 ChatCharacterResolver 重新解析角色，需在库中准备真实角色。
+      await CharacterService.instance.save(
+        const CharacterCardRecord(
+          id: 'char-1',
+          originalImagePath: '',
+          thumbnailPath: '',
+          cardJson: {
+            'data': {'name': '测试角色', 'description': '测试描述'},
+          },
+        ),
+      );
+      final session = await db.createSession(
+        characterId: 'char-1',
+        openingAssistantMessages: ['欢迎回来'],
+      );
+      final bundle = await db.loadSessionBundle(session.id);
+      api.behavior = () async =>
+          const ChatCompletionResult(text: '{"choices": ["选项A", "选项B"]}');
+
+      final vm = ChatViewModel();
+      viewModel = vm;
+      vm.setStateForTesting(
+        activeSession: session,
+        activeCharacter: _makeCharacter(),
+        messages: bundle!.activeMessages,
+        isLoading: false,
+      );
+      await vm.setGalMode(true);
+      // 排空 setGalMode 持久化触发的自动重载，避免与后续断言竞争。
+      await vm.onChatDatabaseChanged();
+      await vm.refreshGalChoices();
+      expect(vm.galChoices, ['选项A', '选项B']);
+      expect(vm.galChoicesMessageId, vm.messages.last.id);
+
+      // 模拟记忆提取/状态提取等后台写入完成后的 DB 变化广播。
+      db.notifyDataChanged();
+      await vm.onChatDatabaseChanged();
+      expect(vm.galChoices, ['选项A', '选项B'], reason: '目标消息未变，选项应保留');
+      expect(vm.galChoicesMessageId, vm.messages.last.id);
+
+      // 叶子变化（删除消息分支）后选项应照常清空。
+      await db.deleteMessageBranch(
+        sessionId: session.id,
+        messageId: bundle.activeMessages.last.id!,
+      );
+      await vm.onChatDatabaseChanged();
+      expect(vm.galChoices, isEmpty);
+      expect(vm.galChoicesMessageId, isNull);
     });
   });
 }
