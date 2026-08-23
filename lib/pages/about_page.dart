@@ -72,6 +72,11 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.0',
+                  date: '2026-08-23',
+                  changes: ['新增会话级状态管理系统'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.5.0',
                   date: '2026-08-22',
                   changes: ['新增 gal 模式，提供沉浸式视觉小说对话体验', 'gal 模式支持回复历史消息，可回溯并切换旧分支', '新增选项生成功能，支持选项生成配置与会话状态持久化', '统一 gal 模式下的正则显示替换', '修复 Windows 下临时目录删除失败的问题'],
