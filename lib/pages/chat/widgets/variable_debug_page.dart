@@ -338,48 +338,76 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
   }
 
   Future<void> _showCustomPromptEditor(StatusExtractionConfig config) async {
-    final controller = TextEditingController(text: config.customPrompt);
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('自定义提取提示词'),
-          content: SizedBox(
-            width: 480,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  '{{state}} 会被替换为当前变量 JSON；留空恢复内置默认。',
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  maxLines: 10,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
+      builder: (_) => _CustomPromptEditorDialog(initial: config.customPrompt),
+    );
+    if (confirmed != null) {
+      updateStatusExtractionConfig(customPrompt: confirmed);
+    }
+  }
+}
+
+/// 自定义提取提示词编辑器：controller 由弹窗自身的 State 持有，
+/// 随弹窗卸载释放，避免退出动画期间被输入法回调访问到已释放的 controller。
+class _CustomPromptEditorDialog extends StatefulWidget {
+  const _CustomPromptEditorDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_CustomPromptEditorDialog> createState() => _CustomPromptEditorDialogState();
+}
+
+class _CustomPromptEditorDialogState extends State<_CustomPromptEditorDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initial);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('自定义提取提示词'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '{{state}} 会被替换为当前变量 JSON；留空恢复内置默认。',
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('保存'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              maxLines: 10,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+              ),
             ),
           ],
-        );
-      },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('保存'),
+        ),
+      ],
     );
-    if (confirmed == true) {
-      updateStatusExtractionConfig(customPrompt: controller.text);
-    }
-    controller.dispose();
   }
 }
 
