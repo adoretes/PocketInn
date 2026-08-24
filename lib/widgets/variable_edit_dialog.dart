@@ -67,7 +67,36 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
       // 窄窗口下收紧外边距，配合更宽的内容区，避免「数值」等
       // 分段按钮标签被挤成竖排。
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      title: Text(widget.initial == null ? '添加变量' : '编辑变量'),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(widget.initial == null ? '添加变量' : '编辑变量'),
+          ),
+          const SizedBox(width: 12),
+          SegmentedButton<ChatVariableType>(
+            showSelectedIcon: false,
+            segments: [
+              for (final type in ChatVariableType.values)
+                ButtonSegment(value: type, label: Text(type.label)),
+            ],
+            selected: {_type},
+            onSelectionChanged: (selection) {
+              setState(() {
+                _type = selection.first;
+              });
+            },
+            style: const ButtonStyle(
+              textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
+              padding: WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              ),
+              minimumSize: WidgetStatePropertyAll(Size(0, 28)),
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -81,20 +110,6 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
                   hintText: '如：好感度、生命、状态',
                   border: OutlineInputBorder(),
                 ),
-              ),
-              const SizedBox(height: 12),
-              SegmentedButton<ChatVariableType>(
-                showSelectedIcon: false,
-                segments: [
-                  for (final type in ChatVariableType.values)
-                    ButtonSegment(value: type, label: Text(type.label)),
-                ],
-                selected: {_type},
-                onSelectionChanged: (selection) {
-                  setState(() {
-                    _type = selection.first;
-                  });
-                },
               ),
               const SizedBox(height: 12),
               TextField(
