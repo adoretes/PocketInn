@@ -63,13 +63,13 @@ class SettingsPage extends StatelessWidget {
       ),
       const _SettingsItem(
         title: '子任务设置',
-        subtitle: '记忆提取、状态变量提取、Gal 选项生成',
+        subtitle: '记忆提取、变量提取、选项生成',
         icon: Icons.auto_awesome_outlined,
         type: _SettingsItemType.subtasks,
       ),
       const _SettingsItem(
         title: '配套工具',
-        subtitle: 'Prompt 版本管理、角色卡生成器等',
+        subtitle: 'Prompt 版本管理、写卡器等',
         icon: Icons.extension_outlined,
         type: _SettingsItemType.companionTools,
       ),
