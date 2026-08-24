@@ -3,6 +3,15 @@ import 'package:flutter/material.dart';
 import '../data/api_configs.dart';
 import '../models/api_config.dart';
 
+/// 分区卡片内相邻扁平行之间的细分隔线。
+Widget flatSectionDivider(BuildContext context) {
+  final colorScheme = Theme.of(context).colorScheme;
+  return Divider(
+    height: 1,
+    color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+  );
+}
+
 /// 设置页分区卡片：标题 + 副标题 + 子项列表。
 class SettingsSectionCard extends StatelessWidget {
   const SettingsSectionCard({

@@ -41,6 +41,7 @@ class GeneralSettingsPage extends StatelessWidget {
               SettingsSectionCard(
                 title: '聊天显示',
                 subtitle: '自定义聊天界面显示选项',
+                childGap: 12,
                 child: Column(
                   children: [
                     SettingsSwitchTile(
@@ -49,8 +50,9 @@ class GeneralSettingsPage extends StatelessWidget {
                       value: settings.showAvatar,
                       onChanged: (value) =>
                           updateAppSettings(showAvatar: value),
+                      flat: true,
                     ),
-                    const SizedBox(height: 12),
+                    flatSectionDivider(context),
                     SettingsSliderTile(
                       title: '背景透明度',
                       subtitle: '调整角色背景图片的遮罩透明度',
@@ -60,16 +62,18 @@ class GeneralSettingsPage extends StatelessWidget {
                       divisions: 20,
                       onChanged: (value) =>
                           updateAppSettings(backgroundOpacity: value),
+                      flat: true,
                     ),
-                    const SizedBox(height: 12),
+                    flatSectionDivider(context),
                     SettingsSwitchTile(
                       title: '输入框毛玻璃效果',
                       subtitle: '有角色背景时输入框使用半透明毛玻璃效果',
                       value: settings.inputGlassEffect,
                       onChanged: (value) =>
                           updateAppSettings(inputGlassEffect: value),
+                      flat: true,
                     ),
-                    const SizedBox(height: 12),
+                    flatSectionDivider(context),
                     SettingsSwitchTile(
                       title: '气泡毛玻璃效果',
                       subtitle:
@@ -77,14 +81,16 @@ class GeneralSettingsPage extends StatelessWidget {
                       value: settings.bubbleGlassEffect,
                       onChanged: (value) =>
                           updateAppSettings(bubbleGlassEffect: value),
+                      flat: true,
                     ),
-                    const SizedBox(height: 12),
+                    flatSectionDivider(context),
                     SettingsSwitchTile(
                       title: '显示 API 请求日志入口',
                       subtitle: '在 API 状态弹窗中显示最近请求日志入口',
                       value: settings.showApiRequestLogEntry,
                       onChanged: (value) =>
                           updateAppSettings(showApiRequestLogEntry: value),
+                      flat: true,
                     ),
                   ],
                 ),

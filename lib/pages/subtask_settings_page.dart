@@ -88,15 +88,6 @@ class _SubTaskSettingsPageState extends State<SubTaskSettingsPage> {
   }
 }
 
-/// 分区卡片内相邻扁平行之间的细分隔线。
-Widget _flatDivider(BuildContext context) {
-  final colorScheme = Theme.of(context).colorScheme;
-  return Divider(
-    height: 1,
-    color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-  );
-}
-
 class _MemoryExtractionSection extends StatelessWidget {
   const _MemoryExtractionSection({required this.memoryConfig});
 
@@ -120,7 +111,7 @@ class _MemoryExtractionSection extends StatelessWidget {
             flat: true,
           ),
           if (memoryConfig.enabled) ...[
-            _flatDivider(context),
+            flatSectionDivider(context),
             SettingsSliderTile(
               title: '提取间隔',
               subtitle: '每 X 轮对话提取一次记忆',
@@ -133,7 +124,7 @@ class _MemoryExtractionSection extends StatelessWidget {
                   updateMemoryExtractionConfig(interval: value.toInt()),
               flat: true,
             ),
-            _flatDivider(context),
+            flatSectionDivider(context),
             SettingsSliderTile(
               title: '最近对话轮数',
               subtitle: '拼入提示词的最近 N 轮对话',
@@ -146,7 +137,7 @@ class _MemoryExtractionSection extends StatelessWidget {
                   updateMemoryExtractionConfig(recentRounds: value.toInt()),
               flat: true,
             ),
-            _flatDivider(context),
+            flatSectionDivider(context),
             SettingsSliderTile(
               title: '记忆节点数',
               subtitle: '拼入提示词的历史记忆节点数量',
@@ -160,7 +151,7 @@ class _MemoryExtractionSection extends StatelessWidget {
               flat: true,
             ),
             if (apiConfigs.any((c) => c.models.isNotEmpty)) ...[
-              _flatDivider(context),
+              flatSectionDivider(context),
               ModelPickerTile(
                 title: '记忆提取模型',
                 modelId: memoryConfig.extractionModelId,
@@ -169,7 +160,7 @@ class _MemoryExtractionSection extends StatelessWidget {
                 flat: true,
               ),
             ],
-            _flatDivider(context),
+            flatSectionDivider(context),
             PromptEditorTile(
               title: '记忆提取提示词',
               dialogTitle: '记忆提取提示词',
@@ -182,7 +173,7 @@ class _MemoryExtractionSection extends StatelessWidget {
               minLines: 10,
               flat: true,
             ),
-            _flatDivider(context),
+            flatSectionDivider(context),
             PromptEditorTile(
               title: '记忆注入提示词',
               dialogTitle: '记忆注入提示词',
@@ -224,7 +215,7 @@ class _StatusExtractionSection extends StatelessWidget {
             onChanged: (value) => updateStatusExtractionConfig(enabled: value),
             flat: true,
           ),
-          _flatDivider(context),
+          flatSectionDivider(context),
           SettingsSliderTile(
             title: '参与提取的最近消息数',
             subtitle: '拼入提取上下文的最近消息条数（不含最新回复本身）',
@@ -240,7 +231,7 @@ class _StatusExtractionSection extends StatelessWidget {
             flat: true,
           ),
           if (apiConfigs.any((c) => c.models.isNotEmpty)) ...[
-            _flatDivider(context),
+            flatSectionDivider(context),
             ModelPickerTile(
               title: '状态提取模型',
               modelId: config.extractionModelId,
@@ -249,7 +240,7 @@ class _StatusExtractionSection extends StatelessWidget {
               flat: true,
             ),
           ],
-          _flatDivider(context),
+          flatSectionDivider(context),
           PromptEditorTile(
             title: '状态提取提示词',
             dialogTitle: '状态提取提示词',
@@ -288,7 +279,7 @@ class _GalChoiceSection extends StatelessWidget {
                 updateAppSettings(galChoiceAutoGenerate: value),
             flat: true,
           ),
-          _flatDivider(context),
+          flatSectionDivider(context),
           SettingsSliderTile(
             title: '选项数量',
             subtitle: '每次生成的玩家选项数量',
@@ -301,14 +292,14 @@ class _GalChoiceSection extends StatelessWidget {
                 updateAppSettings(galChoiceCount: value.toInt()),
             flat: true,
           ),
-          _flatDivider(context),
+          flatSectionDivider(context),
           ModelPickerTile(
             title: '选项生成模型',
             modelId: settings.galChoiceApiModelId,
             onChanged: (id) => updateAppSettings(galChoiceApiModelId: id),
             flat: true,
           ),
-          _flatDivider(context),
+          flatSectionDivider(context),
           PromptEditorTile(
             title: '选项生成提示词',
             dialogTitle: '选项生成提示词',
