@@ -148,7 +148,7 @@ class _MemoryExtractionSection extends StatelessWidget {
             if (apiConfigs.any((c) => c.models.isNotEmpty)) ...[
               const SizedBox(height: 12),
               ModelPickerTile(
-                title: '提取模型',
+                title: '记忆提取模型',
                 modelId: memoryConfig.extractionModelId,
                 onChanged: (id) =>
                     updateMemoryExtractionConfig(extractionModelId: id),
@@ -156,8 +156,8 @@ class _MemoryExtractionSection extends StatelessWidget {
             ],
             const SizedBox(height: 12),
             PromptEditorTile(
-              title: '提取提示词',
-              dialogTitle: '编辑提取提示词',
+              title: '记忆提取提示词',
+              dialogTitle: '记忆提取提示词',
               prompt: memoryConfig.customExtractionPrompt,
               defaultPrompt: ChatMemoryService.memoryExtractionPrompt,
               onChanged: (value) => updateMemoryExtractionConfig(
@@ -168,8 +168,8 @@ class _MemoryExtractionSection extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             PromptEditorTile(
-              title: '注入提示词',
-              dialogTitle: '编辑注入提示词',
+              title: '记忆注入提示词',
+              dialogTitle: '记忆注入提示词',
               prompt: memoryConfig.customInjectionPrompt,
               defaultPrompt: '以下是角色记得的关于过去事件的信息：',
               onChanged: (value) => updateMemoryExtractionConfig(
@@ -222,7 +222,7 @@ class _StatusExtractionSection extends StatelessWidget {
           if (apiConfigs.any((c) => c.models.isNotEmpty)) ...[
             const SizedBox(height: 12),
             ModelPickerTile(
-              title: '提取模型',
+              title: '状态提取模型',
               modelId: config.extractionModelId,
               onChanged: (id) =>
                   updateStatusExtractionConfig(extractionModelId: id),
@@ -231,7 +231,7 @@ class _StatusExtractionSection extends StatelessWidget {
           const SizedBox(height: 12),
           PromptEditorTile(
             title: '状态提取提示词',
-            dialogTitle: '编辑状态提取提示词',
+            dialogTitle: '状态提取提示词',
             prompt: config.customPrompt,
             defaultPrompt: kDefaultStatusExtractionPrompt,
             onChanged: (value) =>
@@ -278,13 +278,13 @@ class _GalChoiceSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ModelPickerTile(
-            title: '选项生成 API',
+            title: '选项生成模型',
             modelId: settings.galChoiceApiModelId,
             onChanged: (id) => updateAppSettings(galChoiceApiModelId: id),
           ),
           const SizedBox(height: 12),
           PromptEditorTile(
-            title: '自定义提示词',
+            title: '选项生成提示词',
             dialogTitle: '选项生成提示词',
             prompt: settings.galChoicePrompt ?? '',
             defaultPrompt: kDefaultGalChoicePrompt,
