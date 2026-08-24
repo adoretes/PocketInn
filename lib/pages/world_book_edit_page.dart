@@ -433,6 +433,10 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
         final colorScheme = Theme.of(context).colorScheme;
 
         return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
           titlePadding: EdgeInsets.zero,
           contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
           actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
@@ -481,7 +485,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
             ),
           ),
           content: SizedBox(
-            width: 600,
+            width: 640,
             child: Form(
               key: formKey,
               child: StatefulBuilder(

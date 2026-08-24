@@ -382,9 +382,13 @@ class PromptEditorTile extends StatelessWidget {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
           title: Text(dialogTitle),
           content: SizedBox(
-            width: 480,
+            width: 520,
             child: TextField(
               controller: controller,
               maxLines: null,

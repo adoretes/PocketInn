@@ -61,9 +61,13 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 24,
+              ),
               title: const Text('新建用户设定'),
               content: SizedBox(
-                width: 440,
+                width: 480,
                 child: Form(
                   key: formKey,
                   child: Column(
@@ -332,9 +336,13 @@ Future<UserSettingEditDialogResult?> showEditUserSettingDialog(
       return StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 24,
+            ),
             title: const Text('编辑用户设定'),
             content: SizedBox(
-              width: 440,
+              width: 480,
               child: Form(
                 key: formKey,
                 child: Column(
