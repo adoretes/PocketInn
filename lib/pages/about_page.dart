@@ -72,6 +72,11 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.1',
+                  date: '2026-08-24',
+                  changes: ['添加气泡毛玻璃效果选项，优化聊天界面背景处理', '优化状态管理和控制器生命周期', '优化变量编辑弹窗'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.0',
                   date: '2026-08-23',
                   changes: ['新增会话级状态管理系统'],
