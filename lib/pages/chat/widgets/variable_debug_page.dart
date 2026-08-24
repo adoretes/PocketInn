@@ -201,13 +201,8 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
             ValueListenableBuilder<StatusExtractionConfig>(
               valueListenable: statusExtractionNotifier,
               builder: (context, config, _) {
-                final description =
-                    config.enabled &&
-                        (config.extractionModelId == null ||
-                            config.extractionModelId!.isEmpty)
-                    ? '已开启：角色回复后自动提取变量变化（跟随当前模型）'
-                    : config.enabled
-                    ? '已开启：角色回复后自动提取变量变化（模型 ${config.extractionModelId}）'
+                final description = config.enabled
+                    ? '已开启：角色回复后自动提取变量变化'
                     : '已关闭，角色回复后不提取变量变化。需角色卡已声明初始变量，'
                           '否则不会发起提取。';
                 return Text(
@@ -217,13 +212,6 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
                   ),
                 );
               },
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '提取模型、提示词等配置项已移至「子任务设置」页，可点击右上角齿轮打开。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
             ),
           ],
         ),
