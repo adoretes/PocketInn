@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -16,6 +17,7 @@ class MessageBubble extends StatefulWidget {
     required this.message,
     required this.userSetting,
     required this.character,
+    required this.hasBackground,
     required this.inputTapRegionGroupId,
     required this.isLastUserMessageWithoutReply,
     required this.isLastCharacterMessage,
@@ -39,6 +41,10 @@ class MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final UserSetting? userSetting;
   final ResolvedChatCharacter? character;
+
+  /// 当前会话是否设置了角色背景图（用于气泡毛玻璃效果）。
+  final bool hasBackground;
+
   final Object inputTapRegionGroupId;
   final bool isLastUserMessageWithoutReply;
   final bool isLastCharacterMessage;
@@ -241,6 +247,13 @@ class _MessageBubbleState extends State<MessageBubble> {
     bool showAvatar,
   ) {
     final bubbleColor = colorScheme.primaryContainer;
+    final useGlassEffect = widget.hasBackground && settings.bubbleGlassEffect;
+    const bubbleRadius = BorderRadius.only(
+      topLeft: Radius.circular(18),
+      topRight: Radius.circular(18),
+      bottomLeft: Radius.circular(18),
+      bottomRight: Radius.circular(4),
+    );
     final textColor = colorScheme.onPrimaryContainer;
     final inlineCodeColor = colorScheme.primary.withValues(alpha: 0.12);
     final codeBlockColor = colorScheme.primary.withValues(alpha: 0.08);
@@ -257,37 +270,22 @@ class _MessageBubbleState extends State<MessageBubble> {
               OverlayPortal.overlayChildLayoutBuilder(
                 controller: _overlayPortalController,
                 overlayChildBuilder: _buildPopupOverlay,
-                child: GestureDetector(
-                  onTapDown: widget.showActions
-                      ? (_) => _showActionPopup()
-                      : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: bubbleColor,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(18),
-                        topRight: Radius.circular(18),
-                        bottomLeft: Radius.circular(18),
-                        bottomRight: Radius.circular(4),
-                      ),
-                    ),
-                    child: Semantics(
-                      container: true,
-                      child: ChatMarkdownBody(
-                        text: displayText,
-                        settings: settings,
-                        textColor: textColor,
-                        inlineCodeColor: inlineCodeColor,
-                        codeBlockColor: codeBlockColor,
-                        applyBodyTextColor: false,
-                      ),
+                  child: GestureDetector(
+                    onTapDown: widget.showActions
+                        ? (_) => _showActionPopup()
+                        : null,
+                    child: _buildBubbleBox(
+                      useGlassEffect: useGlassEffect,
+                      bubbleRadius: bubbleRadius,
+                      bubbleColor: bubbleColor,
+                      colorScheme: colorScheme,
+                      settings: settings,
+                      displayText: displayText,
+                      textColor: textColor,
+                      inlineCodeColor: inlineCodeColor,
+                      codeBlockColor: codeBlockColor,
                     ),
                   ),
-                ),
               ),
               if (widget.showActions) _buildActionButtons(context, colorScheme),
             ],
@@ -298,6 +296,54 @@ class _MessageBubbleState extends State<MessageBubble> {
           _buildUserAvatar(colorScheme),
         ],
       ],
+    );
+  }
+
+  /// 用户气泡主体：开启毛玻璃时用半透明底色 + 背景模糊 + 细描边。
+  Widget _buildBubbleBox({
+    required bool useGlassEffect,
+    required BorderRadius bubbleRadius,
+    required Color bubbleColor,
+    required ColorScheme colorScheme,
+    required AppSettings settings,
+    required String displayText,
+    required Color textColor,
+    required Color inlineCodeColor,
+    required Color codeBlockColor,
+  }) {
+    final bubble = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: useGlassEffect
+            ? bubbleColor.withValues(alpha: 0.55)
+            : bubbleColor,
+        borderRadius: bubbleRadius,
+        border: useGlassEffect
+            ? Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.3),
+                width: 0.5,
+              )
+            : null,
+      ),
+      child: Semantics(
+        container: true,
+        child: ChatMarkdownBody(
+          text: displayText,
+          settings: settings,
+          textColor: textColor,
+          inlineCodeColor: inlineCodeColor,
+          codeBlockColor: codeBlockColor,
+          applyBodyTextColor: false,
+        ),
+      ),
+    );
+    if (!useGlassEffect) return bubble;
+    return ClipRRect(
+      borderRadius: bubbleRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: bubble,
+      ),
     );
   }
 

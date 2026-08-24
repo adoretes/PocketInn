@@ -341,6 +341,9 @@ abstract class AppSettings with _$AppSettings {
     /// 输入框是否使用毛玻璃效果
     @Default(true) bool inputGlassEffect,
 
+    /// 消息气泡是否使用毛玻璃效果
+    @Default(true) bool bubbleGlassEffect,
+
     /// 是否在 API 状态弹窗中显示请求日志入口
     @Default(true) bool showApiRequestLogEntry,
 
@@ -388,6 +391,7 @@ void updateAppSettings({
   bool? showAvatar,
   double? backgroundOpacity,
   bool? inputGlassEffect,
+  bool? bubbleGlassEffect,
   bool? showApiRequestLogEntry,
   Object? galChoiceApiModelId = _unset,
   bool? galChoiceAutoGenerate,
@@ -412,6 +416,9 @@ void updateAppSettings({
   }
   if (inputGlassEffect != null) {
     newSettings = newSettings.copyWith(inputGlassEffect: inputGlassEffect);
+  }
+  if (bubbleGlassEffect != null) {
+    newSettings = newSettings.copyWith(bubbleGlassEffect: bubbleGlassEffect);
   }
   if (showApiRequestLogEntry != null) {
     newSettings = newSettings.copyWith(

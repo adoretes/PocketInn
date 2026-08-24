@@ -143,9 +143,16 @@ class ChatDatabaseService {
     }
     if (oldVersion < 5 && newVersion >= 5) {
       // v5: chat_sessions 新增 gal_mode_enabled 列，用于会话级 gal 模式开关状态。
-      await db.execute(
-        'ALTER TABLE chat_sessions ADD COLUMN gal_mode_enabled INTEGER NOT NULL DEFAULT 0',
-      );
+      // 先检查列是否存在：若之前的迁移在写入版本号前中断，列可能已存在，
+      // 直接 ALTER 会因 duplicate column 报错，导致应用无法启动。
+      final columns = await db.rawQuery('PRAGMA table_info(chat_sessions)');
+      final hasGalModeColumn =
+          columns.any((row) => row['name'] == 'gal_mode_enabled');
+      if (!hasGalModeColumn) {
+        await db.execute(
+          'ALTER TABLE chat_sessions ADD COLUMN gal_mode_enabled INTEGER NOT NULL DEFAULT 0',
+        );
+      }
     }
     if (oldVersion < 6 && newVersion >= 6) {
       // v6: 引入状态变量事件溯源表。

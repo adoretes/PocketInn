@@ -74,6 +74,14 @@ class GeneralSettingsPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     _SwitchTile(
+                      title: '气泡毛玻璃效果',
+                      subtitle: '有角色背景时用户气泡与 Gal 模式对话框、选项使用毛玻璃效果',
+                      value: settings.bubbleGlassEffect,
+                      onChanged: (value) =>
+                          updateAppSettings(bubbleGlassEffect: value),
+                    ),
+                    const SizedBox(height: 12),
+                    _SwitchTile(
                       title: '显示 API 请求日志入口',
                       subtitle: '在 API 状态弹窗中显示最近请求日志入口',
                       value: settings.showApiRequestLogEntry,

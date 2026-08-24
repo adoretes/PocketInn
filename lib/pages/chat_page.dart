@@ -741,125 +741,143 @@ class _ChatPageState extends State<ChatPage> {
                   !_viewModel.isSending &&
                   !_viewModel.isImpersonating &&
                   _inputText.trim().isNotEmpty;
-              return Stack(
-                children: [
-                  if (hasBackground)
-                    Positioned.fill(
-                      child: character?.isAssetImage == true
-                          ? Image.asset(
-                              backgroundPath,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const SizedBox.shrink();
-                              },
-                            )
-                          : Image.file(
-                              File(backgroundPath),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                    ),
-                  if (hasBackground)
-                    Positioned.fill(
-                      child: Container(
-                        color: Theme.of(context).colorScheme.surface.withValues(
-                          // gal 模式下减半遮罩，让角色立绘更突出。
-                          alpha: _viewModel.galModeEnabled
-                              ? settings.backgroundOpacity * 0.5
-                              : settings.backgroundOpacity,
-                        ),
-                      ),
-                    ),
-                  Column(
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final bodySize = Size(
+                    constraints.maxWidth,
+                    constraints.maxHeight,
+                  );
+                  return Stack(
                     children: [
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(top: topContentPadding),
-                          child: Builder(
-                            builder: (context) {
-                              final messageViewParams = MessageViewParams(
-                                visibleMessages: _viewModel.visibleMessages,
-                                inputTapRegionGroupId: _inputTapRegionGroupId,
-                                isSending: _viewModel.isSending,
-                                isImpersonating: _viewModel.isImpersonating,
-                                regeneratingUserMessageId:
-                                    _viewModel.regeneratingUserMessageId,
-                                isDraftSession: _viewModel.isDraftSession,
-                                activeCharacter: _viewModel.activeCharacter,
-                                currentUserSetting: _viewModel
-                                    .currentUserSetting(),
-                                sessionId: session.id,
-                                selectedRegexRuleGroupIds:
-                                    _viewModel.selectedRegexRuleGroupIds,
-                                onCopyMessage: _onCopyMessage,
-                                onEditMessage: _onEditMessage,
-                                onEditDraftOpeningMessage:
-                                    _onEditDraftOpeningMessage,
-                                onDeleteMessage: _onDeleteMessage,
-                                onRegenerateFromUserMessage:
-                                    _onRegenerateFromUserMessage,
-                                onRegenerateMessage: _onRegenerateMessage,
-                                onContinueMessage: _onContinueMessage,
-                                onImpersonate: _onImpersonate,
-                                onSwitchMessageVariant: _onSwitchMessageVariant,
-                              );
-                              if (!_viewModel.galModeEnabled) {
-                                return ChatMessageList(
-                                  params: messageViewParams,
-                                  scrollController: _scrollController,
-                                );
-                              }
-                              return GalMessageView(
-                                params: messageViewParams,
-                                updatesListenable: _viewModel,
-                                visibleMessagesProvider: () =>
-                                    _viewModel.visibleMessages,
-                                browsingIndex: _viewModel.galBrowsingIndex,
-                                onBrowsingIndexChanged:
-                                    _viewModel.setGalBrowsingIndex,
-                                galChoices: _viewModel.galChoices,
-                                isGeneratingGalChoices:
-                                    _viewModel.isGeneratingGalChoices,
-                                galChoicesMessageId:
-                                    _viewModel.galChoicesMessageId,
-                                galChoicesError: _viewModel.galChoicesError,
-                                onPickGalChoice: (choice) => _sendText(choice),
-                                onRefreshGalChoices:
-                                    _viewModel.refreshGalChoices,
-                              );
-                            },
+                      if (hasBackground)
+                        Positioned.fill(
+                          child: character?.isAssetImage == true
+                              ? Image.asset(
+                                  backgroundPath,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const SizedBox.shrink();
+                                  },
+                                )
+                              : Image.file(
+                                  File(backgroundPath),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
+                        ),
+                      if (hasBackground)
+                        Positioned.fill(
+                          child: Container(
+                            color: Theme.of(context).colorScheme.surface
+                                .withValues(
+                                  // gal 模式下减半遮罩，让角色立绘更突出。
+                                  alpha: _viewModel.galModeEnabled
+                                      ? settings.backgroundOpacity * 0.5
+                                      : settings.backgroundOpacity,
+                                ),
                           ),
                         ),
-                      ),
-                      ChatInputArea(
-                        textController: _textController,
-                        focusNode: _inputFocusNode,
-                        inputTapRegionGroupId: _inputTapRegionGroupId,
-                        sessionKey: ValueKey(_viewModel.activeSession?.id),
-                        isSendEnabled: isSendEnabled,
-                        isSending: _viewModel.isSending,
-                        hasBackground: hasBackground,
-                        settings: settings,
-                        worldBooks: _viewModel.worldBooks,
-                        selectedWorldBookIds: _viewModel.selectedWorldBookIds,
-                        regexRuleGroups: _viewModel.regexRuleGroups,
-                        selectedRegexRuleGroupIds:
-                            _viewModel.selectedRegexRuleGroupIds,
-                        currentUserSetting: _viewModel.currentUserSetting(),
-                        onUserSettingsPressed: _onUserSettingsPressed,
-                        onWorldBookPressed: _onWorldBookPressed,
-                        onRegexRuleGroupPressed: _onRegexRuleGroupPressed,
-                        onPresetPressed: _onPresetPressed,
-                        galModeEnabled: _viewModel.galModeEnabled,
-                        onGalModeToggle: _toggleGalMode,
-                        onSendPressed: _onSendPressed,
-                        onStopGeneratingPressed: _onStopGeneratingPressed,
+                      Column(
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(top: topContentPadding),
+                              child: Builder(
+                                builder: (context) {
+                                  final messageViewParams = MessageViewParams(
+                                    visibleMessages: _viewModel.visibleMessages,
+                                    inputTapRegionGroupId:
+                                        _inputTapRegionGroupId,
+                                    isSending: _viewModel.isSending,
+                                    isImpersonating: _viewModel.isImpersonating,
+                                    regeneratingUserMessageId:
+                                        _viewModel.regeneratingUserMessageId,
+                                    isDraftSession: _viewModel.isDraftSession,
+                                    activeCharacter: _viewModel.activeCharacter,
+                                    currentUserSetting: _viewModel
+                                        .currentUserSetting(),
+                                    hasBackground: hasBackground,
+                                    backgroundAreaSize: hasBackground
+                                        ? bodySize
+                                        : null,
+                                    backgroundAreaTop: topContentPadding,
+                                    sessionId: session.id,
+                                    selectedRegexRuleGroupIds:
+                                        _viewModel.selectedRegexRuleGroupIds,
+                                    onCopyMessage: _onCopyMessage,
+                                    onEditMessage: _onEditMessage,
+                                    onEditDraftOpeningMessage:
+                                        _onEditDraftOpeningMessage,
+                                    onDeleteMessage: _onDeleteMessage,
+                                    onRegenerateFromUserMessage:
+                                        _onRegenerateFromUserMessage,
+                                    onRegenerateMessage: _onRegenerateMessage,
+                                    onContinueMessage: _onContinueMessage,
+                                    onImpersonate: _onImpersonate,
+                                    onSwitchMessageVariant:
+                                        _onSwitchMessageVariant,
+                                  );
+                                  if (!_viewModel.galModeEnabled) {
+                                    return ChatMessageList(
+                                      params: messageViewParams,
+                                      scrollController: _scrollController,
+                                    );
+                                  }
+                                  return GalMessageView(
+                                    params: messageViewParams,
+                                    updatesListenable: _viewModel,
+                                    visibleMessagesProvider: () =>
+                                        _viewModel.visibleMessages,
+                                    browsingIndex: _viewModel.galBrowsingIndex,
+                                    onBrowsingIndexChanged:
+                                        _viewModel.setGalBrowsingIndex,
+                                    galChoices: _viewModel.galChoices,
+                                    isGeneratingGalChoices:
+                                        _viewModel.isGeneratingGalChoices,
+                                    galChoicesMessageId:
+                                        _viewModel.galChoicesMessageId,
+                                    galChoicesError: _viewModel.galChoicesError,
+                                    onPickGalChoice: (choice) =>
+                                        _sendText(choice),
+                                    onRefreshGalChoices:
+                                        _viewModel.refreshGalChoices,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                          ChatInputArea(
+                            textController: _textController,
+                            focusNode: _inputFocusNode,
+                            inputTapRegionGroupId: _inputTapRegionGroupId,
+                            sessionKey: ValueKey(_viewModel.activeSession?.id),
+                            isSendEnabled: isSendEnabled,
+                            isSending: _viewModel.isSending,
+                            hasBackground: hasBackground,
+                            settings: settings,
+                            worldBooks: _viewModel.worldBooks,
+                            selectedWorldBookIds:
+                                _viewModel.selectedWorldBookIds,
+                            regexRuleGroups: _viewModel.regexRuleGroups,
+                            selectedRegexRuleGroupIds:
+                                _viewModel.selectedRegexRuleGroupIds,
+                            currentUserSetting: _viewModel.currentUserSetting(),
+                            onUserSettingsPressed: _onUserSettingsPressed,
+                            onWorldBookPressed: _onWorldBookPressed,
+                            onRegexRuleGroupPressed: _onRegexRuleGroupPressed,
+                            onPresetPressed: _onPresetPressed,
+                            galModeEnabled: _viewModel.galModeEnabled,
+                            onGalModeToggle: _toggleGalMode,
+                            onSendPressed: _onSendPressed,
+                            onStopGeneratingPressed: _onStopGeneratingPressed,
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
+                  );
+                },
               );
             },
           );

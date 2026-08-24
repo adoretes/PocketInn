@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../../../data/app_settings.dart';
@@ -249,6 +251,9 @@ class _GalMessageViewState extends State<GalMessageView>
     if (isBrowsing || widget.params.isSending || message.isMe) return null;
     final messageId = message.id;
     if (messageId == null) return null;
+    final useGlassEffect =
+        widget.params.hasBackground &&
+        appSettingsNotifier.value.bubbleGlassEffect;
 
     if (widget.isGeneratingGalChoices) {
       return Padding(
@@ -340,49 +345,68 @@ class _GalMessageViewState extends State<GalMessageView>
           for (final (index, choice) in widget.galChoices.indexed)
             Padding(
               padding: EdgeInsets.only(top: index == 0 ? 0 : 6),
-              child: Material(
-                color: colorScheme.surface.withValues(alpha: 0.82),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: colorScheme.outlineVariant,
-                    width: 0.5,
-                  ),
-                ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => widget.onPickGalChoice(choice),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.chevron_right,
-                          size: 16,
-                          color: colorScheme.primary,
+              child: useGlassEffect
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: _buildGalChoice(
+                          colorScheme,
+                          choice,
+                          backgroundAlpha: 0.4,
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            choice,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: colorScheme.onSurface,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
+                    )
+                  : _buildGalChoice(
+                      colorScheme,
+                      choice,
+                      backgroundAlpha: 0.82,
                     ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Gal 选项按钮：毛玻璃开启时由调用方外包 ClipRRect + BackdropFilter。
+  Widget _buildGalChoice(
+    ColorScheme colorScheme,
+    String choice, {
+    required double backgroundAlpha,
+  }) {
+    return Material(
+      color: colorScheme.surface.withValues(alpha: backgroundAlpha),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.outlineVariant, width: 0.5),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => widget.onPickGalChoice(choice),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                Icons.chevron_right,
+                size: 16,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  choice,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface,
                   ),
                 ),
               ),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -530,31 +554,28 @@ class _GalMessageViewState extends State<GalMessageView>
         ? (widget.params.currentUserSetting?.color ?? colorScheme.primary)
         : colorScheme.primary;
 
-    return GestureDetector(
-      onTap: isBrowsing ? _advance : null,
-      onLongPressStart: showActions
-          ? (details) => _showMessageActions(
-              details.globalPosition,
-              messageIndex: messageIndex,
-              message: message,
-            )
-          : null,
-      child: Container(
-        constraints: BoxConstraints(maxHeight: mediaSize.height * 0.42),
-        decoration: BoxDecoration(
-          color: colorScheme.surface.withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+    final useGlassEffect =
+        widget.params.hasBackground && settings.bubbleGlassEffect;
+    Widget dialogBox = Container(
+      constraints: BoxConstraints(maxHeight: mediaSize.height * 0.42),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(
+          alpha: useGlassEffect ? 0.4 : 0.88,
         ),
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-        child: Column(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
+        boxShadow: useGlassEffect
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -629,7 +650,26 @@ class _GalMessageViewState extends State<GalMessageView>
             ),
           ],
         ),
-      ),
+      );
+    if (useGlassEffect) {
+      dialogBox = ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: dialogBox,
+        ),
+      );
+    }
+    return GestureDetector(
+      onTap: isBrowsing ? _advance : null,
+      onLongPressStart: showActions
+          ? (details) => _showMessageActions(
+              details.globalPosition,
+              messageIndex: messageIndex,
+              message: message,
+            )
+          : null,
+      child: dialogBox,
     );
   }
 

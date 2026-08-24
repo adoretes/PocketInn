@@ -42,6 +42,7 @@ class AppSettingsService {
   static const String _keyShowAvatar = 'app_show_avatar';
   static const String _keyBackgroundOpacity = 'app_background_opacity';
   static const String _keyInputGlassEffect = 'app_input_glass_effect';
+  static const String _keyBubbleGlassEffect = 'app_bubble_glass_effect';
   static const String _keyCustomFontFamily = 'app_custom_font_family';
   static const String _keyCustomFontFilePath = 'app_custom_font_file_path';
   static const String _keyShowApiRequestLogEntry =
@@ -62,6 +63,7 @@ class AppSettingsService {
     final showAvatar = storage.getBool(_keyShowAvatar);
     final backgroundOpacity = storage.getDouble(_keyBackgroundOpacity);
     final inputGlassEffect = storage.getBool(_keyInputGlassEffect);
+    final bubbleGlassEffect = storage.getBool(_keyBubbleGlassEffect);
     final customFontFamily = storage.getString(_keyCustomFontFamily);
     storage.getString(_keyCustomFontFilePath);
     final showApiRequestLogEntry = storage.getBool(_keyShowApiRequestLogEntry);
@@ -87,6 +89,7 @@ class AppSettingsService {
       showAvatar: showAvatar ?? true,
       backgroundOpacity: backgroundOpacity ?? 0.85,
       inputGlassEffect: inputGlassEffect ?? true,
+      bubbleGlassEffect: bubbleGlassEffect ?? true,
       showApiRequestLogEntry: showApiRequestLogEntry ?? true,
       galChoiceApiModelId: _normalizeOptionalString(
         storage.getString(_keyGalChoiceApiModelId),
@@ -116,6 +119,7 @@ class AppSettingsService {
       storage.setBool(_keyShowAvatar, settings.showAvatar),
       storage.setDouble(_keyBackgroundOpacity, settings.backgroundOpacity),
       storage.setBool(_keyInputGlassEffect, settings.inputGlassEffect),
+      storage.setBool(_keyBubbleGlassEffect, settings.bubbleGlassEffect),
       storage.setBool(
         _keyShowApiRequestLogEntry,
         settings.showApiRequestLogEntry,

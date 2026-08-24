@@ -18,6 +18,9 @@ class MessageViewParams {
     required this.isDraftSession,
     required this.activeCharacter,
     required this.currentUserSetting,
+    required this.hasBackground,
+    required this.backgroundAreaSize,
+    required this.backgroundAreaTop,
     required this.sessionId,
     required this.selectedRegexRuleGroupIds,
     required this.onCopyMessage,
@@ -39,6 +42,19 @@ class MessageViewParams {
   final bool isDraftSession;
   final ResolvedChatCharacter? activeCharacter;
   final UserSetting? currentUserSetting;
+
+  /// 当前会话是否设置了角色背景图（用于气泡毛玻璃效果）。
+  final bool hasBackground;
+
+  /// 背景图覆盖的页面 body 区域尺寸。消息列表会在遮罩层内绘制一个与
+  /// 真实背景同图同尺寸同位置的对齐副本：渐隐时副本与真实背景无缝衔接，
+  /// 气泡的 BackdropFilter（在 Impeller 渲染器下）才能采样到背景内容。
+  /// null 表示不绘制副本（如 Gal 历史弹层等无真实背景的上下文）。
+  final Size? backgroundAreaSize;
+
+  /// 消息列表视口上边缘相对页面 body 顶部的偏移（背景副本对齐用）。
+  final double backgroundAreaTop;
+
   final String? sessionId;
   final Set<String> selectedRegexRuleGroupIds;
 
@@ -63,6 +79,9 @@ class MessageViewParams {
       isDraftSession: isDraftSession,
       activeCharacter: activeCharacter,
       currentUserSetting: currentUserSetting,
+      hasBackground: hasBackground,
+      backgroundAreaSize: backgroundAreaSize,
+      backgroundAreaTop: backgroundAreaTop,
       sessionId: sessionId,
       selectedRegexRuleGroupIds: selectedRegexRuleGroupIds,
       onCopyMessage: onCopyMessage,
