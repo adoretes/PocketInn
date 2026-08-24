@@ -10,11 +10,15 @@ class SettingsSectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.childGap = 16,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
+
+  /// 标题区与子项列表之间的间距。
+  final double childGap;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +43,7 @@ class SettingsSectionCard extends StatelessWidget {
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: childGap),
             child,
           ],
         ),
@@ -48,9 +52,11 @@ class SettingsSectionCard extends StatelessWidget {
   }
 }
 
-/// 设置项卡片外壳：圆角卡片 + 标题/副标题 + 右侧控件或箭头。
+/// 设置项外壳：标题/副标题 + 右侧控件或箭头。
 ///
 /// [subtitle] 为 Widget 以支持需要监听外部状态的副标题（如 API 选择）。
+/// [flat] 为 true 时去掉边框与背景，作为分区卡片内的扁平列表行使用，
+/// 避免框套框的嵌套外观。
 class SettingsTileShell extends StatelessWidget {
   const SettingsTileShell({
     super.key,
@@ -59,6 +65,7 @@ class SettingsTileShell extends StatelessWidget {
     this.onTap,
     this.trailing,
     this.showChevron = false,
+    this.flat = false,
   });
 
   final String title;
@@ -66,10 +73,46 @@ class SettingsTileShell extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget? trailing;
   final bool showChevron;
+  final bool flat;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final content = Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              subtitle,
+            ],
+          ),
+        ),
+        ?trailing,
+        if (showChevron)
+          Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+      ],
+    );
+
+    if (flat) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.zero,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: content,
+        ),
+      );
+    }
+
     return Material(
       color: colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(20),
@@ -82,29 +125,7 @@ class SettingsTileShell extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colorScheme.outlineVariant),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    subtitle,
-                  ],
-                ),
-              ),
-              ?trailing,
-              if (showChevron)
-                Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
-            ],
-          ),
+          child: content,
         ),
       ),
     );
@@ -119,12 +140,14 @@ class SettingsSwitchTile extends StatelessWidget {
     required this.subtitle,
     required this.value,
     required this.onChanged,
+    this.flat = false,
   });
 
   final String title;
   final String subtitle;
   final bool value;
   final ValueChanged<bool> onChanged;
+  final bool flat;
 
   @override
   Widget build(BuildContext context) {
@@ -137,6 +160,7 @@ class SettingsSwitchTile extends StatelessWidget {
       ),
       onTap: () => onChanged(!value),
       trailing: Switch(value: value, onChanged: onChanged),
+      flat: flat,
     );
   }
 }
@@ -153,6 +177,7 @@ class SettingsSliderTile extends StatelessWidget {
     required this.divisions,
     required this.onChanged,
     this.displayValue,
+    this.flat = false,
   });
 
   final String title;
@@ -163,10 +188,62 @@ class SettingsSliderTile extends StatelessWidget {
   final int divisions;
   final ValueChanged<double> onChanged;
   final String Function(double)? displayValue;
+  final bool flat;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              displayValue != null
+                  ? displayValue!(value)
+                  : '${(value * 100).toInt()}%',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 13,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: divisions,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+
+    if (flat) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: content,
+      );
+    }
 
     return Material(
       color: colorScheme.surfaceContainerLow,
@@ -177,49 +254,7 @@ class SettingsSliderTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: colorScheme.outlineVariant),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  displayValue != null
-                      ? displayValue!(value)
-                      : '${(value * 100).toInt()}%',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Slider(
-              value: value,
-              min: min,
-              max: max,
-              divisions: divisions,
-              onChanged: onChanged,
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }
@@ -232,11 +267,13 @@ class ModelPickerTile extends StatelessWidget {
     required this.title,
     required this.modelId,
     required this.onChanged,
+    this.flat = false,
   });
 
   final String title;
   final String? modelId;
   final ValueChanged<String?> onChanged;
+  final bool flat;
 
   void _showPicker(BuildContext context) {
     showModalBottomSheet<void>(
@@ -341,6 +378,7 @@ class ModelPickerTile extends StatelessWidget {
       subtitle: currentLabel,
       onTap: () => _showPicker(context),
       showChevron: true,
+      flat: flat,
     );
   }
 }
@@ -361,6 +399,7 @@ class PromptEditorTile extends StatelessWidget {
     this.customSubtitle = '已自定义',
     this.hintText,
     this.minLines = 6,
+    this.flat = false,
   });
 
   final String title;
@@ -372,6 +411,7 @@ class PromptEditorTile extends StatelessWidget {
   final String customSubtitle;
   final String? hintText;
   final int minLines;
+  final bool flat;
 
   void _showEditDialog(BuildContext context) {
     final hasCustom = prompt.trim().isNotEmpty;
@@ -438,6 +478,7 @@ class PromptEditorTile extends StatelessWidget {
       ),
       onTap: () => _showEditDialog(context),
       showChevron: true,
+      flat: flat,
     );
   }
 }

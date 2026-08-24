@@ -60,8 +60,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(appSettingsNotifier.value.galChoiceAutoGenerate, isFalse);
 
-    // 打开选项生成 API 选择弹窗并选择模型
-    await tester.tap(find.text('选项生成 API'));
+    // 打开选项生成模型选择弹窗并选择模型
+    await tester.tap(find.text('选项生成模型'));
     await tester.pumpAndSettle();
     expect(find.text('跟随当前选中模型'), findsWidgets);
     await tester.tap(find.text('gpt-x'));
@@ -73,7 +73,7 @@ void main() {
     );
 
     // 重新打开，恢复跟随当前模型
-    await tester.tap(find.text('选项生成 API'));
+    await tester.tap(find.text('选项生成模型'));
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
@@ -85,9 +85,15 @@ void main() {
     expect(appSettingsNotifier.value.galChoiceApiModelId, isNull);
 
     // 打开提示词编辑对话框并保存自定义提示词
-    await tester.tap(find.text('自定义提示词'));
+    await tester.tap(find.text('选项生成提示词'));
     await tester.pumpAndSettle();
-    expect(find.text('选项生成提示词'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('选项生成提示词'),
+      ),
+      findsOneWidget,
+    );
     await tester.enterText(
       find.byType(TextField),
       '为 {{user}} 生成 {{count}} 个选项',
@@ -100,7 +106,7 @@ void main() {
     );
 
     // 恢复默认
-    await tester.tap(find.text('自定义提示词'));
+    await tester.tap(find.text('选项生成提示词'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('恢复默认'));
     await tester.pumpAndSettle();
