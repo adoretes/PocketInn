@@ -150,21 +150,22 @@ class ChatMemoryService {
       {'role': 'user', 'content': chatLog},
     ];
 
+    final stopwatch = Stopwatch()..start();
     try {
       final result = await OpenAICompatibleApiService.instance
           .createChatCompletion(config, messages: requestMessages);
+      stopwatch.stop();
       return result.text.trim();
     } catch (error, stack) {
       debugPrint('extractMemories failed: $error\n$stack');
       unawaited(
-        ApiRequestLogService.instance.append(
+        ApiRequestLogService.appendExtractionFailure(
+          label: '记忆提取失败',
           configName: config.name,
           model: config.model,
-          method: 'POST',
-          endpoint: config.baseUrl,
-          success: false,
-          durationMs: 0,
-          errorMessage: error.toString(),
+          baseUrl: config.baseUrl,
+          error: error,
+          durationMs: stopwatch.elapsedMilliseconds,
         ),
       );
       return null;
@@ -229,6 +230,7 @@ class ChatMemoryService {
     required String userName,
     String currentInput = '',
     Map<String, String> cardData = const {},
+    Future<void> Function()? beforeCommit,
   }) async {
     final pathIds = messages
         .where((m) => m.id != null)
@@ -276,6 +278,7 @@ class ChatMemoryService {
       );
     }
     if (toInsert.isEmpty) return false;
+    await beforeCommit?.call();
     await ChatDatabaseService.instance.insertMemoriesInTx(toInsert);
     return true;
   }

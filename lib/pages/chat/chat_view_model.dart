@@ -17,6 +17,7 @@ import '../../services/chat_opening_message_builder.dart';
 import '../../services/chat_service.dart';
 import '../../services/chat_variable_service.dart';
 import '../../services/openai_compatible_api_service.dart';
+import '../../services/post_task_scheduler.dart';
 import '../../services/preset_service.dart';
 import '../../services/regex_rule_group_service.dart';
 import '../../services/status_extraction_service.dart';
@@ -709,44 +710,76 @@ class ChatViewModel extends ChangeNotifier {
 
     _clearGalChoices();
     final requestGeneration = ++_galChoicesRequestGeneration;
-    final cancelToken = ChatCompletionCancelToken();
-    _galChoicesCancelToken = cancelToken;
     _isGeneratingGalChoices = true;
     notifyListeners();
 
-    try {
-      final choices = await getIt<ChatService>().generateGalChoices(
-        session: session,
-        character: character,
-        chatMessages: _messages,
-        selectedPresetId: _selectedPresetId,
-        selectedUserSettingId: _selectedUserSettingId,
-        selectedWorldBookIds: _selectedWorldBookIds,
-        selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
-        cancellationToken: cancelToken,
-      );
-      if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
-        return;
-      }
-      _galChoices = choices;
-      _galChoicesMessageId = choices.isEmpty ? null : targetMessageId;
-      _galChoicesError = false;
-    } catch (_) {
-      // 选项生成失败不打断聊天：记录失败态供 UI 显示重试入口。
-      if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
-        return;
-      }
-      _galChoices = const [];
-      _galChoicesMessageId = null;
-      _galChoicesError = true;
-    } finally {
-      if (!_isDisposed && requestGeneration == _galChoicesRequestGeneration) {
-        _isGeneratingGalChoices = false;
-        if (identical(_galChoicesCancelToken, cancelToken)) {
-          _galChoicesCancelToken = null;
+    // 经后台调度器排队执行，与记忆/状态提取共用并发上限；任务被丢弃
+    // （同锚点替代/会话切换/生成作废）时经 onSkipped 复位生成态。
+    PostTaskScheduler.instance.schedule(
+      kind: PostTaskKind.galChoices,
+      sessionId: session.id,
+      anchorKey: 'gal:$targetMessageId',
+      isStale: () async =>
+          _isDisposed ||
+          !_galModeEnabled ||
+          requestGeneration != _galChoicesRequestGeneration ||
+          _messages.isEmpty ||
+          _messages.last.id != targetMessageId,
+      onSkipped: () => _resetGalChoicesActivity(requestGeneration),
+      run: (ensureFresh) async {
+        final cancelToken = ChatCompletionCancelToken();
+        _galChoicesCancelToken = cancelToken;
+        try {
+          await ensureFresh();
+          final choices = await getIt<ChatService>().generateGalChoices(
+            session: session,
+            character: character,
+            chatMessages: _messages,
+            selectedPresetId: _selectedPresetId,
+            selectedUserSettingId: _selectedUserSettingId,
+            selectedWorldBookIds: _selectedWorldBookIds,
+            selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
+            cancellationToken: cancelToken,
+          );
+          if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
+            return;
+          }
+          await ensureFresh();
+          _galChoices = choices;
+          _galChoicesMessageId = choices.isEmpty ? null : targetMessageId;
+          _galChoicesError = false;
+        } on PostTaskStaleException {
+          rethrow;
+        } catch (_) {
+          // 选项生成失败不打断聊天：记录失败态供 UI 显示重试入口。
+          if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
+            return;
+          }
+          _galChoices = const [];
+          _galChoicesMessageId = null;
+          _galChoicesError = true;
+        } finally {
+          if (!_isDisposed && requestGeneration == _galChoicesRequestGeneration) {
+            _isGeneratingGalChoices = false;
+            if (identical(_galChoicesCancelToken, cancelToken)) {
+              _galChoicesCancelToken = null;
+            }
+            notifyListeners();
+          }
         }
-        notifyListeners();
-      }
+      },
+    );
+  }
+
+  /// 任务被调度器丢弃（同锚点替代/过期）时复位 gal 选项生成态。
+  void _resetGalChoicesActivity(int requestGeneration) {
+    if (_isDisposed || requestGeneration != _galChoicesRequestGeneration) {
+      return;
+    }
+    if (_isGeneratingGalChoices || _galChoicesError) {
+      _isGeneratingGalChoices = false;
+      _galChoicesError = false;
+      notifyListeners();
     }
   }
 

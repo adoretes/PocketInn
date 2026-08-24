@@ -6,7 +6,7 @@ import 'character_content_page.dart';
 import 'companion_tools_page.dart';
 import 'data_management_page.dart';
 import 'general_settings_page.dart';
-import 'memory_settings_page.dart';
+import 'subtask_settings_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -22,9 +22,9 @@ class SettingsPage extends StatelessWidget {
         await navigator.push(
           MaterialPageRoute(builder: (_) => const CharacterContentPage()),
         );
-      case _SettingsItemType.memory:
+      case _SettingsItemType.subtasks:
         await navigator.push(
-          MaterialPageRoute(builder: (_) => const MemorySettingsPage()),
+          MaterialPageRoute(builder: (_) => const SubTaskSettingsPage()),
         );
       case _SettingsItemType.api:
         await navigator.push(
@@ -62,10 +62,10 @@ class SettingsPage extends StatelessWidget {
         type: _SettingsItemType.characterContent,
       ),
       const _SettingsItem(
-        title: '长期记忆',
-        subtitle: '配置记忆提取参数与管理记忆',
-        icon: Icons.psychology_outlined,
-        type: _SettingsItemType.memory,
+        title: '子任务设置',
+        subtitle: '记忆提取、状态变量提取、Gal 选项生成',
+        icon: Icons.auto_awesome_outlined,
+        type: _SettingsItemType.subtasks,
       ),
       const _SettingsItem(
         title: '配套工具',
@@ -155,7 +155,7 @@ enum _SettingsItemType {
   general,
   companionTools,
   characterContent,
-  memory,
+  subtasks,
   api,
   data,
   about,

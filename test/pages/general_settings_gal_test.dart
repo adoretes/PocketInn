@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pocket_inn/data/api_configs.dart';
 import 'package:pocket_inn/data/app_settings.dart';
 import 'package:pocket_inn/models/api_config.dart';
-import 'package:pocket_inn/pages/general_settings_page.dart';
+import 'package:pocket_inn/pages/subtask_settings_page.dart';
 import 'package:pocket_inn/services/storage_service.dart';
 
 import '../helpers/test_env.dart';
@@ -39,7 +39,7 @@ void main() {
       ),
     ];
 
-    await tester.pumpWidget(const MaterialApp(home: GeneralSettingsPage()));
+    await tester.pumpWidget(const MaterialApp(home: SubTaskSettingsPage()));
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
@@ -75,7 +75,12 @@ void main() {
     // 重新打开，恢复跟随当前模型
     await tester.tap(find.text('选项生成 API'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('跟随当前选中模型'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ListTile),
+        matching: find.text('跟随当前选中模型'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(appSettingsNotifier.value.galChoiceApiModelId, isNull);
 
@@ -104,7 +109,7 @@ void main() {
 
   testWidgets('选项数量滑块更新设置', (tester) async {
     await initializeAppSettings();
-    await tester.pumpWidget(const MaterialApp(home: GeneralSettingsPage()));
+    await tester.pumpWidget(const MaterialApp(home: SubTaskSettingsPage()));
     await tester.pumpAndSettle();
     // 直接触发滑块的 onChanged（手势模拟在测试环境不稳定），
     // 验证滑块到最大值时设置随之更新。

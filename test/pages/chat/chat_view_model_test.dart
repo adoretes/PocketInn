@@ -592,6 +592,7 @@ void main() {
       );
       // 本组 setUp 未注册 ChatService，getIt 解析抛错由 VM 转为失败态。
       await expectLater(viewModel.refreshGalChoices(), completes);
+      await pumpEventQueue(); // 经调度器排队执行，等任务结束
       expect(viewModel.galChoicesError, isTrue);
       expect(viewModel.galChoices, isEmpty);
       expect(viewModel.isGeneratingGalChoices, isFalse);
@@ -661,6 +662,7 @@ void main() {
           const ChatCompletionResult(text: '{"choices": ["推开房门", "转身离开"]}');
       final vm = makeGalViewModel();
       await vm.refreshGalChoices();
+      await pumpEventQueue(); // 经调度器排队执行，等任务结束
       expect(api.callCount, 1);
       expect(vm.galChoices, ['推开房门', '转身离开']);
       expect(vm.galChoicesMessageId, 'a1');
@@ -672,6 +674,7 @@ void main() {
       api.behavior = () async => throw const FormatException('boom');
       final vm = makeGalViewModel();
       await expectLater(vm.refreshGalChoices(), completes);
+      await pumpEventQueue(); // 经调度器排队执行，等任务结束
       expect(vm.galChoicesError, isTrue);
       expect(vm.galChoices, isEmpty);
       expect(vm.isGeneratingGalChoices, isFalse);
@@ -747,6 +750,7 @@ void main() {
       // 排空 setGalMode 持久化触发的自动重载，避免与后续断言竞争。
       await vm.onChatDatabaseChanged();
       await vm.refreshGalChoices();
+      await pumpEventQueue(); // 经调度器排队执行，等任务结束
       expect(vm.galChoices, ['选项A', '选项B']);
       expect(vm.galChoicesMessageId, vm.messages.last.id);
 

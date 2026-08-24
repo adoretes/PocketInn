@@ -164,6 +164,33 @@ class ApiRequestLogService {
     await StorageService.instance.deleteJsonFile(_fileName);
   }
 
+  /// 提取类后台任务（记忆提取/状态提取）的失败日志。
+  ///
+  /// endpoint 与主请求一致（`chat/completions`），durationMs 用实测时长，
+  /// 与主请求日志字段对齐。
+  static Future<void> appendExtractionFailure({
+    required String label,
+    required String configName,
+    required String model,
+    required String baseUrl,
+    required Object error,
+    required int durationMs,
+  }) {
+    final normalized = baseUrl.trim();
+    final base = normalized.endsWith('/')
+        ? normalized.substring(0, normalized.length - 1)
+        : normalized;
+    return instance.append(
+      configName: configName,
+      model: model,
+      method: 'POST',
+      endpoint: '$base/chat/completions',
+      success: false,
+      durationMs: durationMs,
+      errorMessage: '$label: $error',
+    );
+  }
+
   Future<void> reload() async {
     final storage = StorageService.instance;
     final raw = await storage.readJsonFile(_fileName);

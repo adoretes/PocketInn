@@ -8,7 +8,9 @@ import '../models/api_config.dart';
 import '../models/chat_message.dart';
 import '../models/chat_variables.dart';
 import 'api_request_log_service.dart';
+import 'chat_database_service.dart';
 import 'openai_compatible_api_service.dart';
+import 'post_task_scheduler.dart';
 import 'storage_service.dart';
 import 'variable_state_service.dart';
 
@@ -177,11 +179,13 @@ class StatusExtractionService {
     return provider.resolve(model);
   }
 
-  /// 为一条已落库的助手消息提取变量差量。
+  /// 为一条已落库的助手消息提取变量差量（经后台调度器排队执行）。
   ///
   /// [recentMessages] 为该消息之前的路径消息（时间序）。
   /// 消息上如已有旧差量（原地编辑后重提）会先清空；提取失败则保持清空。
-  Future<bool> extractForAssistantMessage({
+  /// 任务执行前与写库前会校验消息文本仍与 [assistantText] 一致，不一致
+  /// （消息已被编辑/替换）时丢弃，防止过期差量落库。
+  Future<void> extractForAssistantMessage({
     required String sessionId,
     required String assistantMessageId,
     required String assistantText,
@@ -189,79 +193,94 @@ class StatusExtractionService {
     String characterName = '角色',
     String userName = '用户',
   }) async {
-    final config = statusExtractionNotifier.value;
-    if (!config.enabled) {
-      return false;
-    }
-    if (assistantText.trim().isEmpty) {
-      return false;
-    }
-
-    // 原地编辑后的重提：旧差量随旧文本作废。
-    final existingOps = await VariableStateService.instance.readDiff(
-      assistantMessageId,
-    );
-    if (existingOps.isNotEmpty) {
-      await VariableStateService.instance.clearDiff(assistantMessageId);
-    }
-
-    // 分支点状态：不含该消息自身（其差量尚未写入/已清空）。
-    final parentState = await VariableStateService.instance.resolveState(
+    PostTaskScheduler.instance.schedule(
+      kind: PostTaskKind.statusExtraction,
       sessionId: sessionId,
-      messageId: assistantMessageId,
-      includeSelf: false,
+      anchorKey: 'status:$assistantMessageId',
+      isStale: () async =>
+          await ChatDatabaseService.instance.loadMessageTextById(
+            assistantMessageId,
+          ) !=
+          assistantText,
+      run: (ensureFresh) async {
+        await ensureFresh();
+        final config = statusExtractionNotifier.value;
+        if (!config.enabled) {
+          return;
+        }
+        if (assistantText.trim().isEmpty) {
+          return;
+        }
+
+        // 原地编辑后的重提：旧差量随旧文本作废。
+        final existingOps = await VariableStateService.instance.readDiff(
+          assistantMessageId,
+        );
+        if (existingOps.isNotEmpty) {
+          await VariableStateService.instance.clearDiff(assistantMessageId);
+        }
+
+        // 分支点状态：不含该消息自身（其差量尚未写入/已清空）。
+        final parentState = await VariableStateService.instance.resolveState(
+          sessionId: sessionId,
+          messageId: assistantMessageId,
+          includeSelf: false,
+        );
+        // 角色卡未声明初始变量（状态系统未启用）时不发起提取调用。
+        if (parentState.isEmpty) {
+          return;
+        }
+
+        final apiConfig = _extractionConfig;
+        if (apiConfig == null) {
+          return;
+        }
+
+        final prompt = _buildExtractionPrompt(parentState);
+        final userContent = _buildDialogueContext(
+          recentMessages: recentMessages,
+          assistantText: assistantText,
+          characterName: characterName,
+          userName: userName,
+          recentCount: config.recentMessages,
+        );
+
+        final requestMessages = [
+          {'role': 'system', 'content': prompt},
+          {'role': 'user', 'content': userContent},
+        ];
+
+        final stopwatch = Stopwatch()..start();
+        try {
+          final result = await OpenAICompatibleApiService.instance
+              .createChatCompletion(apiConfig, messages: requestMessages);
+          stopwatch.stop();
+          final ops = parseVariableOps(result.text);
+          if (ops.isEmpty) {
+            return;
+          }
+          await ensureFresh();
+          await VariableStateService.instance.writeDiff(
+            messageId: assistantMessageId,
+            ops: ops,
+          );
+        } on PostTaskStaleException {
+          rethrow;
+        } catch (error, stack) {
+          debugPrint('状态提取失败: $error\n$stack');
+          unawaited(
+            ApiRequestLogService.appendExtractionFailure(
+              label: '状态提取失败',
+              configName: apiConfig.name,
+              model: apiConfig.model,
+              baseUrl: apiConfig.baseUrl,
+              error: error,
+              durationMs: stopwatch.elapsedMilliseconds,
+            ),
+          );
+        }
+      },
     );
-    // 角色卡未声明初始变量（状态系统未启用）时不发起提取调用。
-    if (parentState.isEmpty) {
-      return false;
-    }
-
-    final apiConfig = _extractionConfig;
-    if (apiConfig == null) {
-      return false;
-    }
-
-    final prompt = _buildExtractionPrompt(parentState);
-    final userContent = _buildDialogueContext(
-      recentMessages: recentMessages,
-      assistantText: assistantText,
-      characterName: characterName,
-      userName: userName,
-      recentCount: config.recentMessages,
-    );
-
-    final requestMessages = [
-      {'role': 'system', 'content': prompt},
-      {'role': 'user', 'content': userContent},
-    ];
-
-    try {
-      final result = await OpenAICompatibleApiService.instance
-          .createChatCompletion(apiConfig, messages: requestMessages);
-      final ops = parseVariableOps(result.text);
-      if (ops.isEmpty) {
-        return true;
-      }
-      await VariableStateService.instance.writeDiff(
-        messageId: assistantMessageId,
-        ops: ops,
-      );
-      return true;
-    } catch (error, stack) {
-      debugPrint('状态提取失败: $error\n$stack');
-      unawaited(
-        ApiRequestLogService.instance.append(
-          configName: apiConfig.name,
-          model: apiConfig.model,
-          method: 'POST',
-          endpoint: apiConfig.baseUrl,
-          success: false,
-          durationMs: 0,
-          errorMessage: '状态提取失败: $error',
-        ),
-      );
-      return false;
-    }
   }
 
   String _buildExtractionPrompt(VariableState state) {

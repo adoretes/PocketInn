@@ -8,7 +8,7 @@ import '../../../services/chat_database_service.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../../services/chat_memory_service.dart';
-import '../../memory_settings_page.dart';
+import '../../subtask_settings_page.dart';
 
 enum _NodeKind { user, assistant }
 
@@ -727,7 +727,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const MemorySettingsPage(),
+                  builder: (_) => const SubTaskSettingsPage(
+                    initialSection: SubTaskSettingsSection.memory,
+                  ),
                 ),
               );
             },

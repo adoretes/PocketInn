@@ -1483,6 +1483,13 @@ class ChatDatabaseService {
     return rows.first['text'] as String?;
   }
 
+  /// 按 id 读取消息文本；消息不存在返回 null。
+  ///
+  /// 供后台子任务判断"消息文本与捕获时一致"的过期校验使用。
+  Future<String?> loadMessageTextById(String messageId) async {
+    return _loadMessageText(_db, messageId);
+  }
+
   String _branchKey(String sessionId, String? parentMessageId) {
     return parentMessageId ?? _rootBranchKey(sessionId);
   }

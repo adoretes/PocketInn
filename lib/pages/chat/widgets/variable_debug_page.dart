@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../../data/api_configs.dart';
 import '../../../models/chat_variables.dart';
 import '../../../services/status_extraction_service.dart';
 import '../../../services/variable_state_service.dart';
+import '../../subtask_settings_page.dart';
 
 /// 状态变量页（验收/管理工具）。
 ///
 /// 展示当前分支叶子时刻的变量状态、来自角色卡的初始变量（只读）、
-/// 状态提取设置与宏用法提示。初始变量的声明在角色卡编辑页进行，
+/// 状态提取配置入口与宏用法提示。初始变量的声明在角色卡编辑页进行，
 /// 正式开始聊天时应用；角色卡未声明变量时状态系统不启用。
 class VariableDebugPage extends StatefulWidget {
   const VariableDebugPage({
@@ -168,6 +168,7 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
     );
   }
 
+  /// 状态提取配置入口：配置项已归拢到「子任务设置」页，这里只展示启用状态。
   Widget _buildExtractionSettingsSection(ColorScheme colorScheme) {
     return Card(
       child: Padding(
@@ -180,72 +181,49 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
                 Icon(Icons.auto_fix_high_outlined, color: colorScheme.primary),
                 const SizedBox(width: 8),
                 Text('状态提取', style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                IconButton(
+                  tooltip: '配置',
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SubTaskSettingsPage(
+                          initialSection: SubTaskSettingsSection.status,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              '开启后每条角色回复完成后，会用一次轻量调用从剧情中提取变量变化。'
-              '需角色卡已声明初始变量，否则不会发起提取。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
+            const SizedBox(height: 8),
             ValueListenableBuilder<StatusExtractionConfig>(
               valueListenable: statusExtractionNotifier,
               builder: (context, config, _) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('自动提取'),
-                      value: config.enabled,
-                      onChanged: (value) => updateStatusExtractionConfig(
-                        enabled: value,
-                      ),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('提取模型'),
-                      subtitle: Text(
-                        _resolveExtractionModelLabel(config),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _showModelPicker(config),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('参与提取的最近消息数'),
-                      subtitle: Slider(
-                        value: config.recentMessages.toDouble(),
-                        min: kStatusExtractionRecentMessagesMin.toDouble(),
-                        max: kStatusExtractionRecentMessagesMax.toDouble(),
-                        divisions:
-                            kStatusExtractionRecentMessagesMax -
-                            kStatusExtractionRecentMessagesMin,
-                        label: '${config.recentMessages}',
-                        onChanged: (value) => updateStatusExtractionConfig(
-                          recentMessages: value.round(),
-                        ),
-                      ),
-                      trailing: Text('${config.recentMessages}'),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('自定义提示词'),
-                      subtitle: Text(
-                        config.customPrompt.trim().isEmpty
-                            ? '使用内置默认'
-                            : '已自定义（{{state}} 会替换为当前变量 JSON）',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      trailing: const Icon(Icons.edit_outlined),
-                      onTap: () => _showCustomPromptEditor(config),
-                    ),
-                  ],
+                final description =
+                    config.enabled &&
+                        (config.extractionModelId == null ||
+                            config.extractionModelId!.isEmpty)
+                    ? '已开启：角色回复后自动提取变量变化（跟随当前模型）'
+                    : config.enabled
+                    ? '已开启：角色回复后自动提取变量变化（模型 ${config.extractionModelId}）'
+                    : '已关闭，角色回复后不提取变量变化。需角色卡已声明初始变量，'
+                          '否则不会发起提取。';
+                return Text(
+                  description,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 );
               },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '提取模型、提示词等配置项已移至「子任务设置」页，可点击右上角齿轮打开。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -280,133 +258,6 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
           ],
         ),
       ),
-    );
-  }
-
-  String _resolveExtractionModelLabel(StatusExtractionConfig config) {
-    final modelId = config.extractionModelId;
-    if (modelId == null || modelId.isEmpty) {
-      final tuple = selectedApiModelTuple;
-      return tuple == null ? '跟随当前模型（未选择）' : '跟随当前模型（${tuple.model.modelId}）';
-    }
-    for (final provider in apiConfigsNotifier.value) {
-      for (final model in provider.models) {
-        if (model.id == modelId) {
-          return '${provider.name} · ${model.modelId}';
-        }
-      }
-    }
-    return '未知模型';
-  }
-
-  Future<void> _showModelPicker(StatusExtractionConfig config) async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: ListView(
-            children: [
-              ListTile(
-                title: const Text('跟随当前模型'),
-                trailing: (config.extractionModelId == null ||
-                        config.extractionModelId!.isEmpty)
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () => Navigator.of(sheetContext).pop(''),
-              ),
-              for (final provider in apiConfigsNotifier.value)
-                for (final model in provider.models)
-                  ListTile(
-                    title: Text(model.modelId),
-                    subtitle: Text(provider.name),
-                    trailing: config.extractionModelId == model.id
-                        ? const Icon(Icons.check)
-                        : null,
-                    onTap: () => Navigator.of(sheetContext).pop(model.id),
-                  ),
-            ],
-          ),
-        );
-      },
-    );
-    if (selected != null) {
-      updateStatusExtractionConfig(
-        extractionModelId: selected.isEmpty ? null : selected,
-      );
-    }
-  }
-
-  Future<void> _showCustomPromptEditor(StatusExtractionConfig config) async {
-    final confirmed = await showDialog<String>(
-      context: context,
-      builder: (_) => _CustomPromptEditorDialog(initial: config.customPrompt),
-    );
-    if (confirmed != null) {
-      updateStatusExtractionConfig(customPrompt: confirmed);
-    }
-  }
-}
-
-/// 自定义提取提示词编辑器：controller 由弹窗自身的 State 持有，
-/// 随弹窗卸载释放，避免退出动画期间被输入法回调访问到已释放的 controller。
-class _CustomPromptEditorDialog extends StatefulWidget {
-  const _CustomPromptEditorDialog({required this.initial});
-
-  final String initial;
-
-  @override
-  State<_CustomPromptEditorDialog> createState() => _CustomPromptEditorDialogState();
-}
-
-class _CustomPromptEditorDialogState extends State<_CustomPromptEditorDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initial);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('自定义提取提示词'),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              '{{state}} 会被替换为当前变量 JSON；留空恢复内置默认。',
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _controller,
-              maxLines: 10,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('保存'),
-        ),
-      ],
     );
   }
 }

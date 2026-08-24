@@ -21,6 +21,7 @@ import 'chat_variable_service.dart';
 import 'gal_choice_parser.dart';
 import 'i_openai_api_service.dart';
 import 'openai_compatible_api_service.dart';
+import 'post_task_scheduler.dart';
 import 'preset_service.dart';
 import 'prompt_assembler.dart';
 import 'regex_rule_group_service.dart';
@@ -161,26 +162,25 @@ class ChatService {
             thinkingChain: completion.thinkingChain,
           );
 
-      unawaited(
-        _tryAutoExtractMemories(
-          sessionId: activeSession.id,
-          branchLeafId: assistantNode.id,
-          chatMessages: chatMessages,
-          userMessage: ChatMessage(
-            id: userNode.id,
-            text: userNode.text,
-            isMe: true,
-          ),
-          assistantMessage: ChatMessage(
-            id: assistantNode.id,
-            text: assistantNode.text,
-            isMe: false,
-          ),
-          characterName: character.name,
-          userName: userSetting.name,
-          currentInput: userNode.text,
-          cardData: _extractCardData(character.cardJson),
+      _scheduleMemoryExtraction(
+        sessionId: activeSession.id,
+        branchLeafId: assistantNode.id,
+        anchorText: assistantNode.text,
+        chatMessages: chatMessages,
+        userMessage: ChatMessage(
+          id: userNode.id,
+          text: userNode.text,
+          isMe: true,
         ),
+        assistantMessage: ChatMessage(
+          id: assistantNode.id,
+          text: assistantNode.text,
+          isMe: false,
+        ),
+        characterName: character.name,
+        userName: userSetting.name,
+        currentInput: userNode.text,
+        cardData: _extractCardData(character.cardJson),
       );
 
       // 状态提取（二次调用）：失败静默跳过，不影响聊天主流程。
@@ -306,26 +306,25 @@ class ChatService {
             thinkingChain: completion.thinkingChain,
           );
 
-      unawaited(
-        _tryAutoExtractMemories(
-          sessionId: session.id,
-          branchLeafId: assistantNode.id,
-          chatMessages: historyBeforeUserMessage,
-          userMessage: ChatMessage(
-            id: userMessage.id,
-            text: userMessage.text,
-            isMe: true,
-          ),
-          assistantMessage: ChatMessage(
-            id: assistantNode.id,
-            text: assistantNode.text,
-            isMe: false,
-          ),
-          characterName: character.name,
-          userName: userSetting.name,
-          currentInput: userMessage.text,
-          cardData: _extractCardData(character.cardJson),
+      _scheduleMemoryExtraction(
+        sessionId: session.id,
+        branchLeafId: assistantNode.id,
+        anchorText: assistantNode.text,
+        chatMessages: historyBeforeUserMessage,
+        userMessage: ChatMessage(
+          id: userMessage.id,
+          text: userMessage.text,
+          isMe: true,
         ),
+        assistantMessage: ChatMessage(
+          id: assistantNode.id,
+          text: assistantNode.text,
+          isMe: false,
+        ),
+        characterName: character.name,
+        userName: userSetting.name,
+        currentInput: userMessage.text,
+        cardData: _extractCardData(character.cardJson),
       );
 
       // 状态提取（二次调用）：失败静默跳过，不影响聊天主流程。
@@ -933,6 +932,46 @@ class ChatService {
     return memories.map((m) => m.content).toList();
   }
 
+  /// 经后台调度器排队执行记忆提取；消息文本与捕获时不一致则丢弃。
+  void _scheduleMemoryExtraction({
+    required String sessionId,
+    required String branchLeafId,
+    required String anchorText,
+    required List<ChatMessage> chatMessages,
+    required ChatMessage userMessage,
+    required ChatMessage assistantMessage,
+    required String characterName,
+    required String userName,
+    required String currentInput,
+    required Map<String, String> cardData,
+  }) {
+    PostTaskScheduler.instance.schedule(
+      kind: PostTaskKind.memoryExtraction,
+      sessionId: sessionId,
+      anchorKey: 'memory:$branchLeafId',
+      isStale: () async =>
+          await ChatDatabaseService.instance.loadMessageTextById(
+            branchLeafId,
+          ) !=
+          anchorText,
+      run: (ensureFresh) async {
+        await ensureFresh();
+        await _tryAutoExtractMemories(
+          sessionId: sessionId,
+          branchLeafId: branchLeafId,
+          chatMessages: chatMessages,
+          userMessage: userMessage,
+          assistantMessage: assistantMessage,
+          characterName: characterName,
+          userName: userName,
+          currentInput: currentInput,
+          cardData: cardData,
+          beforeCommit: ensureFresh,
+        );
+      },
+    );
+  }
+
   Future<void> _tryAutoExtractMemories({
     required String sessionId,
     required String branchLeafId,
@@ -943,6 +982,7 @@ class ChatService {
     required String userName,
     required String currentInput,
     required Map<String, String> cardData,
+    Future<void> Function()? beforeCommit,
   }) async {
     final memoryConfig = memoryExtractionNotifier.value;
     if (!memoryConfig.enabled) return;
@@ -968,6 +1008,7 @@ class ChatService {
       userName: userName,
       currentInput: currentInput,
       cardData: cardData,
+      beforeCommit: beforeCommit,
     );
   }
 
