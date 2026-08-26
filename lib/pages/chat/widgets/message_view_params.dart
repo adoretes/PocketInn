@@ -95,4 +95,34 @@ class MessageViewParams {
       onSwitchMessageVariant: onSwitchMessageVariant,
     );
   }
+
+  /// 返回不绘制背景副本的副本（历史弹层等没有真实背景的上下文）。
+  /// 背景副本会把角色背景图连同其半透明罩色绘入列表底部，导致弹层内
+  /// 文字可读性下降。
+  MessageViewParams withoutBackgroundCopy() {
+    return MessageViewParams(
+      visibleMessages: visibleMessages,
+      inputTapRegionGroupId: inputTapRegionGroupId,
+      isSending: isSending,
+      isImpersonating: isImpersonating,
+      regeneratingUserMessageId: regeneratingUserMessageId,
+      isDraftSession: isDraftSession,
+      activeCharacter: activeCharacter,
+      currentUserSetting: currentUserSetting,
+      hasBackground: hasBackground,
+      backgroundAreaSize: null,
+      backgroundAreaTop: backgroundAreaTop,
+      sessionId: sessionId,
+      selectedRegexRuleGroupIds: selectedRegexRuleGroupIds,
+      onCopyMessage: onCopyMessage,
+      onEditMessage: onEditMessage,
+      onEditDraftOpeningMessage: onEditDraftOpeningMessage,
+      onDeleteMessage: onDeleteMessage,
+      onRegenerateFromUserMessage: onRegenerateFromUserMessage,
+      onRegenerateMessage: onRegenerateMessage,
+      onContinueMessage: onContinueMessage,
+      onImpersonate: onImpersonate,
+      onSwitchMessageVariant: onSwitchMessageVariant,
+    );
+  }
 }

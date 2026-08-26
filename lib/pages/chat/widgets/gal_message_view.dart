@@ -224,9 +224,11 @@ class _GalMessageViewState extends State<GalMessageView>
             listenable: widget.updatesListenable,
             builder: (context, _) {
               return ChatMessageList(
-                params: widget.params.withVisibleMessages(
-                  widget.visibleMessagesProvider(),
-                ),
+                // 弹层背景与页面不同，不绘制背景副本，避免角色立绘透出
+                // 干扰阅读。
+                params: widget.params
+                    .withVisibleMessages(widget.visibleMessagesProvider())
+                    .withoutBackgroundCopy(),
                 scrollController: scrollController,
               );
             },
