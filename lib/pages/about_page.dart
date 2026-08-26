@@ -72,6 +72,11 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.3',
+                  date: '2026-08-24',
+                  changes: ['修复已知聊天历史及状态问题'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.2',
                   date: '2026-08-24',
                   changes: ['集中管理回复后子任务调度，统一并发控制与过期作废', '新增子任务设置页，归拢记忆提取/状态提取/选项生成配置', '优化设置页面样式、弹窗宽度与提示文本'],
