@@ -115,6 +115,80 @@ void main() {
 
       expect(state['距离']?.value, '3');
     });
+
+    test('枚举变量受白名单约束，非法取值被丢弃', () {
+      final state = VariableState.fromVariables({
+        '状态': const ChatVariable(
+          name: '状态',
+          type: ChatVariableType.enumType,
+          value: '平静',
+          metadata: ChatVariableMetadata(enumOptions: ['平静', '心动']),
+        ),
+      }).applyOps([
+        // 白名单外 set：应丢弃，保持原值。
+        const VariableOp(kind: VariableOpKind.set, variable: '状态', value: '暴怒'),
+        // 白名单内 set：生效。
+        const VariableOp(kind: VariableOpKind.set, variable: '状态', value: '心动'),
+      ]);
+
+      expect(state['状态']?.value, '心动');
+    });
+
+    test('枚举变量未声明选项时退化为自由文本', () {
+      final state = VariableState.fromVariables({
+        '状态': const ChatVariable(
+          name: '状态',
+          type: ChatVariableType.enumType,
+          value: '平静',
+          metadata: ChatVariableMetadata(),
+        ),
+      }).applyOps([
+        const VariableOp(kind: VariableOpKind.set, variable: '状态', value: '任意值'),
+      ]);
+
+      expect(state['状态']?.value, '任意值');
+    });
+
+    test('枚举选项与取值带空格时按 trim 后匹配', () {
+      final state = VariableState.fromVariables({
+        '状态': const ChatVariable(
+          name: '状态',
+          type: ChatVariableType.enumType,
+          value: '平静',
+          metadata: ChatVariableMetadata(enumOptions: [' 平静 ', '心动']),
+        ),
+      }).applyOps([
+        const VariableOp(
+          kind: VariableOpKind.set,
+          variable: '状态',
+          value: ' 心动 ',
+        ),
+      ]);
+
+      expect(state['状态']?.value, '心动');
+    });
+
+    test('数值变量拒绝非数值赋值，保持类型不被污染', () {
+      final state = VariableState.fromVariables({
+        '好感度': const ChatVariable(
+          name: '好感度',
+          type: ChatVariableType.number,
+          value: '55',
+          metadata: ChatVariableMetadata(minValue: 0, maxValue: 100),
+        ),
+      }).applyOps([
+        const VariableOp(kind: VariableOpKind.set, variable: '好感度', value: '开心'),
+      ]);
+
+      expect(state['好感度']?.type, ChatVariableType.number);
+      expect(state['好感度']?.value, '55');
+
+      // 被拒后变量仍可正常 add。
+      final after = state.applyOps([
+        const VariableOp(kind: VariableOpKind.add, variable: '好感度', value: '10'),
+      ]);
+      expect(after['好感度']?.value, '65');
+    });
   });
 
   group('VariableState 序列化', () {

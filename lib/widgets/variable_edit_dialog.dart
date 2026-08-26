@@ -189,6 +189,37 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
     if (name.isEmpty) {
       return;
     }
+    final value = _valueController.text.trim();
+
+    if (_type == ChatVariableType.number) {
+      // 数值变量的初始值必须是数字，且范围上下限不能倒置。
+      if (value.isNotEmpty && double.tryParse(value) == null) {
+        _showError('数值变量的初始值必须是数字');
+        return;
+      }
+      final min = double.tryParse(_minController.text.trim());
+      final max = double.tryParse(_maxController.text.trim());
+      if (min != null && max != null && min > max) {
+        _showError('最小值不能大于最大值');
+        return;
+      }
+    }
+
+    final enumOptions = _type == ChatVariableType.enumType
+        ? _enumOptionsController.text
+              .split(',')
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty)
+              .toList(growable: false)
+        : const <String>[];
+    if (_type == ChatVariableType.enumType &&
+        value.isNotEmpty &&
+        enumOptions.isNotEmpty &&
+        !enumOptions.contains(value)) {
+      _showError('初始值必须是枚举选项之一');
+      return;
+    }
+
     final metadata = ChatVariableMetadata(
       minValue: _type == ChatVariableType.number
           ? double.tryParse(_minController.text.trim())
@@ -199,21 +230,21 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
       unit: _unitController.text.trim().isEmpty
           ? null
           : _unitController.text.trim(),
-      enumOptions: _type == ChatVariableType.enumType
-          ? _enumOptionsController.text
-                .split(',')
-                .map((item) => item.trim())
-                .where((item) => item.isNotEmpty)
-                .toList(growable: false)
-          : const <String>[],
+      enumOptions: enumOptions,
     );
     Navigator.of(context).pop(
       ChatVariable(
         name: name,
         type: _type,
-        value: _valueController.text.trim(),
+        value: value,
         metadata: metadata,
       ),
     );
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 }

@@ -4,7 +4,7 @@ import 'dart:convert';
 ///
 /// - [number]：数值，支持 `add` 增减与 min/max 钳制；
 /// - [text]：自由文本；
-/// - [enumType]：枚举（取值建议来自 [ChatVariableMetadata.enumOptions]）。
+/// - [enumType]：枚举（取值受 [ChatVariableMetadata.enumOptions] 白名单约束）。
 enum ChatVariableType {
   number('数值'),
   text('文本'),
@@ -26,8 +26,8 @@ enum ChatVariableType {
 
 /// 变量元数据（范围、单位、枚举选项）。
 ///
-/// 计划 A 仅在应用操作时用 min/max 钳制；计划 B 的可视化组件
-/// 将消费其余字段（单位、枚举选项）做展示。
+/// 应用操作时用 min/max 钳制数值、用 enumOptions 白名单约束枚举取值；
+/// 单位字段供调试页等展示使用。
 class ChatVariableMetadata {
   const ChatVariableMetadata({
     this.minValue,
@@ -321,8 +321,9 @@ class VariableState {
 
   /// 按序应用一批操作，返回新状态。
   ///
-  /// 单条非法操作（add 遇到非数值、变量名为空等）被静默丢弃，
-  /// 不中断整批；数值结果受元数据 min/max 钳制。
+  /// 单条非法操作（add 遇到非数值、变量名为空、set 违反 number/
+  /// enum 约束等）被静默丢弃，不中断整批；数值结果受元数据
+  /// min/max 钳制，枚举取值受 enumOptions 白名单约束。
   VariableState applyOps(List<VariableOp> ops) {
     if (ops.isEmpty) {
       return this;
@@ -384,15 +385,32 @@ class VariableState {
             : rawValue,
       );
     }
-    if (existing.type == ChatVariableType.number) {
-      final numeric = double.tryParse(rawValue);
-      if (numeric != null) {
+    switch (existing.type) {
+      case ChatVariableType.number:
+        // 数值变量拒绝非数值赋值，防止状态被污染为文本
+        // （一旦污染，后续 add 会因 base 解析失败而被丢弃）。
+        final numeric = double.tryParse(rawValue);
+        if (numeric == null) {
+          return null;
+        }
         return existing.copyWith(
           value: _formatNumber(_clampNumber(numeric, existing.metadata)),
         );
-      }
+      case ChatVariableType.enumType:
+        // 枚举白名单校验；未声明选项时退化为自由文本。
+        final options = existing.metadata?.enumOptions ?? const <String>[];
+        if (options.isNotEmpty) {
+          final allowed = options.map((option) => option.trim()).toSet();
+          final trimmed = rawValue.trim();
+          if (!allowed.contains(trimmed)) {
+            return null;
+          }
+          return existing.copyWith(value: trimmed);
+        }
+        return existing.copyWith(value: rawValue);
+      case ChatVariableType.text:
+        return existing.copyWith(value: rawValue);
     }
-    return existing.copyWith(value: rawValue);
   }
 
   ChatVariable _inferred(String name, double value) {

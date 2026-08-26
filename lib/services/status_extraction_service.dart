@@ -299,15 +299,17 @@ class StatusExtractionService {
     final stateJson = '{${buffer.toString()}}';
 
     var prompt = rawPrompt.replaceAll('{{state}}', stateJson);
-    final rangeHints = _rangeHints(state);
-    if (rangeHints.isNotEmpty) {
-      prompt = '$prompt\n数值范围（越界会被钳制）：$rangeHints';
+    final constraintHints = _constraintHints(state);
+    if (constraintHints.isNotEmpty) {
+      prompt = '$prompt\n$constraintHints';
     }
     return prompt;
   }
 
-  String _rangeHints(VariableState state) {
-    final hints = <String>[];
+  /// 生成变量约束提示段落：数值范围与枚举白名单；无约束时为空串。
+  String _constraintHints(VariableState state) {
+    final rangeHints = <String>[];
+    final enumHints = <String>[];
     for (final variable in state.variables) {
       final metadata = variable.metadata;
       if (metadata == null) {
@@ -316,11 +318,19 @@ class StatusExtractionService {
       if (metadata.minValue != null || metadata.maxValue != null) {
         final min = metadata.minValue;
         final max = metadata.maxValue;
-        hints.add('${variable.name} ${min?.toStringAsFixed(0) ?? "-∞"}'
+        rangeHints.add('${variable.name} ${min?.toStringAsFixed(0) ?? "-∞"}'
             '~${max?.toStringAsFixed(0) ?? "+∞"}');
       }
+      if (metadata.enumOptions.isNotEmpty) {
+        enumHints.add('${variable.name} ${metadata.enumOptions.join('/')}');
+      }
     }
-    return hints.join('；');
+    return [
+      if (rangeHints.isNotEmpty)
+        '数值范围（越界会被钳制）：${rangeHints.join('；')}',
+      if (enumHints.isNotEmpty)
+        '枚举取值（仅允许下列选项）：${enumHints.join('；')}',
+    ].join('\n');
   }
 
   String _buildDialogueContext({
