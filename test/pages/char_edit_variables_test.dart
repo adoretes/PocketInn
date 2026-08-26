@@ -151,4 +151,78 @@ void main() {
     expect(variables.length, 1, reason: '同名编辑应覆盖而非追加');
     expect(variables.single.value, '25');
   });
+
+  testWidgets('编辑变量改名后旧名不残留（修复改名变新增）', (tester) async {
+    final card = minimalCard();
+    (card['data'] as Map<String, dynamic>)['extensions'] = {
+      'variables': encodeCardVariables([
+        const ChatVariable(
+          name: '好感度',
+          type: ChatVariableType.number,
+          value: '0',
+        ),
+        const ChatVariable(
+          name: '心情',
+          type: ChatVariableType.text,
+          value: '平静',
+        ),
+      ]),
+    };
+
+    RoleEditSavePayload? savedPayload;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RoleEditPage(
+          characterData: card,
+          onSave: (payload) async {
+            savedPayload = payload;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('高级设置'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('高级设置'));
+    await tester.pumpAndSettle();
+
+    // 编辑「好感度」行（多个变量时需精确命中该行的编辑按钮）。
+    final firstEditButton = find.descendant(
+      of: find.widgetWithText(ListTile, '好感度'),
+      matching: find.byTooltip('编辑'),
+    );
+    await tester.scrollUntilVisible(
+      firstEditButton,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(firstEditButton);
+    await tester.pumpAndSettle();
+
+    // 对话框中把变量名改为「亲密度」。
+    final dialogFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dialogFields.at(0), '亲密度');
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, '保存'));
+    await tester.pumpAndSettle();
+
+    final variables = decodeCardVariables(savedPayload!.cardJson);
+    expect(variables.length, 2, reason: '改名应替换而非新增');
+    expect(variables.map((v) => v.name).toSet(), {'亲密度', '心情'});
+    expect(variables.map((v) => v.name), isNot(contains('好感度')));
+    expect(
+      variables.firstWhere((v) => v.name == '亲密度').value,
+      '0',
+      reason: '改名后应保留原值',
+    );
+  });
 }

@@ -463,10 +463,12 @@ class _RoleEditPageState extends State<RoleEditPage> {
     }
     // 整体替换而非原地修改：初始列表可能来自 decodeCardVariables 的
     // const 空表，removeWhere 会抛 UnsupportedError。
+    // 按编辑前的旧名移除原项：改名时若按新名过滤会残留旧名条目。
+    final replacedName = existing?.name;
     setState(() {
       _variables = [
         for (final item in _variables)
-          if (item.name != result.name) item,
+          if (item.name != replacedName) item,
         result,
       ];
     });
