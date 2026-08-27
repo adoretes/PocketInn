@@ -19,6 +19,9 @@ class RemoteBackupService {
   static int? maximumDownloadSizeForTesting;
 
   @visibleForTesting
+  static Duration? requestTimeoutForTesting;
+
+  @visibleForTesting
   String buildS3AuthorizationForTesting({
     required S3BackupConfig config,
     required String method,
@@ -386,11 +389,7 @@ class RemoteBackupService {
       request.headers.set(HttpHeaders.authorizationHeader, authorization);
       requestHeaders.forEach(request.headers.set);
       if (body.isNotEmpty) {
-        if (onProgress != null) {
-          await _writeChunked(request, body, onProgress: onProgress);
-        } else {
-          request.add(body);
-        }
+        await _writeChunked(request, body, onProgress: onProgress);
       }
       final response = await request.close().timeout(_requestTimeout);
       return await _readResponse(response);
@@ -458,12 +457,12 @@ class RemoteBackupService {
     final maxDownloadSize =
         maximumDownloadSizeForTesting ?? maxDownloadSizeBytes;
     if (response.contentLength > maxDownloadSize) {
-      throw const RemoteBackupException('远端响应过大，最大支持 100 MB', null);
+      throw const RemoteBackupException('远端响应过大，最大支持 1 GB', null);
     }
     final body = <int>[];
     await for (final chunk in response.timeout(_requestTimeout)) {
       if (body.length + chunk.length > maxDownloadSize) {
-        throw const RemoteBackupException('远端响应过大，最大支持 100 MB', null);
+        throw const RemoteBackupException('远端响应过大，最大支持 1 GB', null);
       }
       body.addAll(chunk);
     }
@@ -499,19 +498,109 @@ class RemoteBackupService {
     }
   }
 
+  /// 将数据按块写入请求体并上报真实发送进度。
+  ///
+  /// 之所以用 [HttpClientRequest.addStream] 而不是循环 [HttpClientRequest.add]：
+  /// add 只是把数据堆进内存缓冲区就立刻返回，进度会瞬间到 100% 但实际
+  /// 还没有任何字节发出去；addStream 在底层 socket 写满时会暂停上游流，
+  /// 只有数据被真正写入 socket 后才继续产出下一块，进度反映实际传输。
+  ///
+  /// 超时按“停滞”计算而非限制总时长：只要超时窗口内有数据被写出就不中断，
+  /// 大文件上传不会因为整体耗时长而失败；仅当连续超时窗口内没有任何数据
+  /// 被写出才报错。
   Future<void> _writeChunked(
     HttpClientRequest request,
     List<int> data, {
     void Function(int sent, int total)? onProgress,
     int chunkSize = 65536,
   }) async {
+    final timeout = requestTimeoutForTesting ?? _requestTimeout;
+    final seconds = timeout.inSeconds;
+    final stallError = TimeoutException(
+      '上传数据超过 ${seconds > 0 ? '$seconds 秒' : '${timeout.inMilliseconds} 毫秒'}没有进度',
+      timeout,
+    );
+    final controller = StreamController<List<int>>(sync: true);
+    var resumeRequested = Completer<void>();
+    var stalled = false;
+    final outcome = Completer<void>();
+    Timer? watchdog;
+
+    void completeResume() {
+      if (!resumeRequested.isCompleted) {
+        resumeRequested.complete();
+      }
+    }
+
+    // 超时只在“连续超时窗口内没有任何数据被写出”时触发；大文件上传
+    // 只要持续有数据流动，就不会因为整体耗时长而失败。
+    void armWatchdog() {
+      watchdog?.cancel();
+      watchdog = Timer(timeout, () {
+        stalled = true;
+        completeResume();
+        if (!outcome.isCompleted) {
+          outcome.complete();
+        }
+      });
+    }
+
+    final writeFuture = request.addStream(controller.stream);
+    writeFuture.then(
+      (_) {
+        if (!outcome.isCompleted) outcome.complete();
+      },
+      onError: (Object error) {
+        if (!outcome.isCompleted) outcome.completeError(error);
+      },
+    );
+    // addStream 的返回 Future 在连接被销毁时可能永远不完成
+    // （dart:io socket 层取消订阅时不会补发完成信号），因此让“写入结果”
+    // 与“停滞超时”相互竞争，谁先结束谁定局，避免永久挂起。
+    controller.onCancel = completeResume;
+
     var sent = 0;
     final total = data.length;
-    for (var offset = 0; offset < total; offset += chunkSize) {
-      final end = (offset + chunkSize > total) ? total : offset + chunkSize;
-      request.add(data.sublist(offset, end));
-      sent = end;
-      onProgress?.call(sent, total);
+    final produceFuture = () async {
+      try {
+        for (var offset = 0; offset < total; offset += chunkSize) {
+          if (stalled || !controller.hasListener) break;
+          if (controller.isPaused) {
+            resumeRequested = Completer<void>();
+            controller.onResume = completeResume;
+            await resumeRequested.future;
+          }
+          // 等待背压释放期间订阅可能已被取消（连接出错/被销毁）。
+          if (!controller.hasListener) break;
+          final end = (offset + chunkSize > total) ? total : offset + chunkSize;
+          controller.add(data.sublist(offset, end));
+          sent = end;
+          onProgress?.call(sent, total);
+          armWatchdog();
+        }
+      } finally {
+        // close 的同步部分会把 done 事件入队；是否真正送达由停滞
+        // 看门狗兜底，这里不等待，避免尾段停滞时永久挂起。
+        try {
+          controller.close();
+        } catch (_) {
+          // 订阅已被取消时 close 会抛错，实际结果以 writeFuture 为准。
+        }
+      }
+    }();
+    armWatchdog();
+
+    try {
+      await Future.any([outcome.future, produceFuture]);
+      if (stalled) {
+        throw stallError;
+      }
+      await outcome.future;
+      if (stalled) {
+        throw stallError;
+      }
+    } finally {
+      watchdog?.cancel();
     }
   }
 
