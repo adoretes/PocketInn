@@ -72,19 +72,32 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.4',
+                  date: '2026-08-24',
+                  changes: ['增强远程备份服务的测试覆盖，添加上传进度和超时处理的单元测试'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.3',
                   date: '2026-08-24',
-                  changes: ['修复已知聊天历史及状态问题'],
+                  changes: ['修复聊天历史及状态异常问题'],
                 ),
                 _UpdateLogItem(
                   version: 'v1.6.2',
                   date: '2026-08-24',
-                  changes: ['集中管理回复后子任务调度，统一并发控制与过期作废', '新增子任务设置页，归拢记忆提取/状态提取/选项生成配置', '优化设置页面样式、弹窗宽度与提示文本'],
+                  changes: [
+                    '集中管理回复后子任务调度，统一并发控制与过期作废',
+                    '新增子任务设置页，归拢记忆提取/状态提取/选项生成配置',
+                    '优化设置页面样式、弹窗宽度与提示文本',
+                  ],
                 ),
                 _UpdateLogItem(
                   version: 'v1.6.1',
                   date: '2026-08-24',
-                  changes: ['添加气泡毛玻璃效果选项，优化聊天界面背景处理', '优化状态管理和控制器生命周期', '优化变量编辑弹窗'],
+                  changes: [
+                    '添加气泡毛玻璃效果选项，优化聊天界面背景处理',
+                    '优化状态管理和控制器生命周期',
+                    '优化变量编辑弹窗',
+                  ],
                 ),
                 _UpdateLogItem(
                   version: 'v1.6.0',
@@ -94,7 +107,24 @@ class _AboutPageState extends State<AboutPage> {
                 _UpdateLogItem(
                   version: 'v1.5.0',
                   date: '2026-08-22',
-                  changes: ['新增 gal 模式，提供沉浸式视觉小说对话体验', 'gal 模式支持回复历史消息，可回溯并切换旧分支', '新增选项生成功能，支持选项生成配置与会话状态持久化', '统一 gal 模式下的正则显示替换', '修复 Windows 下临时目录删除失败的问题'],
+                  changes: [
+                    '新增 gal 模式，提供沉浸式视觉小说对话体验',
+                    'gal 模式支持回复历史消息，可回溯并切换旧分支',
+                    '新增选项生成功能，支持选项生成配置与会话状态持久化',
+                    '统一 gal 模式下的正则显示替换',
+                    '修复 Windows 下临时目录删除失败的问题',
+                  ],
+                ),
+                _UpdateLogItem(
+                  version: 'v1.4.0',
+                  date: '2026-08-12',
+                  changes: [
+                    '新增正则替换功能，兼容导入ST原生正则',
+                    '角色编辑页面提升可读性与视觉体验',
+                    '优化角色编辑页面',
+                    '优化导出功能，添加 PNG 文件格式检测与错误处理',
+                    '为 API 请求日志添加用量信息',
+                  ],
                 ),
               ],
             ),
