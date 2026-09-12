@@ -63,6 +63,11 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final segmentTextStyle =
+        (Theme.of(context).textTheme.labelLarge ?? const TextStyle()).copyWith(
+          fontSize: 12,
+        );
+
     return AlertDialog(
       // 窄窗口下收紧外边距，配合更宽的内容区，避免「数值」等
       // 分段按钮标签被挤成竖排。
@@ -85,12 +90,12 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
                 _type = selection.first;
               });
             },
-            style: const ButtonStyle(
-              textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
-              padding: WidgetStatePropertyAll(
+            style: ButtonStyle(
+              textStyle: WidgetStatePropertyAll(segmentTextStyle),
+              padding: const WidgetStatePropertyAll(
                 EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               ),
-              minimumSize: WidgetStatePropertyAll(Size(0, 28)),
+              minimumSize: const WidgetStatePropertyAll(Size(0, 28)),
               visualDensity: VisualDensity.compact,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),

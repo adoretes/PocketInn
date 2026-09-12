@@ -50,9 +50,7 @@ app.*.map.json
 temp/
 
 AGENTS.md
-.codex/
-.trae/
-.zcode/
+.*/
 
 # plans
 plans/
