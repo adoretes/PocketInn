@@ -400,7 +400,6 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                   );
                 },
               ),
-              const Divider(height: 1),
               Expanded(
                 child: filteredChats.isEmpty
                     ? Center(
@@ -488,7 +487,6 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                         },
                       ),
               ),
-              const Divider(height: 1),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,

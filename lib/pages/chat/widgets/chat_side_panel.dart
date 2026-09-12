@@ -317,32 +317,28 @@ class ChatSidePanelContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        const Divider(height: 1),
+        // 标题行固定在列表外：变量多时只有下方内容滚动，入口始终可见。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
+            children: [
+              Icon(Icons.insights_outlined, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text('状态变量', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              IconButton(
+                tooltip: '完整页 / 提取配置',
+                icon: const Icon(Icons.open_in_new),
+                onPressed: _sessionContentAvailable ? onOpenVariablePage : null,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.insights_outlined, color: colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    '状态变量',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: '完整页 / 提取配置',
-                    icon: const Icon(Icons.open_in_new),
-                    onPressed: _sessionContentAvailable
-                        ? onOpenVariablePage
-                        : null,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ..._buildVariableBody(context, colorScheme),
-            ],
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: _buildVariableBody(context, colorScheme),
           ),
         ),
       ],

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -706,7 +705,6 @@ class _ChatPageState extends State<ChatPage> {
       endDrawer: ListenableBuilder(
         listenable: _viewModel,
         builder: (context, _) => Drawer(
-          width: math.min(MediaQuery.sizeOf(context).width * 0.86, 380),
           child: SafeArea(
             child: ChatSidePanel(
               sessionId: _viewModel.activeSession?.id,
