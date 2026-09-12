@@ -4,6 +4,7 @@ import '../../../models/chat_variables.dart';
 import '../../../services/status_extraction_service.dart';
 import '../../../services/variable_state_service.dart';
 import '../../subtask_settings_page.dart';
+import 'chat_variable_list.dart';
 
 /// 状态变量页（验收/管理工具）。
 ///
@@ -106,20 +107,13 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
               ],
             ),
             const SizedBox(height: 8),
-            if (state.isEmpty)
-              Text(
-                _initState != null && _initState!.isEmpty
-                    ? '角色卡未声明初始状态变量，状态系统未启用。'
-                          '请在角色卡编辑页的「初始状态变量」中声明。'
-                    : '暂无变量（初始变量尚未发生任何变化）。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              )
-            else
-              ...state.variables.map(
-                (variable) => _VariableRow(variable: variable, dense: true),
-              ),
+            ChatVariableList(
+              state: state,
+              emptyHint: _initState != null && _initState!.isEmpty
+                  ? '角色卡未声明初始状态变量，状态系统未启用。'
+                        '请在角色卡编辑页的「初始状态变量」中声明。'
+                  : '暂无变量（初始变量尚未发生任何变化）。',
+            ),
           ],
         ),
       ),
@@ -149,19 +143,13 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
               ],
             ),
             const SizedBox(height: 8),
-            if (init.isEmpty)
-              Text(
-                '角色卡未声明初始变量（状态系统不启用）。'
-                '在角色卡编辑页的「初始状态变量」区块声明；'
-                '正式开始聊天时应用，重置聊天时按角色卡重新应用。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              )
-            else
-              ...init.variables.map(
-                (variable) => _VariableRow(variable: variable, dense: true),
-              ),
+            ChatVariableList(
+              state: init,
+              emptyHint:
+                  '角色卡未声明初始变量（状态系统不启用）。'
+                  '在角色卡编辑页的「初始状态变量」区块声明；'
+                  '正式开始聊天时应用，重置聊天时按角色卡重新应用。',
+            ),
           ],
         ),
       ),
@@ -244,48 +232,6 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _VariableRow extends StatelessWidget {
-  const _VariableRow({required this.variable, this.dense = false});
-
-  final ChatVariable variable;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final metadata = variable.metadata;
-    final rangeParts = <String>[];
-    if (metadata?.minValue != null || metadata?.maxValue != null) {
-      rangeParts.add('${metadata?.minValue ?? '-∞'} ~ '
-          '${metadata?.maxValue ?? '+∞'}');
-    }
-    if (metadata?.unit != null && metadata!.unit!.isNotEmpty) {
-      rangeParts.add(metadata.unit!);
-    }
-    final subtitle = [
-      variable.type.label,
-      if (rangeParts.isNotEmpty) rangeParts.join(' · '),
-      if (variable.type == ChatVariableType.enumType &&
-          metadata != null &&
-          metadata.enumOptions.isNotEmpty)
-        '选项: ${metadata.enumOptions.join('/')}',
-    ].join(' · ');
-
-    return ListTile(
-      dense: dense,
-      contentPadding: EdgeInsets.zero,
-      title: Text(variable.name),
-      subtitle: Text(subtitle),
-      trailing: Text(
-        variable.value,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: colorScheme.primary,
         ),
       ),
     );

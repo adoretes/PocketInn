@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/chat_variables.dart';
 import 'chat_database_service.dart';
 
@@ -17,6 +19,19 @@ class VariableStateService {
   VariableStateService._();
 
   static final VariableStateService instance = VariableStateService._();
+
+  /// 变量数据（初始变量 / 消息差量）写入后的变更信号。
+  ///
+  /// [ChatDatabaseService] 有意不广播变量写入：那会触发会话重载并清掉
+  /// gal 选项等瞬态 UI。而状态提取是 post-task，可能晚于助手消息落库
+  /// （叶子变化）才写入差量，只靠消息变化无法感知。需要「变量已更新」
+  /// 精确信号的界面（如聊天页侧边栏）监听这里。
+  final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
+
+  /// 广播变量数据已变化。
+  void notifyChanged() {
+    changeNotifier.value++;
+  }
 
   /// 读取会话初始变量；未设置过时返回空状态。
   Future<VariableState> loadInitState(String sessionId) async {
@@ -67,6 +82,7 @@ class VariableStateService {
       sessionId: sessionId,
       valuesJson: state.encodeJson(),
     );
+    notifyChanged();
   }
 
   /// 读取挂在某条消息上的变量差量；无差量返回空列表。
@@ -85,17 +101,20 @@ class VariableStateService {
   }) async {
     if (ops.isEmpty) {
       await ChatDatabaseService.instance.deleteVariableDiff(messageId);
+      notifyChanged();
       return;
     }
     await ChatDatabaseService.instance.saveVariableDiff(
       messageId: messageId,
       opsJson: jsonEncode([for (final op in ops) op.toJson()]),
     );
+    notifyChanged();
   }
 
   /// 删除消息的变量差量。
   Future<void> clearDiff(String messageId) async {
     await ChatDatabaseService.instance.deleteVariableDiff(messageId);
+    notifyChanged();
   }
 
   /// 求值「[messageId] 时刻」的变量状态。

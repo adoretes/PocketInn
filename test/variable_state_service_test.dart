@@ -553,4 +553,52 @@ void main() {
     expect(restored['好感度']?.value, '0');
     expect(restored['好感度']?.metadata?.maxValue, 100);
   });
+
+  test('变量写入通过 changeNotifier 广播变更', () async {
+    final db = ChatDatabaseService.instance;
+    final service = VariableStateService.instance;
+    final session = await db.createSession(
+      characterId: 'char-1',
+      openingAssistantMessages: ['开场白'],
+    );
+
+    var notifications = 0;
+    void listener() => notifications++;
+    service.changeNotifier.addListener(listener);
+    addTearDown(() => service.changeNotifier.removeListener(listener));
+
+    await service.saveInitState(session.id, initState());
+    expect(notifications, 1, reason: '初始变量写入要广播（正式开始 / 重置聊天）');
+
+    final user = await db.appendUserMessage(
+      sessionId: session.id,
+      parentMessageId: session.currentLeafMessageId,
+      text: '你好',
+    );
+    final assistant = await db.appendAssistantMessage(
+      sessionId: session.id,
+      parentMessageId: user.id,
+      text: '回复',
+    );
+
+    // 状态提取是 post-task，可能晚于消息落库才写差量；
+    // 侧边栏等界面正是靠这个信号刷新，故写入/清空都必须广播。
+    await service.writeDiff(
+      messageId: assistant.id,
+      ops: [
+        const VariableOp(
+          kind: VariableOpKind.add,
+          variable: '好感度',
+          value: '5',
+        ),
+      ],
+    );
+    expect(notifications, 2, reason: '差量写入要广播');
+
+    await service.writeDiff(messageId: assistant.id, ops: const []);
+    expect(notifications, 3, reason: '空差量等价于清空，同样要广播');
+
+    await service.clearDiff(assistant.id);
+    expect(notifications, 4, reason: '清空差量要广播');
+  });
 }

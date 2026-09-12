@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import '../data/app_settings.dart';
 import '../data/mock_user_settings.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
+import '../models/chat_variables.dart';
 import '../pages/api_config_page.dart';
 import '../pages/api_request_log_page.dart';
 import '../pages/chat/chat_view_model.dart';
@@ -14,6 +16,7 @@ import '../pages/chat/widgets/api_selector_sheet.dart';
 import '../pages/chat/widgets/chat_input_area.dart';
 import '../pages/chat/widgets/chat_message_list.dart';
 import '../pages/chat/widgets/chat_selector_menus.dart';
+import '../pages/chat/widgets/chat_side_panel.dart';
 import '../pages/chat/widgets/chat_title_dialog.dart';
 import '../pages/chat/widgets/gal_message_view.dart';
 import '../pages/chat/widgets/memory_tree_page.dart';
@@ -76,6 +79,9 @@ class _ChatPageState extends State<ChatPage> {
     keepScrollOffset: false,
   );
   String _inputText = '';
+
+  /// 右侧边栏（记忆与状态）是否展开：收起时不为它做任何查询。
+  bool _isEndDrawerOpen = false;
 
   late final ChatViewModel _viewModel;
 
@@ -166,6 +172,7 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _openMemoryManager() async {
     final session = _viewModel.activeSession;
     if (session == null) return;
+    _scaffoldKey.currentState?.closeEndDrawer();
     final activeLeafId = _viewModel.messages.isNotEmpty
         ? _viewModel.messages.last.id
         : null;
@@ -186,6 +193,7 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _openVariableManager() async {
     final session = _viewModel.activeSession;
     if (session == null) return;
+    _scaffoldKey.currentState?.closeEndDrawer();
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => VariableDebugPage(
@@ -217,8 +225,6 @@ class _ChatPageState extends State<ChatPage> {
       onRefreshStatus: _viewModel.onApiConfigsChanged,
       onOpenConfigPage: _openApiConfigPage,
       onOpenRequestLogPage: _openApiRequestLogPage,
-      onOpenMemoryManager: _openMemoryManager,
-      onOpenVariableManager: _openVariableManager,
     );
   }
 
@@ -645,10 +651,19 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 左右抽屉两侧对称的拖拽区（45% 宽，各自不超过 320），互不重叠。
     final drawerEdgeDragWidth = (MediaQuery.sizeOf(context).width * 0.45).clamp(
       128.0,
       320.0,
     );
+    // Flutter 的 DrawerController 在桌面平台直接关掉抽屉边缘拖拽
+    // （macOS/Linux/Windows），那里只能靠按钮打开。
+    final isDesktopPlatform = switch (theme.platform) {
+      TargetPlatform.macOS ||
+      TargetPlatform.linux ||
+      TargetPlatform.windows => true,
+      _ => false,
+    };
     final topContentPadding =
         MediaQuery.paddingOf(context).top + kToolbarHeight;
     final overlayStyle = theme.brightness == Brightness.dark
@@ -665,11 +680,52 @@ class _ChatPageState extends State<ChatPage> {
           _dismissInputKeyboard();
         }
       },
-      drawer: Drawer(
-        child: SafeArea(
-          child: ChatSidebarPage(
-            activeSessionId: _viewModel.activeSession?.id,
-            onChatSelected: _selectSessionFromSidebar,
+      drawer: ListenableBuilder(
+        listenable: _viewModel,
+        builder: (context, _) => Drawer(
+          child: SafeArea(
+            child: ChatSidebarPage(
+              activeSessionId: _viewModel.activeSession?.id,
+              onChatSelected: _selectSessionFromSidebar,
+            ),
+          ),
+        ),
+      ),
+      // 右侧边栏：长期记忆入口 + 状态变量实时显示。
+      // 入口是从右缘向左滑（与左抽屉对称的 45% 拖拽区，不重叠）；
+      // 桌面平台没有该手势，改用应用栏按钮。
+      endDrawerEnableOpenDragGesture: true,
+      onEndDrawerChanged: (isOpened) {
+        if (isOpened) {
+          _dismissInputKeyboard();
+        }
+        if (_isEndDrawerOpen != isOpened) {
+          setState(() => _isEndDrawerOpen = isOpened);
+        }
+      },
+      endDrawer: ListenableBuilder(
+        listenable: _viewModel,
+        builder: (context, _) => Drawer(
+          width: math.min(MediaQuery.sizeOf(context).width * 0.86, 380),
+          child: SafeArea(
+            child: ChatSidePanel(
+              sessionId: _viewModel.activeSession?.id,
+              sessionTitle: _viewModel.activeSession?.title,
+              isDraftSession: _viewModel.isDraftSession,
+              leafMessageId: _viewModel.messages.isNotEmpty
+                  ? _viewModel.messages.last.id
+                  : null,
+              isOpened: _isEndDrawerOpen,
+              draftState: _viewModel.isDraftSession
+                  ? VariableState.fromCardVariables(
+                      decodeCardVariables(
+                        _viewModel.activeCharacter?.cardJson ?? const {},
+                      ),
+                    )
+                  : VariableState.empty(),
+              onOpenMemoryManager: _openMemoryManager,
+              onOpenVariablePage: _openVariableManager,
+            ),
           ),
         ),
       ),
@@ -705,6 +761,12 @@ class _ChatPageState extends State<ChatPage> {
         ),
         centerTitle: true,
         actions: [
+          if (isDesktopPlatform)
+            IconButton(
+              icon: const Icon(Icons.view_sidebar_outlined),
+              tooltip: '记忆与状态',
+              onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+            ),
           ListenableBuilder(
             listenable: _viewModel,
             builder: (context, _) {
