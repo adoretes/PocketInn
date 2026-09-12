@@ -72,6 +72,11 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.5',
+                  date: '2026-09-12',
+                  changes: ['重构聊天页选择菜单', '修复变量对话框样式覆盖问题', '将记忆和变量入口拆分至右侧抽屉', '调整侧边栏样式'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.4',
                   date: '2026-08-24',
                   changes: ['增强远程备份服务的测试覆盖，添加上传进度和超时处理的单元测试'],
