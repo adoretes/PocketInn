@@ -74,6 +74,53 @@ void main() {
     });
   });
 
+  group('ChatMemoryService.selectRecentNodes', () {
+    MemoryNode node(String content, int dayOffset) {
+      final ts = DateTime(2026, 1, 1).add(Duration(days: dayOffset));
+      return MemoryNode(
+        id: content,
+        sessionId: 's',
+        branchLeafId: 'leaf',
+        content: content,
+        createdAt: ts,
+        updatedAt: ts,
+      );
+    }
+
+    /// 构造 n 个节点，按时间升序（最早的在前）
+    List<List<MemoryNode>> nodesAsc(int n) => [
+      for (var i = 0; i < n; i++) [node('m$i', i)],
+    ];
+
+    test('count <= 0 返回全部节点', () {
+      final nodes = nodesAsc(5);
+      expect(ChatMemoryService.selectRecentNodes(nodes, 0), nodes);
+      expect(ChatMemoryService.selectRecentNodes(nodes, -1), nodes);
+    });
+
+    test('节点数不足 count 时返回全部节点', () {
+      final nodes = nodesAsc(2);
+      expect(ChatMemoryService.selectRecentNodes(nodes, 5), nodes);
+    });
+
+    test('节点数恰好等于 count 时返回全部节点', () {
+      final nodes = nodesAsc(3);
+      expect(ChatMemoryService.selectRecentNodes(nodes, 3), nodes);
+    });
+
+    test('节点数超过 count 时取最新的 count 个', () {
+      final nodes = nodesAsc(5);
+      final result = ChatMemoryService.selectRecentNodes(nodes, 2);
+      expect(result.map((e) => e.first.content), ['m3', 'm4']);
+    });
+
+    test('count 为 1 时只取最新的那个节点', () {
+      final nodes = nodesAsc(4);
+      final result = ChatMemoryService.selectRecentNodes(nodes, 1);
+      expect(result.single.first.content, 'm3');
+    });
+  });
+
   group('ChatMemoryService.parseMemoryPoints', () {
     test('空字符串返回空列表', () {
       expect(ChatMemoryService.parseMemoryPoints(''), isEmpty);

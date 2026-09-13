@@ -209,17 +209,26 @@ class ChatMemoryService {
     final sortedNodes = grouped.values.toList()
       ..sort((a, b) => a.last.createdAt.compareTo(b.last.createdAt));
 
-    // count <= 0 表示无限制，合并所有节点
-    if (count <= 0) {
-      return sortedNodes.expand((e) => e).toList();
-    }
+    // 取「最近」的 count 个节点。sortedNodes 为升序，故从尾部截取。
+    return selectRecentNodes(sortedNodes, count).expand((e) => e).toList();
+  }
 
-    // 节点数不足 count 时直接合并返回
-    if (sortedNodes.length <= count) {
-      return sortedNodes.expand((e) => e).toList();
+  /// 从按时间升序排列的节点列表中选出最近的 [count] 个。
+  ///
+  /// - [count] <= 0：不限制，返回全部
+  /// - 节点数不足 [count]：返回全部
+  /// - 否则：从尾部截取最后 [count] 个
+  ///
+  /// 抽成静态方法以便单元测试直接覆盖（原实现依赖数据库，无法单测）。
+  @visibleForTesting
+  static List<List<MemoryNode>> selectRecentNodes(
+    List<List<MemoryNode>> sortedNodesAsc,
+    int count,
+  ) {
+    if (count <= 0 || sortedNodesAsc.length <= count) {
+      return sortedNodesAsc;
     }
-
-    return sortedNodes.take(count).expand((e) => e).toList();
+    return sortedNodesAsc.sublist(sortedNodesAsc.length - count);
   }
 
   Future<bool> tryExtractAndSave({
