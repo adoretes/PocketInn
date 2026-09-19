@@ -195,6 +195,7 @@ class ChatService {
           ],
           characterName: character.name,
           userName: userSetting.name,
+          cardJson: character.cardJson,
         ),
       );
 
@@ -339,6 +340,7 @@ class ChatService {
           ],
           characterName: character.name,
           userName: userSetting.name,
+          cardJson: character.cardJson,
         ),
       );
 
@@ -490,6 +492,7 @@ class ChatService {
           recentMessages: chatMessages,
           characterName: character.name,
           userName: userSetting.name,
+          cardJson: character.cardJson,
         ),
       );
 

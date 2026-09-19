@@ -341,5 +341,53 @@ void main() {
         returnsNormally,
       );
     });
+
+    test('变化说明随卡与会话状态 JSON 往返', () {
+      const variable = ChatVariable(
+        name: '好感度',
+        type: ChatVariableType.number,
+        value: '0',
+        metadata: ChatVariableMetadata(minValue: 0, maxValue: 100),
+        changeHint: '帮她做事 +5，被冷落 -3',
+      );
+      final cardJson = {
+        'data': {
+          'extensions': {
+            kCardVariablesExtensionKey: encodeCardVariables([variable]),
+          },
+        },
+      };
+      expect(decodeCardVariables(cardJson), [variable]);
+
+      final state = VariableState.fromVariables({'好感度': variable});
+      final restored = VariableState.decodeJson(state.encodeJson());
+      expect(restored['好感度'], variable);
+    });
+
+    test('变化说明兼容手写字段名，空值归一为 null', () {
+      final cardJson = {
+        'data': {
+          'extensions': {
+            'variables': [
+              {'name': '金币', 'value': 20, 'changeHint': '交易时按金额增减'},
+              {'name': '心情', 'value': '平静', 'hint': '只在剧情明确时改变'},
+              {'name': '体力', 'value': 100, 'changeHint': '   '},
+            ],
+          },
+        },
+      };
+
+      final decoded = decodeCardVariables(cardJson);
+      expect(decoded[0].changeHint, '交易时按金额增减');
+      expect(decoded[1].changeHint, '只在剧情明确时改变');
+      expect(decoded[2].changeHint, isNull);
+
+      const withoutHint = ChatVariable(
+        name: '体力',
+        type: ChatVariableType.number,
+        value: '100',
+      );
+      expect(withoutHint.toCardJson().containsKey('changeHint'), isFalse);
+    });
   });
 }

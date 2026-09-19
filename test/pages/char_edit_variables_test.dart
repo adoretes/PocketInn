@@ -225,4 +225,64 @@ void main() {
       reason: '改名后应保留原值',
     );
   });
+
+  testWidgets('变量变化说明可编辑、列表可见并写回角色卡', (tester) async {
+    RoleEditSavePayload? savedPayload;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RoleEditPage(
+          characterData: minimalCard(),
+          onSave: (payload) async {
+            savedPayload = payload;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('高级设置'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('高级设置'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byTooltip('添加变量'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byTooltip('添加变量'));
+    await tester.pumpAndSettle();
+
+    final dialogFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dialogFields.at(0), '好感度');
+    await tester.enterText(dialogFields.at(1), '10');
+    // 变化说明为对话框最后一个输入框，按标签精确定位。
+    final hintField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == '变化说明（状态提取参考）',
+    );
+    await tester.enterText(hintField, '帮她做事 +5，被冷落 -3');
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('变化说明：帮她做事 +5，被冷落 -3'),
+      findsOneWidget,
+      reason: '变量列表副标题应展示变化说明',
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, '保存'));
+    await tester.pumpAndSettle();
+
+    final variables = decodeCardVariables(savedPayload!.cardJson);
+    expect(variables.length, 1);
+    expect(variables.single.changeHint, '帮她做事 +5，被冷落 -3');
+  });
 }

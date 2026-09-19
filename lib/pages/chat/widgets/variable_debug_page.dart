@@ -109,6 +109,7 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
             const SizedBox(height: 8),
             ChatVariableList(
               state: state,
+              showChangeHint: true,
               emptyHint: _initState != null && _initState!.isEmpty
                   ? '角色卡未声明初始状态变量，状态系统未启用。'
                         '请在角色卡编辑页的「初始状态变量」中声明。'
@@ -145,6 +146,7 @@ class _VariableDebugPageState extends State<VariableDebugPage> {
             const SizedBox(height: 8),
             ChatVariableList(
               state: init,
+              showChangeHint: true,
               emptyHint:
                   '角色卡未声明初始变量（状态系统不启用）。'
                   '在角色卡编辑页的「初始状态变量」区块声明；'

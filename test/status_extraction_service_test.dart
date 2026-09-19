@@ -77,6 +77,118 @@ void main() {
     });
   });
 
+  group('buildStatusExtractionPrompt', () {
+    VariableState stateWithHint() => VariableState.fromVariables({
+      '好感度': const ChatVariable(
+        name: '好感度',
+        type: ChatVariableType.number,
+        value: '10',
+        metadata: ChatVariableMetadata(minValue: 0, maxValue: 100),
+        changeHint: '帮她做事 +5，被冷落 -3',
+      ),
+      '心情': const ChatVariable(
+        name: '心情',
+        type: ChatVariableType.enumType,
+        value: '平静',
+        metadata: ChatVariableMetadata(enumOptions: ['平静', '心动']),
+      ),
+    });
+
+    test('注入变量状态、约束与变化说明', () {
+      final prompt = buildStatusExtractionPrompt(state: stateWithHint());
+
+      expect(prompt, contains('"好感度": "10"'));
+      expect(prompt, contains('"心情": "平静"'));
+      expect(prompt, contains('数值范围（越界会被钳制）：好感度 0~100'));
+      expect(prompt, contains('枚举取值（仅允许下列选项）：心情 平静/心动'));
+      expect(prompt, contains('变量变化说明'));
+      expect(prompt, contains('好感度：帮她做事 +5，被冷落 -3'));
+    });
+
+    test('无变化说明时不追加该段落', () {
+      final prompt = buildStatusExtractionPrompt(
+        state: VariableState.fromVariables({
+          '好感度': const ChatVariable(
+            name: '好感度',
+            type: ChatVariableType.number,
+            value: '10',
+          ),
+        }),
+      );
+
+      expect(prompt, isNot(contains('变量变化说明')));
+    });
+
+    test('自定义提示词替换 {{state}} 后同样追加说明', () {
+      final prompt = buildStatusExtractionPrompt(
+        state: stateWithHint(),
+        customPrompt: '只输出 JSON。当前 {{state}}',
+      );
+
+      expect(prompt, startsWith('只输出 JSON。当前 {'));
+      expect(prompt, contains('好感度：帮她做事 +5，被冷落 -3'));
+    });
+  });
+
+  group('applyCardChangeHints', () {
+    final state = VariableState.fromVariables({
+      '好感度': const ChatVariable(
+        name: '好感度',
+        type: ChatVariableType.number,
+        value: '10',
+        changeHint: '旧说明',
+      ),
+      '心情': const ChatVariable(
+        name: '心情',
+        type: ChatVariableType.text,
+        value: '平静',
+        changeHint: '卡未声明，保留',
+      ),
+    });
+
+    test('用角色卡声明覆盖同名说明，且不改动取值', () {
+      final merged = applyCardChangeHints(state, {
+        'data': {
+          'extensions': {
+            'variables': {
+              '好感度': {
+                'type': 'number',
+                'value': '0',
+                'changeHint': '新说明',
+              },
+            },
+          },
+        },
+      });
+
+      expect(merged['好感度']?.changeHint, '新说明');
+      expect(merged['好感度']?.value, '10');
+      expect(merged['心情']?.changeHint, '卡未声明，保留');
+    });
+
+    test('卡中变量未声明说明时清空旧说明', () {
+      final merged = applyCardChangeHints(state, {
+        'data': {
+          'extensions': {
+            'variables': {
+              '好感度': {'type': 'number', 'value': '0'},
+            },
+          },
+        },
+      });
+
+      expect(merged['好感度']?.changeHint, isNull);
+    });
+
+    test('空卡或无声明时原样返回', () {
+      expect(applyCardChangeHints(state, {}), same(state));
+      expect(
+        applyCardChangeHints(state, {'data': {'extensions': {}}}),
+        same(state),
+      );
+    });
+  });
+
   group('StatusExtractionConfig', () {
     test('默认关闭，条数被钳制到合法区间', () {
       expect(statusExtractionNotifier.value.enabled, isFalse);

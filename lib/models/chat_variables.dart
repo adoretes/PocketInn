@@ -109,6 +109,7 @@ class ChatVariable {
     required this.type,
     required this.value,
     this.metadata,
+    this.changeHint,
   });
 
   final String name;
@@ -116,17 +117,25 @@ class ChatVariable {
   final String value;
   final ChatVariableMetadata? metadata;
 
+  /// 面向状态提取子任务的变化说明（角色卡字段 `changeHint`）。
+  ///
+  /// 描述该变量「如何变化」：触发条件、方向、幅度或取值倾向等，供提取
+  /// 提示词参考；为空表示不额外约束，由模型按剧情自行判断。该字段只参与
+  /// 提示词拼装，不影响 [VariableState.applyOps] 的求值与钳制。
+  final String? changeHint;
+
   @override
   bool operator ==(Object other) {
     return other is ChatVariable &&
         other.name == name &&
         other.type == type &&
         other.value == value &&
-        other.metadata == metadata;
+        other.metadata == metadata &&
+        other.changeHint == changeHint;
   }
 
   @override
-  int get hashCode => Object.hash(name, type, value, metadata);
+  int get hashCode => Object.hash(name, type, value, metadata, changeHint);
 
   ChatVariable copyWith({
     ChatVariableType? type,
@@ -138,6 +147,7 @@ class ChatVariable {
       type: type ?? this.type,
       value: value ?? this.value,
       metadata: metadata ?? this.metadata,
+      changeHint: changeHint,
     );
   }
 
@@ -146,6 +156,8 @@ class ChatVariable {
       'type': type.value,
       'value': value,
       if (metadata != null) 'metadata': metadata!.toJson(),
+      if (changeHint != null && changeHint!.isNotEmpty)
+        'changeHint': changeHint,
     };
   }
 
@@ -158,6 +170,9 @@ class ChatVariable {
       metadata: metadataJson is Map<String, dynamic>
           ? ChatVariableMetadata.fromJson(metadataJson)
           : null,
+      changeHint: _normalizeChangeHint(
+        json['changeHint'] ?? json['change_hint'] ?? json['hint'],
+      ),
     );
   }
 
@@ -173,11 +188,13 @@ class ChatVariable {
         'unit': metadata.unit,
       if (metadata?.enumOptions.isNotEmpty == true)
         'enumOptions': metadata!.enumOptions,
+      if (changeHint != null && changeHint!.isNotEmpty)
+        'changeHint': changeHint,
     };
   }
 
-  /// 解析角色卡内声明的变量（字段名宽松：min/max/unit/enumOptions
-  /// 可在顶层或 metadata 内）；名称缺失或整体非法返回 null。
+  /// 解析角色卡内声明的变量（字段名宽松：min/max/unit/enumOptions 与
+  /// changeHint 可在顶层或 metadata 内）；名称缺失或整体非法返回 null。
   static ChatVariable? fromCardJson(dynamic json) {
     if (json is! Map) {
       return null;
@@ -206,7 +223,20 @@ class ChatVariable {
                 .toList(growable: false) ??
             const <String>[],
       ),
+      changeHint: _normalizeChangeHint(
+        merged['changeHint'] ??
+            merged['change_hint'] ??
+            merged['hint'] ??
+            merged['说明'] ??
+            merged['变化说明'],
+      ),
     );
+  }
+
+  /// 变化说明清洗：空串统一为 null，避免「有键但无内容」参与比较与提示词。
+  static String? _normalizeChangeHint(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
   }
 }
 

@@ -29,6 +29,7 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
   late final TextEditingController _maxController;
   late final TextEditingController _unitController;
   late final TextEditingController _enumOptionsController;
+  late final TextEditingController _changeHintController;
   ChatVariableType _type = ChatVariableType.number;
 
   @override
@@ -47,6 +48,9 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
     _enumOptionsController = TextEditingController(
       text: initial?.metadata?.enumOptions.join(',') ?? '',
     );
+    _changeHintController = TextEditingController(
+      text: initial?.changeHint ?? '',
+    );
     _type = initial?.type ?? ChatVariableType.number;
   }
 
@@ -58,6 +62,7 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
     _maxController.dispose();
     _unitController.dispose();
     _enumOptionsController.dispose();
+    _changeHintController.dispose();
     super.dispose();
   }
 
@@ -172,6 +177,20 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
                   ),
                 ),
               ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _changeHintController,
+                minLines: 2,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: '变化说明（状态提取参考）',
+                  hintText: '如：帮她做事 +5，被冷落 -3；或：仅当剧情明确受伤时才下降',
+                  helperText: '描述该变量如何变化（触发条件、方向、幅度），'
+                      '会附加到状态提取提示词；留空则由模型按剧情判断。',
+                  helperMaxLines: 3,
+                  border: OutlineInputBorder(),
+                ),
+              ),
             ],
           ),
         ),
@@ -237,12 +256,14 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
           : _unitController.text.trim(),
       enumOptions: enumOptions,
     );
+    final changeHint = _changeHintController.text.trim();
     Navigator.of(context).pop(
       ChatVariable(
         name: name,
         type: _type,
         value: value,
         metadata: metadata,
+        changeHint: changeHint.isEmpty ? null : changeHint,
       ),
     );
   }

@@ -68,6 +68,7 @@ const String kDefaultStatusExtractionPrompt =
     '"value": 新值, "reason": "一句话原因"}]}；\n'
     '- 数值变量的增减用 "add"（value 为增量，可为负数），直接改写用 "set"；\n'
     '- 文本或状态类变量一律用 "set"，新值使用与剧情一致的语言；\n'
+    '- 变量若带有「变化说明」，按说明判断触发条件、方向与幅度；\n'
     '- 只根据剧情中实际发生的变化输出操作，没有变化输出 {"ops": []}；\n'
     '- 不要发明当前状态之外的变量，除非剧情确实引入了新的持久状态；\n'
     '- 不要输出 JSON 以外的任何内容。';
@@ -182,6 +183,8 @@ class StatusExtractionService {
   /// 为一条已落库的助手消息提取变量差量（经后台调度器排队执行）。
   ///
   /// [recentMessages] 为该消息之前的路径消息（时间序）。
+  /// [cardJson] 为当前角色卡；其中的「变化说明」会覆盖状态快照里的同名字段，
+  /// 使改卡后无需重置聊天即可生效。
   /// 消息上如已有旧差量（原地编辑后重提）会先清空；提取失败则保持清空。
   /// 任务执行前与写库前会校验消息文本仍与 [assistantText] 一致，不一致
   /// （消息已被编辑/替换）时丢弃，防止过期差量落库。
@@ -192,6 +195,7 @@ class StatusExtractionService {
     required List<ChatMessage> recentMessages,
     String characterName = '角色',
     String userName = '用户',
+    Map<String, dynamic>? cardJson,
   }) async {
     PostTaskScheduler.instance.schedule(
       kind: PostTaskKind.statusExtraction,
@@ -236,7 +240,12 @@ class StatusExtractionService {
           return;
         }
 
-        final prompt = _buildExtractionPrompt(parentState);
+        final prompt = buildStatusExtractionPrompt(
+          state: cardJson == null
+              ? parentState
+              : applyCardChangeHints(parentState, cardJson),
+          customPrompt: config.customPrompt,
+        );
         final userContent = _buildDialogueContext(
           recentMessages: recentMessages,
           assistantText: assistantText,
@@ -283,56 +292,6 @@ class StatusExtractionService {
     );
   }
 
-  String _buildExtractionPrompt(VariableState state) {
-    final config = statusExtractionNotifier.value;
-    final rawPrompt = config.customPrompt.trim().isNotEmpty
-        ? config.customPrompt
-        : kDefaultStatusExtractionPrompt;
-
-    final buffer = StringBuffer();
-    for (final variable in state.variables) {
-      if (buffer.isNotEmpty) {
-        buffer.write(', ');
-      }
-      buffer.write('${jsonEncode(variable.name)}: ${jsonEncode(variable.value)}');
-    }
-    final stateJson = '{${buffer.toString()}}';
-
-    var prompt = rawPrompt.replaceAll('{{state}}', stateJson);
-    final constraintHints = _constraintHints(state);
-    if (constraintHints.isNotEmpty) {
-      prompt = '$prompt\n$constraintHints';
-    }
-    return prompt;
-  }
-
-  /// 生成变量约束提示段落：数值范围与枚举白名单；无约束时为空串。
-  String _constraintHints(VariableState state) {
-    final rangeHints = <String>[];
-    final enumHints = <String>[];
-    for (final variable in state.variables) {
-      final metadata = variable.metadata;
-      if (metadata == null) {
-        continue;
-      }
-      if (metadata.minValue != null || metadata.maxValue != null) {
-        final min = metadata.minValue;
-        final max = metadata.maxValue;
-        rangeHints.add('${variable.name} ${min?.toStringAsFixed(0) ?? "-∞"}'
-            '~${max?.toStringAsFixed(0) ?? "+∞"}');
-      }
-      if (metadata.enumOptions.isNotEmpty) {
-        enumHints.add('${variable.name} ${metadata.enumOptions.join('/')}');
-      }
-    }
-    return [
-      if (rangeHints.isNotEmpty)
-        '数值范围（越界会被钳制）：${rangeHints.join('；')}',
-      if (enumHints.isNotEmpty)
-        '枚举取值（仅允许下列选项）：${enumHints.join('；')}',
-    ].join('\n');
-  }
-
   String _buildDialogueContext({
     required List<ChatMessage> recentMessages,
     required String assistantText,
@@ -348,6 +307,117 @@ class StatusExtractionService {
         .join('\n');
     return '$dialogue\n\n————最新回复————\n$characterName: $assistantText';
   }
+}
+
+/// 拼装状态提取调用的 system 提示词。
+///
+/// [customPrompt] 为空时使用 [kDefaultStatusExtractionPrompt]；
+/// `{{state}}` 被替换为当前变量 JSON（`{名称: 值}`），随后追加变量约束
+/// （数值范围、枚举白名单）与角色卡声明的「变化说明」段落。
+String buildStatusExtractionPrompt({
+  required VariableState state,
+  String customPrompt = '',
+}) {
+  final rawPrompt = customPrompt.trim().isNotEmpty
+      ? customPrompt
+      : kDefaultStatusExtractionPrompt;
+
+  final buffer = StringBuffer();
+  for (final variable in state.variables) {
+    if (buffer.isNotEmpty) {
+      buffer.write(', ');
+    }
+    buffer.write('${jsonEncode(variable.name)}: ${jsonEncode(variable.value)}');
+  }
+  final stateJson = '{${buffer.toString()}}';
+
+  var prompt = rawPrompt.replaceAll('{{state}}', stateJson);
+  for (final section in [_constraintHints(state), _changeHints(state)]) {
+    if (section.isNotEmpty) {
+      prompt = '$prompt\n$section';
+    }
+  }
+  return prompt;
+}
+
+/// 生成变量约束提示段落：数值范围与枚举白名单；无约束时为空串。
+String _constraintHints(VariableState state) {
+  final rangeHints = <String>[];
+  final enumHints = <String>[];
+  for (final variable in state.variables) {
+    final metadata = variable.metadata;
+    if (metadata == null) {
+      continue;
+    }
+    if (metadata.minValue != null || metadata.maxValue != null) {
+      final min = metadata.minValue;
+      final max = metadata.maxValue;
+      rangeHints.add('${variable.name} ${min?.toStringAsFixed(0) ?? "-∞"}'
+          '~${max?.toStringAsFixed(0) ?? "+∞"}');
+    }
+    if (metadata.enumOptions.isNotEmpty) {
+      enumHints.add('${variable.name} ${metadata.enumOptions.join('/')}');
+    }
+  }
+  return [
+    if (rangeHints.isNotEmpty)
+      '数值范围（越界会被钳制）：${rangeHints.join('；')}',
+    if (enumHints.isNotEmpty)
+      '枚举取值（仅允许下列选项）：${enumHints.join('；')}',
+  ].join('\n');
+}
+
+/// 用角色卡当前声明的「变化说明」覆盖 [state] 中同名变量的说明。
+///
+/// 变化说明属于提取指令而非状态数据，因此在提取时读卡即可，角色卡改过
+/// 说明的会话无需重置聊天。卡中未声明的变量保留状态快照里的原值；卡中
+/// 声明了变量但该变量不在状态里（例如剧情新增）时忽略声明。
+VariableState applyCardChangeHints(
+  VariableState state,
+  Map<String, dynamic> cardJson,
+) {
+  final declared = decodeCardVariables(cardJson);
+  if (declared.isEmpty || state.isEmpty) {
+    return state;
+  }
+  final hints = <String, String?>{
+    for (final variable in declared) variable.name: variable.changeHint,
+  };
+  var changed = false;
+  final variables = <String, ChatVariable>{};
+  for (final variable in state.variables) {
+    if (hints.containsKey(variable.name) &&
+        hints[variable.name] != variable.changeHint) {
+      variables[variable.name] = ChatVariable(
+        name: variable.name,
+        type: variable.type,
+        value: variable.value,
+        metadata: variable.metadata,
+        changeHint: hints[variable.name],
+      );
+      changed = true;
+    } else {
+      variables[variable.name] = variable;
+    }
+  }
+  return changed ? VariableState.fromVariables(variables) : state;
+}
+
+/// 生成角色卡「变化说明」段落：逐变量说明其应如何变化；无声明时为空串。
+String _changeHints(VariableState state) {
+  final hints = <String>[];
+  for (final variable in state.variables) {
+    final hint = variable.changeHint?.trim() ?? '';
+    if (hint.isEmpty) {
+      continue;
+    }
+    hints.add('${variable.name}：$hint');
+  }
+  if (hints.isEmpty) {
+    return '';
+  }
+  return '变量变化说明（按此判断触发条件、方向与幅度，未覆盖处再按剧情判断）：\n'
+      '${hints.join('\n')}';
 }
 
 /// 解析模型输出的变量差量 JSON。

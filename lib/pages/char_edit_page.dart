@@ -907,6 +907,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
                             const SizedBox(height: 4),
                             Text(
                               '正式开始聊天时应用为初始状态；未声明变量时状态系统不启用。'
+                              '「变化说明」描述该变量如何变化，会附加到状态提取提示词。'
                               '预设/世界书可用 {{getstate}} 引用全部当前变量，'
                               '{{getvar::名称}} 引用单个变量。',
                               style: Theme.of(context).textTheme.bodySmall,
@@ -920,13 +921,18 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                   title: Text(variable.name),
                                   subtitle: Text(
                                     [
-                                      variable.type.label,
-                                      if (variable.metadata?.minValue !=
-                                              null ||
-                                          variable.metadata?.maxValue != null)
-                                        '${variable.metadata?.minValue ?? '-∞'} ~ '
-                                            '${variable.metadata?.maxValue ?? '+∞'}',
-                                    ].join(' · '),
+                                      [
+                                        variable.type.label,
+                                        if (variable.metadata?.minValue !=
+                                                null ||
+                                            variable.metadata?.maxValue !=
+                                                null)
+                                          '${variable.metadata?.minValue ?? '-∞'} ~ '
+                                              '${variable.metadata?.maxValue ?? '+∞'}',
+                                      ].join(' · '),
+                                      if (variable.changeHint != null)
+                                        '变化说明：${variable.changeHint}',
+                                    ].join('\n'),
                                   ),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,

@@ -1210,6 +1210,7 @@ class ChatViewModel extends ChangeNotifier {
           recentMessages: _messages.take(index).toList(growable: false),
           characterName: _activeCharacter?.name ?? '角色',
           userName: resolvedUserName(),
+          cardJson: _activeCharacter?.cardJson,
         ),
       );
     }

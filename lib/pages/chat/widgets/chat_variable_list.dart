@@ -5,16 +5,19 @@ import '../../../models/chat_variables.dart';
 /// 单个状态变量的展示行。
 ///
 /// 副标题由类型、数值范围/单位、枚举选项拼装，右侧显示当前值；
+/// [showChangeHint] 为真时额外展示角色卡声明的「变化说明」。
 /// 状态变量页与聊天页侧边栏共用，保证同一变量在两处呈现一致。
 class ChatVariableRow extends StatelessWidget {
   const ChatVariableRow({
     super.key,
     required this.variable,
     this.dense = false,
+    this.showChangeHint = false,
   });
 
   final ChatVariable variable;
   final bool dense;
+  final bool showChangeHint;
 
   @override
   Widget build(BuildContext context) {
@@ -37,12 +40,15 @@ class ChatVariableRow extends StatelessWidget {
           metadata.enumOptions.isNotEmpty)
         '选项: ${metadata.enumOptions.join('/')}',
     ].join(' · ');
+    final changeHint = showChangeHint ? variable.changeHint : null;
 
     return ListTile(
       dense: dense,
       contentPadding: EdgeInsets.zero,
       title: Text(variable.name),
-      subtitle: Text(subtitle),
+      subtitle: Text(
+        changeHint == null ? subtitle : '$subtitle\n变化说明：$changeHint',
+      ),
       trailing: Text(
         variable.value,
         style: Theme.of(
@@ -61,12 +67,14 @@ class ChatVariableList extends StatelessWidget {
     required this.emptyHint,
     this.dense = true,
     this.padding = EdgeInsets.zero,
+    this.showChangeHint = false,
   });
 
   final VariableState state;
   final String emptyHint;
   final bool dense;
   final EdgeInsetsGeometry padding;
+  final bool showChangeHint;
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +96,11 @@ class ChatVariableList extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final variable in state.variables)
-            ChatVariableRow(variable: variable, dense: dense),
+            ChatVariableRow(
+              variable: variable,
+              dense: dense,
+              showChangeHint: showChangeHint,
+            ),
         ],
       ),
     );
