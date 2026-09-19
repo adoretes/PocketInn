@@ -27,13 +27,23 @@ class PromptAssembler {
     final worldInfoAfter = _joinWorldBookContent(
       activatedEntries.where((item) => item.entry.position != 0).toList(),
     );
-    final unusedOverrides = _buildUnusedOverrides(cardData, context);
+    final cardOverrides = _readCardOverrides(cardData, context);
+    final appliedOverrides = <String>{};
 
     final resolvedEntries = <_ResolvedPromptEntry>[];
     var sequence = 0;
     for (final prompt in context.preset.prompts) {
       if (!prompt.enabled) {
         continue;
+      }
+
+      final cardOverride = _matchCardOverride(
+        identifier: prompt.identifier,
+        overrides: cardOverrides,
+        appliedFields: appliedOverrides,
+      );
+      if (cardOverride != null) {
+        appliedOverrides.add(cardOverride.field);
       }
 
       final content = _resolvePromptContent(
@@ -43,6 +53,12 @@ class PromptAssembler {
         macroState: macroState,
         worldInfoBefore: worldInfoBefore,
         worldInfoAfter: worldInfoAfter,
+        overrideContent: cardOverride == null
+            ? null
+            : _splicePresetContent(
+                overrideContent: cardOverride.content,
+                presetContent: prompt.content,
+              ),
       );
       if (content.trim().isEmpty) {
         continue;
@@ -91,7 +107,10 @@ class PromptAssembler {
       mergedText: _buildMergedText(_mergeAdjacentMessages(topLevelSegments)),
       activatedWorldBookEntries: activatedEntries,
       segments: topLevelSegments,
-      unusedCharacterOverrides: unusedOverrides,
+      unusedCharacterOverrides: _buildUnusedOverrides(
+        cardOverrides,
+        appliedOverrides,
+      ),
     );
   }
 
@@ -178,27 +197,29 @@ class PromptAssembler {
         .join('\n\n');
   }
 
-  static List<UnusedCharacterOverride> _buildUnusedOverrides(
+  /// 角色卡 `system_prompt` / `post_history_instructions` 非空时会覆盖预设里
+  /// 对应的提示词。字段内可用该占位符引用「被覆盖的那条预设原文」，
+  /// 便于在预设基础上追加或改写，而不是整段替换。
+  static const String presetContentPlaceholder = '{{preset}}';
+
+  static List<_CardOverride> _readCardOverrides(
     Map<String, dynamic> cardData,
     PromptAssemblyContext context,
   ) {
-    final overrides = <UnusedCharacterOverride>[];
+    final overrides = <_CardOverride>[];
+
     final systemPrompt = _replaceVariables(
       cardData['system_prompt'] as String? ?? '',
       context,
     ).trim();
     if (systemPrompt.isNotEmpty) {
       overrides.add(
-        const UnusedCharacterOverride(
+        _CardOverride(
           field: 'system_prompt',
-          content: '',
-          reason: '角色卡字段已保留，本期不覆盖预设 main。',
+          targetIdentifiers: const {'main'},
+          content: systemPrompt,
+          unusedReason: '预设中没有启用的 main 提示词，角色卡 system_prompt 未生效。',
         ),
-      );
-      overrides[overrides.length - 1] = UnusedCharacterOverride(
-        field: 'system_prompt',
-        content: systemPrompt,
-        reason: '角色卡字段已保留，本期不覆盖预设 main。',
       );
     }
 
@@ -208,14 +229,60 @@ class PromptAssembler {
     ).trim();
     if (postHistoryInstructions.isNotEmpty) {
       overrides.add(
-        UnusedCharacterOverride(
+        _CardOverride(
           field: 'post_history_instructions',
+          targetIdentifiers: const {'jailbreak', 'post_history_instructions'},
           content: postHistoryInstructions,
-          reason: '角色卡字段已保留，本期不覆盖预设 jailbreak/post_history_instructions。',
+          unusedReason:
+              '预设中没有启用的 jailbreak 提示词，角色卡 post_history_instructions 未生效。',
         ),
       );
     }
+
     return overrides;
+  }
+
+  /// 同一条角色卡字段只覆盖预设里第一条命中的提示词，避免重复注入。
+  static _CardOverride? _matchCardOverride({
+    required String identifier,
+    required List<_CardOverride> overrides,
+    required Set<String> appliedFields,
+  }) {
+    for (final override in overrides) {
+      if (appliedFields.contains(override.field)) {
+        continue;
+      }
+      if (override.targetIdentifiers.contains(identifier)) {
+        return override;
+      }
+    }
+    return null;
+  }
+
+  static String _splicePresetContent({
+    required String overrideContent,
+    required String presetContent,
+  }) {
+    if (!overrideContent.contains(presetContentPlaceholder)) {
+      return overrideContent;
+    }
+    // replaceAll 只扫描原文，占位符被替换进的预设内容不会被二次展开。
+    return overrideContent.replaceAll(presetContentPlaceholder, presetContent);
+  }
+
+  static List<UnusedCharacterOverride> _buildUnusedOverrides(
+    List<_CardOverride> overrides,
+    Set<String> appliedFields,
+  ) {
+    return [
+      for (final override in overrides)
+        if (!appliedFields.contains(override.field))
+          UnusedCharacterOverride(
+            field: override.field,
+            content: override.content,
+            reason: override.unusedReason,
+          ),
+    ];
   }
 
   static String _resolvePromptContent({
@@ -225,14 +292,17 @@ class PromptAssembler {
     required PromptMacroState macroState,
     required String worldInfoBefore,
     required String worldInfoAfter,
+    String? overrideContent,
   }) {
-    final rawContent = _resolveRawPromptContent(
-      prompt: prompt,
-      cardData: cardData,
-      context: context,
-      worldInfoBefore: worldInfoBefore,
-      worldInfoAfter: worldInfoAfter,
-    );
+    final rawContent =
+        overrideContent ??
+        _resolveRawPromptContent(
+          prompt: prompt,
+          cardData: cardData,
+          context: context,
+          worldInfoBefore: worldInfoBefore,
+          worldInfoAfter: worldInfoAfter,
+        );
     return _resolvePromptText(rawContent, macroState);
   }
 
@@ -643,4 +713,20 @@ class _ResolvedPromptEntry {
   final PresetPrompt prompt;
   final PromptSegment segment;
   final int sequence;
+}
+
+/// 角色卡对预设提示词的覆盖声明：字段非空时，命中 [targetIdentifiers] 的
+/// 第一条启用提示词会被 [content] 替换。
+class _CardOverride {
+  const _CardOverride({
+    required this.field,
+    required this.targetIdentifiers,
+    required this.content,
+    required this.unusedReason,
+  });
+
+  final String field;
+  final Set<String> targetIdentifiers;
+  final String content;
+  final String unusedReason;
 }

@@ -68,51 +68,161 @@ void main() {
       expect(result.mergedText, contains('艾琳正在与林澈交谈。'));
     });
 
-    test(
-      'preserves character overrides without replacing preset main or jailbreak',
-      () {
-        final result = PromptAssembler.build(
-          PromptAssemblyContext(
-            characterName: '艾琳',
-            characterCardData: _cardData(
-              systemPrompt: '角色卡 main',
-              postHistoryInstructions: '角色卡 history',
-            ),
-            userName: '林澈',
-            userSettingPrompt: '',
-            preset: Preset(
-              id: 'preset-1',
-              name: '测试预设',
-              updatedAt: DateTime(2026),
-              prompts: [
-                PresetPrompt(
-                  identifier: 'main',
-                  name: 'Main',
-                  content: '预设 main',
-                ),
-                PresetPrompt(
-                  identifier: 'jailbreak',
-                  name: 'Jailbreak',
-                  content: '预设 jailbreak',
-                ),
-              ],
-            ),
-            selectedWorldBooks: const [],
-            chatMessages: const [],
-            currentInput: '',
+    test('角色卡 system_prompt 与 post_history_instructions 覆盖对应预设提示词', () {
+      final result = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(
+            systemPrompt: '角色卡 main',
+            postHistoryInstructions: '角色卡 history',
           ),
-        );
+          userName: '林澈',
+          userSettingPrompt: '',
+          preset: Preset(
+            id: 'preset-1',
+            name: '测试预设',
+            updatedAt: DateTime(2026),
+            prompts: [
+              PresetPrompt(
+                identifier: 'main',
+                name: 'Main',
+                content: '预设 main',
+              ),
+              PresetPrompt(
+                identifier: 'jailbreak',
+                name: 'Jailbreak',
+                content: '预设 jailbreak',
+              ),
+            ],
+          ),
+          selectedWorldBooks: const [],
+          chatMessages: const [],
+          currentInput: '',
+        ),
+      );
 
-        expect(result.mergedText, contains('预设 main'));
-        expect(result.mergedText, contains('预设 jailbreak'));
-        expect(result.mergedText, isNot(contains('角色卡 main')));
-        expect(result.mergedText, isNot(contains('角色卡 history')));
-        expect(
-          result.unusedCharacterOverrides.map((item) => item.field),
-          containsAll(['system_prompt', 'post_history_instructions']),
-        );
-      },
-    );
+      expect(result.mergedText, contains('角色卡 main'));
+      expect(result.mergedText, contains('角色卡 history'));
+      expect(result.mergedText, isNot(contains('预设 main')));
+      expect(result.mergedText, isNot(contains('预设 jailbreak')));
+      expect(result.unusedCharacterOverrides, isEmpty);
+    });
+
+    test('覆盖字段可用 {{preset}} 引用被覆盖的预设原文', () {
+      final result = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(
+            systemPrompt: '{{preset}}\n追加要求：更短。',
+            postHistoryInstructions: '{{preset}} / 结尾补一句环境描写。',
+          ),
+          userName: '林澈',
+          userSettingPrompt: '',
+          preset: Preset(
+            id: 'preset-1',
+            name: '测试预设',
+            updatedAt: DateTime(2026),
+            prompts: [
+              PresetPrompt(
+                identifier: 'main',
+                name: 'Main',
+                content: '{{char}} 的预设 main',
+              ),
+              PresetPrompt(
+                identifier: 'jailbreak',
+                name: 'Jailbreak',
+                content: '预设 jailbreak',
+              ),
+            ],
+          ),
+          selectedWorldBooks: const [],
+          chatMessages: const [],
+          currentInput: '',
+        ),
+      );
+
+      expect(result.mergedText, contains('艾琳 的预设 main'));
+      expect(result.mergedText, contains('追加要求：更短。'));
+      expect(result.mergedText, contains('预设 jailbreak / 结尾补一句环境描写。'));
+      expect(result.mergedText, isNot(contains('{{preset}}')));
+      expect(result.unusedCharacterOverrides, isEmpty);
+    });
+
+    test('jailbreak 与 post_history_instructions 同时存在时只覆盖第一条', () {
+      final result = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(postHistoryInstructions: '角色卡 history'),
+          userName: '林澈',
+          userSettingPrompt: '',
+          preset: Preset(
+            id: 'preset-1',
+            name: '测试预设',
+            updatedAt: DateTime(2026),
+            prompts: [
+              PresetPrompt(
+                identifier: 'jailbreak',
+                name: 'Jailbreak',
+                content: '预设 jailbreak',
+              ),
+              PresetPrompt(
+                identifier: 'post_history_instructions',
+                name: 'Post-History Instructions',
+                content: '预设 PHI',
+              ),
+            ],
+          ),
+          selectedWorldBooks: const [],
+          chatMessages: const [],
+          currentInput: '',
+        ),
+      );
+
+      expect(result.mergedText, contains('角色卡 history'));
+      expect(result.mergedText, isNot(contains('预设 jailbreak')));
+      expect(result.mergedText, contains('预设 PHI'));
+      expect('角色卡 history'.allMatches(result.mergedText).length, 1);
+    });
+
+    test('预设中缺少对应提示词时记录为未生效', () {
+      final result = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(
+            systemPrompt: '角色卡 main',
+            postHistoryInstructions: '角色卡 history',
+          ),
+          userName: '林澈',
+          userSettingPrompt: '',
+          preset: Preset(
+            id: 'preset-1',
+            name: '测试预设',
+            updatedAt: DateTime(2026),
+            prompts: [
+              PresetPrompt(
+                identifier: 'main',
+                name: 'Main',
+                content: '预设 main',
+                enabled: false,
+              ),
+            ],
+          ),
+          selectedWorldBooks: const [],
+          chatMessages: const [],
+          currentInput: '',
+        ),
+      );
+
+      expect(result.mergedText, isEmpty);
+      expect(
+        result.unusedCharacterOverrides.map((item) => item.field),
+        containsAll(['system_prompt', 'post_history_instructions']),
+      );
+      expect(
+        result.unusedCharacterOverrides.map((item) => item.reason).join(),
+        contains('未生效'),
+      );
+    });
 
     test('resolves setvar getvar comment and trim macros in prompt order', () {
       final result = PromptAssembler.build(

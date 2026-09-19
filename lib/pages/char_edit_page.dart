@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../models/chat_variables.dart';
 import '../models/world_book.dart';
+import '../services/prompt_assembler.dart';
 import '../services/world_book_service.dart';
 import '../widgets/expanded_text_editor_field.dart';
 import '../widgets/variable_edit_dialog.dart';
@@ -836,6 +837,10 @@ class _RoleEditPageState extends State<RoleEditPage> {
                               maxLines: 2,
                               decoration: const InputDecoration(
                                 labelText: '系统提示词',
+                                helperMaxLines: 2,
+                                helperText: '非空时覆盖预设的 main 提示词；写 '
+                                    '${PromptAssembler.presetContentPlaceholder}'
+                                    ' 可引用被覆盖的预设原文。',
                                 border: OutlineInputBorder(),
                               ),
                             ),
@@ -845,6 +850,10 @@ class _RoleEditPageState extends State<RoleEditPage> {
                               maxLines: 2,
                               decoration: const InputDecoration(
                                 labelText: '对话历史后指令',
+                                helperMaxLines: 2,
+                                helperText: '非空时覆盖预设的 jailbreak 提示词；写 '
+                                    '${PromptAssembler.presetContentPlaceholder}'
+                                    ' 可引用被覆盖的预设原文。',
                                 border: OutlineInputBorder(),
                               ),
                             ),
