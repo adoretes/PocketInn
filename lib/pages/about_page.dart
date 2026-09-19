@@ -72,6 +72,11 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.6',
+                  date: '2026-09-19',
+                  changes: ['添加变量变化说明字段', '更新支持角色卡字段覆盖预设提示词'],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.5',
                   date: '2026-09-12',
                   changes: ['重构聊天页选择菜单', '修复变量对话框样式覆盖问题', '将记忆和变量入口拆分至右侧抽屉', '调整侧边栏样式'],
