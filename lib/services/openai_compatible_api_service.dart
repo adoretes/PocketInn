@@ -242,6 +242,12 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       messages: messages,
       defaults: defaults,
     );
+    // 本方法以 jsonDecode 解析完整响应体，属于非流式调用。
+    // 但 buildRequestBody 中 customBody 是最后合并的，若其中写有 "stream": true，
+    // 会覆盖 defaults 并让服务端返回 SSE，解析将在首个字符处失败
+    // （FormatException: Unexpected character (at character 1)）。
+    // 记忆提取与状态提取都走本方法，故在此强制非流式。
+    requestBody['stream'] = false;
     final stopwatch = Stopwatch()..start();
     _HttpTextResponse response;
     try {
