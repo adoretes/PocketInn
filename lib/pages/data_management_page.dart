@@ -351,6 +351,27 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   Future<void> _handleUploadRemote() async {
+    final type = _remoteBackupType.label;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认上传远程备份'),
+        content: Text('会用当前本地数据生成 ZIP 并覆盖 $type 上的远程备份文件。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('上传'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
     if (_remoteBackupType == RemoteBackupType.webdav) {
       await _handleUploadWebDav();
     } else {
