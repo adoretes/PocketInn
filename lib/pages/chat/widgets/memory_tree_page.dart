@@ -32,7 +32,9 @@ class _TreeNode {
   double x = 0;
   double y = 0;
   int depth = 0;
-  int subtreeWidth = 1;
+  int lane = 0;
+  bool isMainLine = false;
+  _TreeNode? primaryChild;
 
   bool get hasMemory => memoryEntries.isNotEmpty;
 }
@@ -57,7 +59,7 @@ class MemoryTreePage extends StatefulWidget {
 }
 
 class _MemoryTreePageState extends State<MemoryTreePage> {
-  static const double _colSpacing = 56;
+  static const double _laneSpacing = 56;
   static const double _rowSpacing = 64;
   static const double _nodeRadius = 9;
   static const double _ringRadius = 14;
@@ -143,29 +145,15 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
       cur = treeNodes[cur]!.parentId;
     }
 
-    // 计算布局
-    int assignWidth(_TreeNode n, int depth) {
-      n.depth = depth;
-      if (n.children.isEmpty) {
-        n.subtreeWidth = 1;
-        return 1;
-      }
-      var sum = 0;
-      for (final c in n.children) {
-        sum += assignWidth(c, depth + 1);
-      }
-      n.subtreeWidth = math.max(1, sum);
-      return n.subtreeWidth;
-    }
+    // 计算布局：采用类似 Git 提交历史的「轨道分配算法」（Lane Allocation）。
+    // 主线（活动线）锚定在最左侧的 Lane 0，分支只能向右申请空闲轨道，
+    // 上方分支在 Y 轴结束后释放该轨道，供下方分支复用（Skyline 轮廓压缩）。
+    final isMain = <String, bool>{for (final id in activeIds) id: true};
 
-    void assignX(_TreeNode n, double xStart) {
-      final centerCol = xStart + n.subtreeWidth / 2.0;
-      n.x = _padding + centerCol * _colSpacing;
-      n.y = _padding + n.depth * _rowSpacing;
-      var cursor = xStart;
+    void assignDepth(_TreeNode n, int depth) {
+      n.depth = depth;
       for (final c in n.children) {
-        assignX(c, cursor);
-        cursor += c.subtreeWidth;
+        assignDepth(c, depth + 1);
       }
     }
 
@@ -178,13 +166,120 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
       return max;
     }
 
+    // 标记主线节点，并确定每个节点沿同一条轨道继续下行的「主子节点」。
+    for (final node in treeNodes.values) {
+      node.isMainLine = isMain[node.id] ?? false;
+    }
+
+    for (final node in treeNodes.values) {
+      if (node.children.isEmpty) {
+        node.primaryChild = null;
+        continue;
+      }
+      if (node.isMainLine) {
+        _TreeNode? onPath;
+        for (final c in node.children) {
+          if (c.isMainLine) {
+            onPath = c;
+            break;
+          }
+        }
+        node.primaryChild = onPath ?? node.children.first;
+      } else {
+        node.primaryChild = node.children.first;
+      }
+    }
+
     final canvasSizes = <Size>[];
     for (final r in roots) {
-      assignWidth(r, 0);
-      assignX(r, 0);
-      final depth = maxDepthOf(r);
-      final width = _padding * 2 + r.subtreeWidth * _colSpacing;
-      final height = _padding * 2 + (depth + 1) * _rowSpacing;
+      assignDepth(r, 0);
+
+      // 链分解：主线链 + 若干侧链。每条链占据一条独立轨道。
+      final chains = <List<_TreeNode>>[];
+
+      final mainChain = <_TreeNode>[];
+      var head = r;
+      while (true) {
+        mainChain.add(head);
+        final pc = head.primaryChild;
+        if (pc == null) break;
+        head = pc;
+      }
+      chains.add(mainChain);
+
+      final sideStarts = <_TreeNode>[];
+      final sideStartParent = <_TreeNode, _TreeNode>{};
+      void collectSideStarts(_TreeNode n) {
+        for (final c in n.children) {
+          if (c != n.primaryChild) {
+            sideStarts.add(c);
+            sideStartParent[c] = n;
+          }
+        }
+        for (final c in n.children) {
+          collectSideStarts(c);
+        }
+      }
+
+      collectSideStarts(r);
+      sideStarts.sort((a, b) {
+        final d = a.depth.compareTo(b.depth);
+        if (d != 0) return d;
+        return (orderIndex[a.id] ?? 0).compareTo(orderIndex[b.id] ?? 0);
+      });
+
+      for (final s in sideStarts) {
+        final chain = <_TreeNode>[];
+        var c = s;
+        while (true) {
+          chain.add(c);
+          final pc = c.primaryChild;
+          if (pc == null) break;
+          c = pc;
+        }
+        chains.add(chain);
+      }
+
+      // 轨道分配（Skyline 轮廓）：laneEnd[lane] 记录该轨道当前占用的最大行号。
+      final laneEnd = <int>[mainChain.last.depth];
+      for (final n in mainChain) {
+        n.lane = 0;
+      }
+
+      for (final chain in chains.skip(1)) {
+        final s = chain.first.depth;
+        final e = chain.last.depth;
+        // 分支只能申请父节点所在轨道右侧的空闲轨道，避免向左折回。
+        final parent = sideStartParent[chain.first];
+        var lane = (parent?.lane ?? 0) + 1;
+        while (lane < laneEnd.length && laneEnd[lane] >= s) {
+          lane++;
+        }
+        if (lane == laneEnd.length) {
+          laneEnd.add(e);
+        } else {
+          laneEnd[lane] = e;
+        }
+        for (final n in chain) {
+          n.lane = lane;
+        }
+      }
+
+      final maxLane = laneEnd.length - 1;
+
+      void assignPos(_TreeNode n) {
+        n.x = _padding + n.lane * _laneSpacing;
+        n.y = _padding + n.depth * _rowSpacing;
+        for (final c in n.children) {
+          assignPos(c);
+        }
+      }
+
+      assignPos(r);
+
+      final maxDepth = maxDepthOf(r);
+      final width = _padding * 2 + (maxLane + 1) * _laneSpacing;
+      final height = _padding * 2 + (maxDepth + 1) * _rowSpacing;
       canvasSizes.add(Size(width, height));
     }
 
@@ -988,7 +1083,7 @@ class _TreeColors {
     required this.assistantInactive,
     required this.memoryInactive,
     required this.edgeActive,
-    required this.edgeInactive,
+    required this.branchPalette,
   });
 
   final Color userActive;
@@ -998,7 +1093,9 @@ class _TreeColors {
   final Color assistantInactive;
   final Color memoryInactive;
   final Color edgeActive;
-  final Color edgeInactive;
+
+  /// 分支轨道的独立配色表，按轨道索引循环取色。
+  final List<Color> branchPalette;
 
   static const _TreeColors light = _TreeColors(
     userActive: Color(0xFF2F80ED),
@@ -1008,7 +1105,16 @@ class _TreeColors {
     assistantInactive: Color(0xFFBFE3CC),
     memoryInactive: Color(0xFFF6D6B7),
     edgeActive: Color(0xFF3D2A6B),
-    edgeInactive: Color(0xFF3D2A6B),
+    branchPalette: [
+      Color(0xFFE53935), // 红
+      Color(0xFFF57C00), // 橙
+      Color(0xFFF9A825), // 琥珀
+      Color(0xFF43A047), // 绿
+      Color(0xFF00ACC1), // 青
+      Color(0xFF1E88E5), // 蓝
+      Color(0xFF8E24AA), // 紫
+      Color(0xFFD81B60), // 品红
+    ],
   );
 
   static const _TreeColors dark = _TreeColors(
@@ -1019,12 +1125,25 @@ class _TreeColors {
     assistantInactive: Color(0xFF2D5E3E),
     memoryInactive: Color(0xFF6B4D24),
     edgeActive: Color(0xFFB392E0),
-    edgeInactive: Color(0xFFB392E0),
+    branchPalette: [
+      Color(0xFFEF5350), // 红
+      Color(0xFFFFA726), // 橙
+      Color(0xFFFFCA28), // 琥珀
+      Color(0xFF66BB6A), // 绿
+      Color(0xFF26C6DA), // 青
+      Color(0xFF42A5F5), // 蓝
+      Color(0xFFAB47BC), // 紫
+      Color(0xFFEC407A), // 品红
+    ],
   );
 
   Color get edgeActivePaint => edgeActive;
-  Color edgeInactivePaint(double opacity) =>
-      edgeInactive.withValues(alpha: opacity);
+
+  /// 返回指定轨道（Lane）的连线颜色：主线为高亮色，分支按轨道取色。
+  Color branchColor(int lane) {
+    if (lane <= 0) return edgeActivePaint;
+    return branchPalette[(lane - 1) % branchPalette.length];
+  }
 }
 
 class _MemoryTreeStack extends StatelessWidget {
@@ -1206,26 +1325,37 @@ class _TreeEdgePainter extends CustomPainter {
       final paint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
-        ..strokeWidth = active ? 2.6 : 1.2
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = active ? 2.6 : 2.0
         ..color = active
             ? treeColors.edgeActivePaint
-            : treeColors.edgeInactivePaint(0.2);
+            : treeColors.branchColor(child.lane);
 
       // 端点固定在节点的正下方/正上方，保证连接点居中。
       final start = Offset(parent.x, parent.y + _outerRadius(parent));
       final end = Offset(child.x, child.y - _outerRadius(child));
 
-      // 让线先垂直延伸一段再弯曲：将贝塞尔的两个控制点放在端点正下/正上。
-      final dy = end.dy - start.dy;
-      // 垂直延伸量：取纵向距离的 35%，不超过 24，保证曲线比例一致
-      final stub = math.min(dy.abs() * 0.35, 24.0);
-      final c1 = Offset(start.dx, start.dy + stub);
-      final c2 = Offset(end.dx, end.dy - stub);
+      if (child.lane == parent.lane) {
+        // 同轨道：严格竖直向下（主线或分支的延续）。
+        canvas.drawLine(start, end, paint);
+      } else {
+        // 异轨道（分支引出）：从父节点水平向右拐出，
+        // 再严格在自己的 Lane 竖直向下。使用单侧圆角直角折线。
+        final dir = end.dx >= start.dx ? 1.0 : -1.0;
+        final dy = end.dy - start.dy;
+        final stub = math.min(dy.abs() * 0.4, 20.0);
+        final cornerR = 8.0;
+        final branchY = start.dy + stub;
 
-      final path = Path()
-        ..moveTo(start.dx, start.dy)
-        ..cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, end.dx, end.dy);
-      canvas.drawPath(path, paint);
+        final path = Path()
+          ..moveTo(start.dx, start.dy)
+          ..lineTo(start.dx, branchY - cornerR)
+          ..quadraticBezierTo(start.dx, branchY, start.dx + dir * cornerR, branchY)
+          ..lineTo(end.dx - dir * cornerR, branchY)
+          ..quadraticBezierTo(end.dx, branchY, end.dx, branchY + cornerR)
+          ..lineTo(end.dx, end.dy);
+        canvas.drawPath(path, paint);
+      }
     }
 
     void walk(_TreeNode n) {
