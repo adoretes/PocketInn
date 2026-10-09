@@ -72,6 +72,16 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.7',
+                  date: '2026-10-09',
+                  changes: [
+                    '增强思考链组件，支持流式接收预览与动态展开收起',
+                    '优化记忆树页面布局算法，支持轨道分配与主线标记',
+                    '添加上传远程备份前的确认对话框',
+                    '调整思考过程显示位置',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.6',
                   date: '2026-09-19',
                   changes: ['添加变量变化说明字段', '更新支持角色卡字段覆盖预设提示词'],
