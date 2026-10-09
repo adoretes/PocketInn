@@ -116,6 +116,59 @@ class _GalMessageViewState extends State<GalMessageView>
     widget.onBrowsingIndexChanged(null);
   }
 
+  // --- 思考过程展开状态 ---
+
+  /// 展开状态覆盖表，键为条目 key；未记录时用条目默认值。
+  ///
+  /// 标题行放在名字右侧、正文留在对话框内，展开状态须由本视图持有
+  /// （[ThinkingChainWidget] 的自持状态无法拆分标题与正文）。
+  final Map<String, bool> _thinkingExpandedOverrides = {};
+
+  String _thinkingEntryKey(
+    ChatMessage message,
+    int messageIndex,
+    String source,
+  ) {
+    return '${message.id ?? 'idx$messageIndex'}:$source';
+  }
+
+  bool _isThinkingExpanded(
+    ({String key, String text, bool defaultExpanded}) entry,
+  ) {
+    return _thinkingExpandedOverrides[entry.key] ?? entry.defaultExpanded;
+  }
+
+  void _toggleThinking(
+    ({String key, String text, bool defaultExpanded}) entry,
+  ) {
+    setState(() {
+      _thinkingExpandedOverrides[entry.key] = !_isThinkingExpanded(entry);
+    });
+  }
+
+  /// 当前消息的思考过程条目（API 思考链、正文伪思维链各至多一条）。
+  List<({String key, String text, bool defaultExpanded})> _thinkingEntries(
+    ChatMessage message,
+    int messageIndex,
+    String? pseudoChain,
+    bool pseudoChainComplete,
+  ) {
+    return [
+      if (message.hasThinkingChain)
+        (
+          key: _thinkingEntryKey(message, messageIndex, 'chain'),
+          text: message.thinkingChain!,
+          defaultExpanded: false,
+        ),
+      if (pseudoChain != null)
+        (
+          key: _thinkingEntryKey(message, messageIndex, 'pseudo'),
+          text: pseudoChain,
+          defaultExpanded: !pseudoChainComplete,
+        ),
+    ];
+  }
+
   // --- 消息操作菜单 ---
 
   PopupMenuItem<String> _buildMenuItem(
@@ -556,6 +609,16 @@ class _GalMessageViewState extends State<GalMessageView>
         ? (widget.params.currentUserSetting?.color ?? colorScheme.primary)
         : colorScheme.primary;
 
+    // 思考过程的标题行放到名字右侧，正文仍留在对话框正文区。
+    final thinkingEntries = isMe
+        ? const <({String key, String text, bool defaultExpanded})>[]
+        : _thinkingEntries(
+            message,
+            messageIndex,
+            pseudoChain,
+            pseudoChainComplete,
+          );
+
     final useGlassEffect =
         widget.params.hasBackground && settings.bubbleGlassEffect;
     Widget dialogBox = Container(
@@ -581,22 +644,39 @@ class _GalMessageViewState extends State<GalMessageView>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                color: speakerColor.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                speakerName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: speakerColor,
+            Row(
+              children: [
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: speakerColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      speakerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: speakerColor,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                for (final entry in thinkingEntries) ...[
+                  const SizedBox(width: 8),
+                  ThinkingChainHeader(
+                    colorScheme: colorScheme,
+                    isExpanded: _isThinkingExpanded(entry),
+                    onTap: () => _toggleThinking(entry),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 8),
             Flexible(
@@ -604,23 +684,15 @@ class _GalMessageViewState extends State<GalMessageView>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!isMe && message.hasThinkingChain)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ThinkingChainWidget(
-                          thinkingChain: message.thinkingChain!,
-                          colorScheme: colorScheme,
+                    for (final entry in thinkingEntries)
+                      if (_isThinkingExpanded(entry))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: ThinkingChainBody(
+                            thinkingChain: entry.text,
+                            colorScheme: colorScheme,
+                          ),
                         ),
-                      ),
-                    if (!isMe && pseudoChain != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ThinkingChainWidget(
-                          thinkingChain: pseudoChain,
-                          colorScheme: colorScheme,
-                          initiallyExpanded: !pseudoChainComplete,
-                        ),
-                      ),
                     // 对话框内不启用文本选择，避免与长按菜单手势冲突；
                     // 复制可走操作菜单，选择复制可在历史弹层中完成。
                     ChatMarkdownBody(
