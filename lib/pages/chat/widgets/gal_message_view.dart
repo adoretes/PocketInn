@@ -133,13 +133,13 @@ class _GalMessageViewState extends State<GalMessageView>
   }
 
   bool _isThinkingExpanded(
-    ({String key, String text, bool defaultExpanded}) entry,
+    ({String key, String text, bool defaultExpanded, bool streaming}) entry,
   ) {
     return _thinkingExpandedOverrides[entry.key] ?? entry.defaultExpanded;
   }
 
   void _toggleThinking(
-    ({String key, String text, bool defaultExpanded}) entry,
+    ({String key, String text, bool defaultExpanded, bool streaming}) entry,
   ) {
     setState(() {
       _thinkingExpandedOverrides[entry.key] = !_isThinkingExpanded(entry);
@@ -147,24 +147,33 @@ class _GalMessageViewState extends State<GalMessageView>
   }
 
   /// 当前消息的思考过程条目（API 思考链、正文伪思维链各至多一条）。
-  List<({String key, String text, bool defaultExpanded})> _thinkingEntries(
+  List<({String key, String text, bool defaultExpanded, bool streaming})>
+  _thinkingEntries(
     ChatMessage message,
     int messageIndex,
     String? pseudoChain,
     bool pseudoChainComplete,
   ) {
+    // 未持久化（无 id）的助手消息即流式接收中的消息。
+    final streaming = !message.isMe && message.id == null;
     return [
       if (message.hasThinkingChain)
         (
           key: _thinkingEntryKey(message, messageIndex, 'chain'),
           text: message.thinkingChain!,
           defaultExpanded: false,
+          // 正文一开始输出即视为思考结束，滚动预览随之隐藏。
+          streaming: streaming && message.text.isEmpty,
         ),
       if (pseudoChain != null)
         (
           key: _thinkingEntryKey(message, messageIndex, 'pseudo'),
           text: pseudoChain,
-          defaultExpanded: !pseudoChainComplete,
+          // 流式接收中保持收起以显示逐行滚动预览；
+          // 历史中未闭合的伪思维链仍默认展开。
+          defaultExpanded: !pseudoChainComplete && !streaming,
+          // 伪思维链以标签闭合为思考结束标志。
+          streaming: streaming && !pseudoChainComplete,
         ),
     ];
   }
@@ -611,7 +620,7 @@ class _GalMessageViewState extends State<GalMessageView>
 
     // 思考过程的标题行放到名字右侧，正文仍留在对话框正文区。
     final thinkingEntries = isMe
-        ? const <({String key, String text, bool defaultExpanded})>[]
+        ? const <({String key, String text, bool defaultExpanded, bool streaming})>[]
         : _thinkingEntries(
             message,
             messageIndex,
@@ -670,10 +679,15 @@ class _GalMessageViewState extends State<GalMessageView>
                 ),
                 for (final entry in thinkingEntries) ...[
                   const SizedBox(width: 8),
-                  ThinkingChainHeader(
-                    colorScheme: colorScheme,
-                    isExpanded: _isThinkingExpanded(entry),
-                    onTap: () => _toggleThinking(entry),
+                  // 流式预览在标题内部占剩余宽度，需 Flexible 提供有界约束。
+                  Flexible(
+                    child: ThinkingChainHeader(
+                      colorScheme: colorScheme,
+                      isExpanded: _isThinkingExpanded(entry),
+                      onTap: () => _toggleThinking(entry),
+                      isStreaming: entry.streaming,
+                      streamingText: entry.streaming ? entry.text : null,
+                    ),
                   ),
                 ],
               ],
@@ -685,14 +699,21 @@ class _GalMessageViewState extends State<GalMessageView>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     for (final entry in thinkingEntries)
-                      if (_isThinkingExpanded(entry))
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: ThinkingChainBody(
-                            thinkingChain: entry.text,
-                            colorScheme: colorScheme,
-                          ),
-                        ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeInOut,
+                        alignment: Alignment.topCenter,
+                        child: _isThinkingExpanded(entry)
+                            ? Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: ThinkingChainBody(
+                                  thinkingChain: entry.text,
+                                  colorScheme: colorScheme,
+                                ),
+                              )
+                            // 收起时保持全宽，避免宽度参与动画造成抖动。
+                            : const SizedBox(width: double.infinity),
+                      ),
                     // 对话框内不启用文本选择，避免与长按菜单手势冲突；
                     // 复制可走操作菜单，选择复制可在历史弹层中完成。
                     ChatMarkdownBody(

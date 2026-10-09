@@ -383,7 +383,13 @@ class _MessageBubbleState extends State<MessageBubble> {
                       ThinkingChainWidget(
                         thinkingChain: pseudoChain,
                         colorScheme: colorScheme,
-                        initiallyExpanded: !pseudoChainComplete,
+                        // 流式接收中保持收起以显示逐行滚动预览；
+                        // 历史中未闭合的伪思维链仍默认展开。
+                        initiallyExpanded:
+                            !_isStreamingMessage && !pseudoChainComplete,
+                        // 伪思维链以标签闭合为思考结束标志。
+                        isStreaming:
+                            _isStreamingMessage && !pseudoChainComplete,
                       ),
                     GestureDetector(
                       onTapDown: widget.showActions
@@ -411,10 +417,20 @@ class _MessageBubbleState extends State<MessageBubble> {
     );
   }
 
+  /// 是否为正在流式接收的助手消息（未持久化，无 id）。
+  bool get _isStreamingMessage =>
+      !widget.message.isMe && widget.message.id == null;
+
+  /// 思维链是否仍在接收中：正文一开始输出即视为思考结束，
+  /// 滚动预览随之隐藏，而不是挂到整条消息接收完。
+  bool get _isThinkingReceiving =>
+      _isStreamingMessage && widget.message.text.isEmpty;
+
   Widget _buildThinkingChain(BuildContext context, ColorScheme colorScheme) {
     return ThinkingChainWidget(
       thinkingChain: widget.message.thinkingChain!,
       colorScheme: colorScheme,
+      isStreaming: _isThinkingReceiving,
     );
   }
 
