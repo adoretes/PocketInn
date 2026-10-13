@@ -5,6 +5,49 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'api_config.freezed.dart';
 part 'api_config.g.dart';
 
+/// 由应用内部管理、禁止在自定义 body 中出现的请求字段。
+///
+/// - `model`：由所选模型决定；
+/// - `stream`：由调用方（流式 / 非流式接口）决定，用户覆盖会破坏响应解析；
+/// - `include_usage`：始终由应用强制注入。
+///
+/// 用户在自定义 body 中填写这些字段时会直接报错，而不是被静默忽略。
+const Set<String> kReservedCustomBodyKeys = <String>{
+  'model',
+  'stream',
+  'include_usage',
+};
+
+/// 解析自定义 body 文本。
+///
+/// 空文本返回空 Map；不是 JSON 对象、包含 [kReservedCustomBodyKeys] 中的保留
+/// 字段、或 `messages` 不是数组时抛出 [FormatException]。
+Map<String, dynamic> parseCustomBodyText(String source) {
+  final trimmed = source.trim();
+  if (trimmed.isEmpty) {
+    return <String, dynamic>{};
+  }
+  final decoded = jsonDecode(trimmed);
+  if (decoded is! Map) {
+    throw const FormatException('自定义 body 必须是 JSON 对象');
+  }
+  final body = Map<String, dynamic>.from(decoded);
+  final conflicts = body.keys
+      .where(kReservedCustomBodyKeys.contains)
+      .toList(growable: false)
+    ..sort();
+  if (conflicts.isNotEmpty) {
+    throw FormatException(
+      '自定义 body 不能包含保留字段：${conflicts.join('、')}，'
+      '这些字段由应用内部管理',
+    );
+  }
+  if (body.containsKey('messages') && body['messages'] is! List) {
+    throw const FormatException('自定义 body 的 messages 必须是数组');
+  }
+  return body;
+}
+
 /// 单个模型条目。一个 [ApiConfig]（Provider）下可包含多个模型，
 /// 每个模型携带自己的 [customBody]，跟随模型本身。
 @freezed
@@ -20,17 +63,7 @@ abstract class ApiModel with _$ApiModel {
   factory ApiModel.fromJson(Map<String, dynamic> json) =>
       _$ApiModelFromJson(json);
 
-  Map<String, dynamic> parseCustomBody() {
-    final source = customBody.trim();
-    if (source.isEmpty) {
-      return <String, dynamic>{};
-    }
-    final decoded = jsonDecode(source);
-    if (decoded is! Map) {
-      throw FormatException('自定义 body 必须是 JSON 对象');
-    }
-    return Map<String, dynamic>.from(decoded);
-  }
+  Map<String, dynamic> parseCustomBody() => parseCustomBodyText(customBody);
 }
 
 /// API 提供方。持有 baseUrl / apiKey 与一组模型列表。
@@ -88,17 +121,7 @@ abstract class ResolvedApiConfig with _$ResolvedApiConfig {
   factory ResolvedApiConfig.fromJson(Map<String, dynamic> json) =>
       _$ResolvedApiConfigFromJson(json);
 
-  Map<String, dynamic> parseCustomBody() {
-    final source = customBody.trim();
-    if (source.isEmpty) {
-      return <String, dynamic>{};
-    }
-    final decoded = jsonDecode(source);
-    if (decoded is! Map) {
-      throw FormatException('自定义 body 必须是 JSON 对象');
-    }
-    return Map<String, dynamic>.from(decoded);
-  }
+  Map<String, dynamic> parseCustomBody() => parseCustomBodyText(customBody);
 
   Map<String, dynamic> buildRequestBody({
     required List<Map<String, dynamic>> messages,
@@ -109,8 +132,10 @@ abstract class ResolvedApiConfig with _$ResolvedApiConfig {
       'model': model,
       'messages': messages,
     };
+    // parseCustomBody 已拒绝 model / stream / include_usage 等保留字段，
+    // 因此合并自定义 body 不会覆盖系统设定的值。
     final customBody = parseCustomBody();
-    if (customBody.containsKey('messages') && customBody['messages'] is List) {
+    if (customBody['messages'] is List) {
       final customMessages = customBody.remove('messages') as List;
       body['messages'] = [
         ...messages,

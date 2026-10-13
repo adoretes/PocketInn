@@ -299,7 +299,9 @@ class _OpenAICompatibleConfigPageState
               minLines: 8,
               style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
               decoration: const InputDecoration(
-                hintText: '{"temperature":0.7,"stream":true}',
+                hintText: '{"temperature":0.7,"top_p":0.9}',
+                helperText: '不要包含 model / stream / include_usage 等保留字段',
+                helperMaxLines: 2,
                 border: OutlineInputBorder(),
               ),
             ),
