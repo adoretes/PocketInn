@@ -355,7 +355,6 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       settings: userSettingsNotifier.value,
       selectedId: _viewModel.selectedUserSettingId,
-      inputTapRegionGroupId: _inputTapRegionGroupId,
       onSelected: (value) async {
         await _viewModel.setSelectedUserSettingId(value);
       },
@@ -368,7 +367,6 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       worldBooks: _viewModel.worldBooks,
       selectedIds: _viewModel.selectedWorldBookIds,
-      inputTapRegionGroupId: _inputTapRegionGroupId,
       onToggle: (id) => _viewModel.toggleWorldBook(id),
       onEdit: _onWorldBookEditPressed,
     );
@@ -390,7 +388,6 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       groups: _viewModel.regexRuleGroups,
       selectedIds: _viewModel.selectedRegexRuleGroupIds,
-      inputTapRegionGroupId: _inputTapRegionGroupId,
       onToggle: (id) => _viewModel.toggleRegexRuleGroup(id),
       onEdit: _onRegexRuleGroupEditPressed,
     );
@@ -401,7 +398,6 @@ class _ChatPageState extends State<ChatPage> {
       context: context,
       presets: _viewModel.presets,
       selectedId: _viewModel.selectedPresetId,
-      inputTapRegionGroupId: _inputTapRegionGroupId,
       onSelected: (value) async {
         await _viewModel.setSelectedPresetId(value);
       },

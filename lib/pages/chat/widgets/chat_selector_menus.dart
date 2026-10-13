@@ -4,14 +4,6 @@ import '../../../models/preset.dart';
 import '../../../models/user_setting.dart';
 import '../../../models/world_book.dart';
 import '../../../services/regex_rule_group_service.dart';
-import '../utils/popup_menu_position.dart';
-
-/// 菜单项高度：与 [PopupMenuItem] 的默认最小高度保持一致，
-/// 让 [ListTile] 恰好铺满整个菜单项，相邻选中项的色块可以无缝相连。
-const double _menuTileHeight = kMinInteractiveDimension;
-
-/// 菜单项左右内边距（选中背景色会铺满内边距区域）。
-const EdgeInsets _menuTilePadding = EdgeInsets.symmetric(horizontal: 12);
 
 /// 菜单项描述数据，由各公开菜单函数把业务模型映射而来。
 class _MenuEntry {
@@ -20,6 +12,7 @@ class _MenuEntry {
     required this.name,
     required this.isSelected,
     required this.highlightColor,
+    required this.accentColor,
     this.leading,
     this.canEdit = true,
   });
@@ -28,61 +21,55 @@ class _MenuEntry {
   final String name;
   final bool isSelected;
   final Color highlightColor;
+
+  /// 选中时的描边与文字颜色，默认取主题主色；
+  /// 用户设定则用其自身颜色，保证描边与填充色协调。
+  final Color accentColor;
   final Widget? leading;
   final bool canEdit;
 }
 
-/// 统一的选择菜单实现：
-/// - 传入 [onSelected]（单选模式）：菜单关闭后以选中项 value 回调；
-/// - 传入 [onToggle]（多选模式）：点击仅触发切换，菜单保持打开。
-Future<void> _showItemsMenu({
+/// 统一的选择菜单实现（底部抽屉 + 流式胶囊）：
+/// - 传入 [onSelected]（单选模式）：点击胶囊后抽屉关闭，以选中项 value 回调；
+/// - 传入 [onToggle]（多选模式）：点击仅触发切换，抽屉保持打开并实时更新选中态。
+Future<void> _showItemsSheet({
   required BuildContext context,
+  required String title,
   required List<_MenuEntry> entries,
-  required Object inputTapRegionGroupId,
   required ValueChanged<String> onEdit,
   ValueChanged<String>? onSelected,
   ValueChanged<String>? onToggle,
 }) async {
   assert(onSelected != null || onToggle != null);
-  final colorScheme = Theme.of(context).colorScheme;
-  final value = await showMenu<String>(
+
+  // 抽屉作为模态层弹出，先收起输入法，避免键盘遮挡抽屉。
+  FocusManager.instance.primaryFocus?.unfocus();
+
+  final maxHeight = MediaQuery.sizeOf(context).height * 0.55;
+
+  await showModalBottomSheet<void>(
     context: context,
-    requestFocus: false,
-    position: PopupMenuPositioning.positionAbove(context, entries.length),
-    constraints: PopupMenuPositioning.constraintsAbove(context),
-    items: [
-      for (final entry in entries)
-        PopupMenuItem<String>(
-          value: entry.id,
-          padding: EdgeInsets.zero,
-          onTap: onToggle == null ? null : () => onToggle(entry.id),
-          child: _TapRegionWrap(
-            groupId: inputTapRegionGroupId,
-            child: ListTile(
-              dense: true,
-              minTileHeight: _menuTileHeight,
-              contentPadding: _menuTilePadding,
-              selected: entry.isSelected,
-              selectedColor: colorScheme.onSurface,
-              selectedTileColor: entry.highlightColor,
-              leading: entry.leading,
-              title: Text(entry.name, overflow: TextOverflow.ellipsis),
-              trailing: _MenuEditButton(
-                onTap: entry.canEdit
-                    ? () {
-                        Navigator.pop(context);
-                        onEdit(entry.id);
-                      }
-                    : null,
-              ),
-            ),
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (sheetContext) {
+      return SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: _SelectorSheet(
+            title: title,
+            entries: entries,
+            onSelected: onSelected,
+            onToggle: onToggle,
+            onEdit: onEdit,
           ),
         ),
-    ],
+      );
+    },
   );
-  if (value != null) {
-    onSelected?.call(value);
-  }
 }
 
 /// 显示用户设定选择菜单。选中后回调 [onSelected]，编辑图标回调 [onEdit]。
@@ -90,12 +77,12 @@ Future<void> showUserSettingMenu({
   required BuildContext context,
   required List<UserSetting> settings,
   required String? selectedId,
-  required Object inputTapRegionGroupId,
   required ValueChanged<String> onSelected,
   required ValueChanged<String> onEdit,
 }) async {
-  await _showItemsMenu(
+  await _showItemsSheet(
     context: context,
+    title: '用户设定',
     entries: [
       for (final setting in settings)
         _MenuEntry(
@@ -103,10 +90,10 @@ Future<void> showUserSettingMenu({
           name: setting.name,
           isSelected: setting.id == selectedId,
           highlightColor: setting.color.withValues(alpha: 0.12),
+          accentColor: setting.color,
           leading: _MenuAvatar(color: setting.color, text: setting.avatarText),
         ),
     ],
-    inputTapRegionGroupId: inputTapRegionGroupId,
     onSelected: onSelected,
     onEdit: onEdit,
   );
@@ -117,14 +104,14 @@ Future<void> showWorldBookMenu({
   required BuildContext context,
   required List<WorldBook> worldBooks,
   required Set<String> selectedIds,
-  required Object inputTapRegionGroupId,
   required ValueChanged<String> onToggle,
   required ValueChanged<String> onEdit,
 }) async {
-  final highlightColor =
-      Theme.of(context).colorScheme.primary.withValues(alpha: 0.12);
-  await _showItemsMenu(
+  final primaryColor = Theme.of(context).colorScheme.primary;
+  final highlightColor = primaryColor.withValues(alpha: 0.12);
+  await _showItemsSheet(
     context: context,
+    title: '世界书',
     entries: [
       for (final worldBook in worldBooks)
         _MenuEntry(
@@ -132,9 +119,9 @@ Future<void> showWorldBookMenu({
           name: worldBook.name,
           isSelected: selectedIds.contains(worldBook.id),
           highlightColor: highlightColor,
+          accentColor: primaryColor,
         ),
     ],
-    inputTapRegionGroupId: inputTapRegionGroupId,
     onToggle: onToggle,
     onEdit: onEdit,
   );
@@ -145,14 +132,14 @@ Future<void> showRegexRuleGroupMenu({
   required BuildContext context,
   required List<RegexRuleGroupSummary> groups,
   required Set<String> selectedIds,
-  required Object inputTapRegionGroupId,
   required ValueChanged<String> onToggle,
   required ValueChanged<String> onEdit,
 }) async {
-  final highlightColor =
-      Theme.of(context).colorScheme.primary.withValues(alpha: 0.12);
-  await _showItemsMenu(
+  final primaryColor = Theme.of(context).colorScheme.primary;
+  final highlightColor = primaryColor.withValues(alpha: 0.12);
+  await _showItemsSheet(
     context: context,
+    title: '正则替换',
     entries: [
       for (final group in groups)
         _MenuEntry(
@@ -160,9 +147,9 @@ Future<void> showRegexRuleGroupMenu({
           name: group.name,
           isSelected: selectedIds.contains(group.id),
           highlightColor: highlightColor,
+          accentColor: primaryColor,
         ),
     ],
-    inputTapRegionGroupId: inputTapRegionGroupId,
     onToggle: onToggle,
     onEdit: onEdit,
   );
@@ -173,14 +160,14 @@ Future<void> showPresetMenu({
   required BuildContext context,
   required List<PresetSummary> presets,
   required String? selectedId,
-  required Object inputTapRegionGroupId,
   required ValueChanged<String> onSelected,
   required ValueChanged<String> onEdit,
 }) async {
-  final highlightColor =
-      Theme.of(context).colorScheme.primary.withValues(alpha: 0.12);
-  await _showItemsMenu(
+  final primaryColor = Theme.of(context).colorScheme.primary;
+  final highlightColor = primaryColor.withValues(alpha: 0.12);
+  await _showItemsSheet(
     context: context,
+    title: '预设',
     entries: [
       for (final preset in presets)
         _MenuEntry(
@@ -188,16 +175,230 @@ Future<void> showPresetMenu({
           name: preset.name,
           isSelected: preset.id == selectedId,
           highlightColor: highlightColor,
+          accentColor: primaryColor,
           canEdit: !preset.isBuiltin,
         ),
     ],
-    inputTapRegionGroupId: inputTapRegionGroupId,
     onSelected: onSelected,
     onEdit: onEdit,
   );
 }
 
+/// 底部抽屉内容：拖拽把手 + 标题 + 流式胶囊列表。
+class _SelectorSheet extends StatefulWidget {
+  const _SelectorSheet({
+    required this.title,
+    required this.entries,
+    required this.onSelected,
+    required this.onToggle,
+    required this.onEdit,
+  });
+
+  final String title;
+  final List<_MenuEntry> entries;
+  final ValueChanged<String>? onSelected;
+  final ValueChanged<String>? onToggle;
+  final ValueChanged<String> onEdit;
+
+  @override
+  State<_SelectorSheet> createState() => _SelectorSheetState();
+}
+
+class _SelectorSheetState extends State<_SelectorSheet> {
+  /// 抽屉打开期间的本地选中态，保证多选切换时胶囊实时刷新。
+  late final Set<String> _selectedIds = {
+    for (final entry in widget.entries)
+      if (entry.isSelected) entry.id,
+  };
+
+  bool get _isMultiSelect => widget.onToggle != null;
+
+  void _onTap(_MenuEntry entry) {
+    if (_isMultiSelect) {
+      setState(() {
+        if (!_selectedIds.remove(entry.id)) {
+          _selectedIds.add(entry.id);
+        }
+      });
+      widget.onToggle!(entry.id);
+      return;
+    }
+
+    final onSelected = widget.onSelected;
+    if (onSelected != null) {
+      Navigator.of(context).pop();
+      onSelected(entry.id);
+    }
+  }
+
+  void _onEdit(_MenuEntry entry) {
+    Navigator.of(context).pop();
+    widget.onEdit(entry.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Center(
+          child: Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+          child: Row(
+            children: [
+              Text(
+                widget.title,
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (_isMultiSelect)
+                Text(
+                  '已选 ${_selectedIds.length}',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final entry in widget.entries)
+                  _CapsuleChip(
+                    entry: entry,
+                    isSelected: _selectedIds.contains(entry.id),
+                    onTap: () => _onTap(entry),
+                    onEditTap: entry.canEdit ? () => _onEdit(entry) : null,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 流式胶囊：胶囊形状的选项，选中时高亮并描边。
+class _CapsuleChip extends StatelessWidget {
+  const _CapsuleChip({
+    required this.entry,
+    required this.isSelected,
+    required this.onTap,
+    required this.onEditTap,
+  });
+
+  final _MenuEntry entry;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback? onEditTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final background = isSelected
+        ? entry.highlightColor
+        : colorScheme.surfaceContainerHighest;
+    final borderColor = isSelected
+        ? entry.accentColor
+        : colorScheme.outlineVariant;
+    final textColor = isSelected ? entry.accentColor : colorScheme.onSurface;
+
+    final leading = entry.leading;
+
+    return Material(
+      color: background,
+      clipBehavior: Clip.antiAlias,
+      shape: StadiumBorder(
+        side: BorderSide(color: borderColor, width: isSelected ? 1.2 : 1),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          // 无编辑按钮时左右内边距对称；有编辑按钮时右侧由按钮自身内边距补齐。
+          padding: EdgeInsets.fromLTRB(12, 6, onEditTap != null ? 6 : 12, 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading != null) ...[
+                leading,
+                const SizedBox(width: 8),
+              ],
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 200),
+                child: Text(
+                  entry.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: textColor,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+              ),
+              if (onEditTap != null) ...[
+                const SizedBox(width: 2),
+                _CapsuleEditButton(onTap: onEditTap!),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 胶囊尾部的编辑按钮，独立于胶囊主体的点击区域。
+class _CapsuleEditButton extends StatelessWidget {
+  const _CapsuleEditButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(
+          Icons.edit_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
 /// 用户设定菜单项行首的头像（显示名字首字）。
+///
+/// 用户自选的颜色饱和度较高，直接实色填充会在胶囊里显得突兀，
+/// 这里改为低透明度色块 + 加深的同色文字（柔和徽章风格）。
 class _MenuAvatar extends StatelessWidget {
   const _MenuAvatar({required this.color, required this.text});
 
@@ -210,53 +411,18 @@ class _MenuAvatar extends StatelessWidget {
       width: 24,
       height: 24,
       decoration: BoxDecoration(
-        color: color,
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(8),
       ),
       alignment: Alignment.center,
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: Color.lerp(color, Colors.black, 0.35),
           fontSize: 12,
           fontWeight: FontWeight.bold,
         ),
       ),
     );
-  }
-}
-
-/// 菜单项尾部的编辑按钮，[onTap] 为 null 时显示为禁用样式。
-class _MenuEditButton extends StatelessWidget {
-  const _MenuEditButton({required this.onTap});
-
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          Icons.edit_outlined,
-          size: 18,
-          color: onTap == null ? Colors.grey.shade400 : Colors.grey.shade600,
-        ),
-      ),
-    );
-  }
-}
-
-class _TapRegionWrap extends StatelessWidget {
-  const _TapRegionWrap({required this.groupId, required this.child});
-
-  final Object groupId;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFieldTapRegion(groupId: groupId, child: child);
   }
 }
