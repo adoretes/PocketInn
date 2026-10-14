@@ -72,8 +72,23 @@ class MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<MessageBubble> {
   static _MessageBubbleState? _currentPopupOwner;
+
+  /// 浮窗高度估算值：IconButton 最小高度 36 + 上下内边距 2 * 2。
+  static const double _popupEstimatedHeight = 44;
+
+  /// 浮窗与可视区边缘之间保留的最小间距。
+  static const double _popupEdgeMargin = 8;
+
   final OverlayPortalController _overlayPortalController =
       OverlayPortalController();
+
+  /// 浮窗锚点（即 OverlayPortal 的 child）对应的 render object，
+  /// 用于把浮窗约束在消息列表的可视区内。
+  final GlobalKey _popupAnchorKey = GlobalKey();
+
+  /// 消息可视区（列表视口）相对锚点左上角的矩形。
+  /// 弹出浮窗时缓存；滚动时锚点与视口同步移动，该偏移保持不变。
+  Rect? _viewportRectFromAnchor;
 
   @override
   void dispose() {
@@ -99,6 +114,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     _currentPopupOwner?._hideActionPopup();
     _hideActionPopup();
     if (!mounted) return;
+    _cacheViewportRect();
     _overlayPortalController.show();
     _currentPopupOwner = this;
   }
@@ -112,12 +128,66 @@ class _MessageBubbleState extends State<MessageBubble> {
     }
   }
 
+  /// 记录消息列表可视区相对浮窗锚点的位置，供浮窗定位时避让屏幕外区域。
+  void _cacheViewportRect() {
+    final RenderObject? anchorObject = _popupAnchorKey.currentContext
+        ?.findRenderObject();
+    final ScrollableState? scrollableState = Scrollable.maybeOf(context);
+    final RenderObject? viewportObject = scrollableState?.context
+        .findRenderObject();
+    if (anchorObject is! RenderBox ||
+        viewportObject is! RenderBox ||
+        !anchorObject.hasSize ||
+        !viewportObject.hasSize) {
+      _viewportRectFromAnchor = null;
+      return;
+    }
+    final Offset anchorOrigin = anchorObject.localToGlobal(Offset.zero);
+    final Offset viewportOrigin = viewportObject.localToGlobal(Offset.zero);
+    _viewportRectFromAnchor = Rect.fromLTWH(
+      viewportOrigin.dx - anchorOrigin.dx,
+      viewportOrigin.dy - anchorOrigin.dy,
+      viewportObject.size.width,
+      viewportObject.size.height,
+    );
+  }
+
+  /// 计算浮窗的垂直位置：默认贴在气泡下方，但当气泡末端已滚出屏幕时，
+  /// 把浮窗拉回消息可视区内，避免浮窗显示在屏幕外而无法操作。
+  double _resolvePopupTop({
+    required Offset targetPos,
+    required Size childSize,
+    required Size overlaySize,
+  }) {
+    final double candidate = targetPos.dy + childSize.height + 4;
+    final Rect? viewportRect = _viewportRectFromAnchor?.shift(targetPos);
+    final double maxTop =
+        (viewportRect?.bottom ?? overlaySize.height) -
+        _popupEdgeMargin -
+        _popupEstimatedHeight;
+    final double minTop =
+        (viewportRect?.top ?? 0) + _popupEdgeMargin;
+    return _clampDouble(candidate, minTop, maxTop);
+  }
+
+  double _clampDouble(double value, double lower, double upper) {
+    if (upper < lower) return lower;
+    if (value < lower) return lower;
+    if (value > upper) return upper;
+    return value;
+  }
+
   Widget _buildPopupOverlay(BuildContext context, OverlayChildLayoutInfo info) {
     final colorScheme = Theme.of(context).colorScheme;
     final isMe = widget.message.isMe;
     final Offset targetPos = Offset(
       info.childPaintTransform.getTranslation().x,
       info.childPaintTransform.getTranslation().y,
+    );
+    final double popupTop = _resolvePopupTop(
+      targetPos: targetPos,
+      childSize: info.childSize,
+      overlaySize: info.overlaySize,
     );
 
     return Stack(
@@ -138,7 +208,7 @@ class _MessageBubbleState extends State<MessageBubble> {
           right: isMe
               ? info.overlaySize.width - targetPos.dx - info.childSize.width
               : null,
-          top: targetPos.dy + info.childSize.height + 4,
+          top: popupTop,
           child: TextFieldTapRegion(
             groupId: widget.inputTapRegionGroupId,
             child: Material(
@@ -271,6 +341,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                 controller: _overlayPortalController,
                 overlayChildBuilder: _buildPopupOverlay,
                   child: GestureDetector(
+                    key: _popupAnchorKey,
                     onTapDown: widget.showActions
                         ? (_) => _showActionPopup()
                         : null,
@@ -375,6 +446,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                 controller: _overlayPortalController,
                 overlayChildBuilder: _buildPopupOverlay,
                 child: Column(
+                  key: _popupAnchorKey,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (widget.message.hasThinkingChain)
@@ -392,17 +464,24 @@ class _MessageBubbleState extends State<MessageBubble> {
                             _isStreamingMessage && !pseudoChainComplete,
                       ),
                     GestureDetector(
+                      // 助手消息没有气泡底色，文字宽度通常不足一行，
+                      // 所以把整行宽度都作为点击区域，否则点到文字右侧的
+                      // 空白处不会弹出操作浮窗。
+                      behavior: HitTestBehavior.opaque,
                       onTapDown: widget.showActions
                           ? (_) => _showActionPopup()
                           : null,
-                      child: Semantics(
-                        container: true,
-                        child: ChatMarkdownBody(
-                          text: cleanedText,
-                          settings: settings,
-                          textColor: textColor,
-                          inlineCodeColor: inlineCodeColor,
-                          codeBlockColor: codeBlockColor,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Semantics(
+                          container: true,
+                          child: ChatMarkdownBody(
+                            text: cleanedText,
+                            settings: settings,
+                            textColor: textColor,
+                            inlineCodeColor: inlineCodeColor,
+                            codeBlockColor: codeBlockColor,
+                          ),
                         ),
                       ),
                     ),
