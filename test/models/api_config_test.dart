@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_inn/models/api_config.dart';
 
@@ -74,6 +76,145 @@ void main() {
         {'role': 'user', 'content': 'hi'},
         {'role': 'assistant', 'content': 'a'},
       ]);
+    });
+  });
+
+  group('resolveCustomHeaders', () {
+    test('空列表与全空占位行返回空对象', () {
+      expect(resolveCustomHeaders(const []), isEmpty);
+      expect(
+        resolveCustomHeaders(const [
+          ApiCustomHeader(name: '  ', value: ''),
+          ApiCustomHeader(),
+        ]),
+        isEmpty,
+      );
+    });
+
+    test('拒绝所有保留头（大小写不敏感）', () {
+      for (final reserved in kReservedCustomHeaderNames) {
+        for (final name in [reserved, reserved.toUpperCase()]) {
+          expect(
+            () => resolveCustomHeaders([
+              ApiCustomHeader(name: name, value: 'x'),
+            ]),
+            throwsFormatException,
+            reason: '$name 应被拒绝',
+          );
+        }
+      }
+    });
+
+    test('名称非法时抛错', () {
+      expect(
+        () => resolveCustomHeaders(const [
+          ApiCustomHeader(name: 'X Bad Header', value: 'x'),
+        ]),
+        throwsFormatException,
+      );
+    });
+
+    test('名称重复（忽略大小写）时抛错', () {
+      expect(
+        () => resolveCustomHeaders(const [
+          ApiCustomHeader(name: 'X-Trace', value: 'a'),
+          ApiCustomHeader(name: 'x-trace', value: 'b'),
+        ]),
+        throwsFormatException,
+      );
+    });
+
+    test('值为空或含换行时抛错', () {
+      expect(
+        () => resolveCustomHeaders(const [
+          ApiCustomHeader(name: 'X-Trace', value: '  '),
+        ]),
+        throwsFormatException,
+      );
+      expect(
+        () => resolveCustomHeaders(const [
+          ApiCustomHeader(name: 'X-Trace', value: 'a\nb'),
+        ]),
+        throwsFormatException,
+      );
+    });
+
+    test('只填值未填名称时抛错', () {
+      expect(
+        () => resolveCustomHeaders(const [ApiCustomHeader(value: 'x')]),
+        throwsFormatException,
+      );
+    });
+
+    test('保留原始大小写并维持输入顺序', () {
+      final headers = resolveCustomHeaders(const [
+        ApiCustomHeader(name: 'X-Api-Version', value: ' 2024-01 '),
+        ApiCustomHeader(name: 'X-Org-Id', value: 'org-1'),
+      ]);
+      expect(headers.keys.toList(), ['X-Api-Version', 'X-Org-Id']);
+      expect(headers['X-Api-Version'], '2024-01');
+    });
+  });
+
+  group('ResolvedApiConfig.customHeadersMap', () {
+    test('透传 provider 自定义头并归一化', () {
+      final config = ResolvedApiConfig(
+        id: 'provider',
+        name: 'provider',
+        baseUrl: 'https://example.com/v1',
+        apiKey: 'key',
+        model: 'demo-model',
+        customHeaders: const [
+          ApiCustomHeader(name: 'X-Trace', value: 'abc'),
+        ],
+      );
+      expect(config.customHeadersMap(), {'X-Trace': 'abc'});
+    });
+  });
+
+  group('ApiConfig 序列化', () {
+    test('customHeaders 可往返序列化', () {
+      const config = ApiConfig(
+        id: 'provider',
+        name: 'provider',
+        baseUrl: 'https://example.com/v1',
+        apiKey: '',
+        customHeaders: [
+          ApiCustomHeader(name: 'X-Trace', value: 'abc'),
+        ],
+      );
+      // 经 jsonEncode / jsonDecode 还原，模拟真实落盘再读取的路径。
+      final restored = ApiConfig.fromJson(
+        jsonDecode(jsonEncode(config.toJson())) as Map<String, dynamic>,
+      );
+      expect(restored.customHeaders, config.customHeaders);
+    });
+
+    test('缺少 customHeaders 字段时按空列表处理', () {
+      final restored = ApiConfig.fromJson({
+        'id': 'provider',
+        'name': 'provider',
+        'baseUrl': 'https://example.com/v1',
+        'apiKey': '',
+        'models': <dynamic>[],
+      });
+      expect(restored.customHeaders, isEmpty);
+    });
+
+    test('resolve 把 customHeaders 透传到 ResolvedApiConfig', () {
+      const config = ApiConfig(
+        id: 'provider',
+        name: 'provider',
+        baseUrl: 'https://example.com/v1',
+        apiKey: '',
+        customHeaders: [
+          ApiCustomHeader(name: 'X-Trace', value: 'abc'),
+        ],
+      );
+      final resolved = config.resolve(
+        const ApiModel(id: 'm1', modelId: 'demo-model'),
+      );
+      expect(resolved.customHeaders, config.customHeaders);
     });
   });
 }

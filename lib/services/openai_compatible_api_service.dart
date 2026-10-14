@@ -611,6 +611,9 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       'Accept': 'application/json',
       if (config.apiKey.trim().isNotEmpty)
         'Authorization': 'Bearer ${config.apiKey.trim()}',
+      // customHeadersMap 已在 _validateConfig 阶段拒绝授权 / Accept /
+      // Content-Type 等保留头，这里直接合并不会覆盖内置头。
+      ...config.customHeadersMap(),
     };
   }
 
@@ -630,6 +633,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       throw const FormatException('Base URL 不能为空');
     }
     config.parseCustomBody();
+    config.customHeadersMap();
   }
 
   String _truncate(String value, {int maxLength = 120}) {

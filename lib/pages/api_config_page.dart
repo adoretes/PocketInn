@@ -25,6 +25,8 @@ class _OpenAICompatibleConfigPageState
   // 每个 model 的 modelId / customBody 控制器，按 model.id 索引
   final Map<String, TextEditingController> _modelIdControllers = {};
   final Map<String, TextEditingController> _customBodyControllers = {};
+  // 每个 provider 的自定义请求头行控制器，按 provider.id 索引
+  final Map<String, List<_HeaderControllers>> _headerControllers = {};
   final Set<String> _testingIds = <String>{};
   final Set<String> _loadingModelIds = <String>{}; // provider ids 拉取中
   bool _isSaving = false;
@@ -58,6 +60,9 @@ class _OpenAICompatibleConfigPageState
       'baseUrl': TextEditingController(text: item.baseUrl),
       'apiKey': TextEditingController(text: item.apiKey),
     };
+    _headerControllers[item.id] = item.customHeaders
+        .map((h) => _HeaderControllers(name: h.name, value: h.value))
+        .toList();
   }
 
   void _initModelControllers(ApiModel model) {
@@ -70,11 +75,18 @@ class _OpenAICompatibleConfigPageState
 
   void _disposeControllersForItem(String id) {
     final itemControllers = _controllers[id];
-    if (itemControllers == null) return;
-    for (final controller in itemControllers.values) {
-      controller.dispose();
+    if (itemControllers != null) {
+      for (final controller in itemControllers.values) {
+        controller.dispose();
+      }
+      _controllers.remove(id);
     }
-    _controllers.remove(id);
+    final headerRows = _headerControllers.remove(id);
+    if (headerRows != null) {
+      for (final row in headerRows) {
+        row.dispose();
+      }
+    }
   }
 
   void _disposeModelControllers(String modelId) {
@@ -100,7 +112,22 @@ class _OpenAICompatibleConfigPageState
       baseUrl: controllers['baseUrl']!.text.trim(),
       apiKey: controllers['apiKey']!.text.trim(),
       models: updatedModels,
+      customHeaders: _collectCustomHeaders(item),
     );
+  }
+
+  /// 从行控制器收集自定义请求头；整行为空的占位行不写回，保持配置整洁。
+  List<ApiCustomHeader> _collectCustomHeaders(ApiConfig item) {
+    final rows = _headerControllers[item.id] ?? const <_HeaderControllers>[];
+    return rows
+        .map(
+          (row) => ApiCustomHeader(
+            name: row.nameController.text.trim(),
+            value: row.valueController.text.trim(),
+          ),
+        )
+        .where((h) => h.name.isNotEmpty || h.value.isNotEmpty)
+        .toList();
   }
 
   void _replaceConfigItem(ApiConfig updated) {
@@ -146,6 +173,8 @@ class _OpenAICompatibleConfigPageState
       for (final m in updated.models) {
         m.parseCustomBody();
       }
+      // 校验自定义请求头（保留头 / 非法名称 / 重复 / 空值等）
+      resolveCustomHeaders(updated.customHeaders);
       _replaceConfigItem(updated);
       await _persistConfigs(successMessage: '配置 "${updated.name}" 已保存');
     } on FormatException catch (error) {
@@ -154,7 +183,7 @@ class _OpenAICompatibleConfigPageState
       if (!mounted) return;
       handleAppException(
         context,
-        toAppException(error, fallbackMessage: '自定义 body 不是合法 JSON'),
+        toAppException(error, fallbackMessage: '自定义 body 或请求头格式不正确'),
       );
     }
   }
@@ -175,6 +204,7 @@ class _OpenAICompatibleConfigPageState
       baseUrl: controllers['baseUrl']!.text.trim(),
       apiKey: controllers['apiKey']!.text.trim(),
       models: updatedModels,
+      customHeaders: _collectCustomHeaders(item),
     );
   }
 
@@ -411,6 +441,11 @@ class _OpenAICompatibleConfigPageState
     for (final c in _customBodyControllers.values) {
       c.dispose();
     }
+    for (final rows in _headerControllers.values) {
+      for (final row in rows) {
+        row.dispose();
+      }
+    }
     super.dispose();
   }
 
@@ -541,6 +576,8 @@ class _OpenAICompatibleConfigPageState
                         obscureText: true,
                       ),
                       const SizedBox(height: 12),
+                      _buildCustomHeadersSection(item),
+                      const SizedBox(height: 12),
                       _buildModelsList(item),
                     ],
                   ),
@@ -594,6 +631,117 @@ class _OpenAICompatibleConfigPageState
           ),
         ),
       ),
+    );
+  }
+
+  void _addCustomHeaderRow(ApiConfig item) {
+    setState(() {
+      _headerControllers.putIfAbsent(item.id, () => <_HeaderControllers>[]).add(
+        _HeaderControllers(),
+      );
+    });
+  }
+
+  void _removeCustomHeaderRow(ApiConfig item, _HeaderControllers row) {
+    final rows = _headerControllers[item.id];
+    if (rows == null) return;
+    setState(() {
+      rows.remove(row);
+      row.dispose();
+    });
+  }
+
+  /// Provider 级「自定义请求头」编辑区块：逐行填写名称 / 值，支持增删。
+  Widget _buildCustomHeadersSection(ApiConfig item) {
+    final rows = _headerControllers[item.id] ?? const <_HeaderControllers>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '自定义请求头（${rows.length}）',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+            const Spacer(),
+            FilledButton.tonalIcon(
+              onPressed: () => _addCustomHeaderRow(item),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加'),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              '尚未添加请求头，可配置版本号 / 组织 ID 等额外头部',
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            ),
+          )
+        else
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: TextField(
+                      controller: row.nameController,
+                      decoration: const InputDecoration(
+                        labelText: '名称',
+                        hintText: 'X-Api-Version',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 5,
+                    child: TextField(
+                      controller: row.valueController,
+                      decoration: const InputDecoration(
+                        labelText: '值',
+                        hintText: '2024-01',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => _removeCustomHeaderRow(item, row),
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    tooltip: '删除请求头',
+                  ),
+                ],
+              ),
+            ),
+      ],
     );
   }
 
@@ -732,6 +880,24 @@ class _OpenAICompatibleConfigPageState
       border: const OutlineInputBorder(),
       isDense: true,
     );
+  }
+}
+
+/// 单行自定义请求头的名称 / 值控制器。
+///
+/// 用独立的控制器承载每一行，随 provider 初始化创建、增删行时同步释放，
+/// 避免与整表重建耦合。
+class _HeaderControllers {
+  _HeaderControllers({String name = '', String value = ''})
+    : nameController = TextEditingController(text: name),
+      valueController = TextEditingController(text: value);
+
+  final TextEditingController nameController;
+  final TextEditingController valueController;
+
+  void dispose() {
+    nameController.dispose();
+    valueController.dispose();
   }
 }
 
