@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../core/error_handler.dart';
@@ -299,34 +301,19 @@ class _OpenAICompatibleConfigPageState
     final controller = _customBodyControllers[model.id];
     if (controller == null) return;
 
-    await showDialog<void>(
+    final text = await showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('自定义 Body'),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: TextField(
-              controller: controller,
-              maxLines: 12,
-              minLines: 8,
-              style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
-              decoration: const InputDecoration(
-                hintText: '{"temperature":0.7,"top_p":0.9}',
-                helperText: '不要包含 model / stream / include_usage 等保留字段',
-                helperMaxLines: 2,
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('完成'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _CustomBodyDialog(
+        modelId: model.modelId,
+        initialText: controller.text,
+      ),
+    );
+
+    // 只有点击「完成」才会写回列表控制器，取消不会改动原配置。
+    if (text == null) return;
+    controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 
@@ -744,6 +731,298 @@ class _OpenAICompatibleConfigPageState
       alignLabelWithHint: maxLines > 1,
       border: const OutlineInputBorder(),
       isDense: true,
+    );
+  }
+}
+
+/// 自定义 body 的校验结果。
+class _CustomBodyValidation {
+  const _CustomBodyValidation({required this.isValid, this.message});
+
+  /// 内容是否合法。
+  final bool isValid;
+
+  /// 需要展示的提示文本；语法错误时为 null。
+  final String? message;
+}
+
+/// 编辑单个模型的「自定义 Body」。
+///
+/// 相比双击即改的原实现，这里做了几点优化：
+/// - 使用独立的文本控制器，只有点「完成」才写回，取消不生效；
+/// - 宽度取固定值并由对话框自身裁剪，避免窄屏右侧文字被截断；
+/// - 内容区总高度固定，提示文案出现时由输入框收缩让位，
+///   既不会留下空白，也不会改变弹窗高度；
+/// - 边输入边校验 JSON 与保留字段，非法时红框并禁用「完成」；
+/// - JSON 语法错误不展示文案，只有保留字段等语义错误才给出文字提示；
+/// - 「格式化 / 清空」放在标题右侧，底部保留字段说明固定单行、超出以「等」概括。
+class _CustomBodyDialog extends StatefulWidget {
+  const _CustomBodyDialog({required this.modelId, required this.initialText});
+
+  final String modelId;
+  final String initialText;
+
+  @override
+  State<_CustomBodyDialog> createState() => _CustomBodyDialogState();
+}
+
+class _CustomBodyDialogState extends State<_CustomBodyDialog> {
+  static const _sampleText = '{"temperature":0.7,"top_p":0.9}';
+  /// 底部提示中最多直接列出的保留字段数量，其余用「等」概括。
+  static const _maxShownReservedKeys = 2;
+
+  late final TextEditingController _controller;
+  /// 内容是否合法，决定输入框是否标红以及「完成」是否可用。
+  late bool _isValid;
+  /// 需要展示在输入框下方的提示文本；JSON 语法错误只标红、不展示文本。
+  late String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+    final result = _validate(widget.initialText);
+    _isValid = result.isValid;
+    _errorText = result.message;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// 校验自定义 body 文本。
+  ///
+  /// jsonDecode 抛出的语法错误只通过红框提示，不展示文本；
+  /// [parseCustomBodyText] 给出的语义错误（保留字段等）仍会展示。
+  _CustomBodyValidation _validate(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return const _CustomBodyValidation(isValid: true);
+    }
+    try {
+      parseCustomBodyText(trimmed);
+      return const _CustomBodyValidation(isValid: true);
+    } on FormatException catch (error) {
+      final message = error.message.toString();
+      if (message.startsWith('自定义 body')) {
+        return _CustomBodyValidation(isValid: false, message: message);
+      }
+      return const _CustomBodyValidation(isValid: false);
+    }
+  }
+
+  void _onChanged(String value) {
+    final result = _validate(value);
+    setState(() {
+      _isValid = result.isValid;
+      _errorText = result.message;
+    });
+  }
+
+  void _formatJson() {
+    try {
+      final decoded = jsonDecode(_controller.text.trim());
+      _replaceText(const JsonEncoder.withIndent('  ').convert(decoded));
+    } on FormatException {
+      // JSON 不合法时无法格式化，此时输入框已标红，无需额外提示。
+    }
+  }
+
+  void _replaceText(String text) {
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _onChanged(text);
+  }
+
+  void _submit() {
+    if (!_isValid) return;
+    Navigator.of(context).pop(_controller.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isEmpty = _controller.text.trim().isEmpty;
+    final hasError = !_isValid;
+    // 与 Material 默认的 error 边框保持一致：未聚焦 1px、聚焦 2px。
+    final errorBorder = OutlineInputBorder(
+      borderSide: BorderSide(color: theme.colorScheme.error),
+    );
+    final focusedErrorBorder = OutlineInputBorder(
+      borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
+    );
+
+    return AlertDialog(
+      // 默认 insetPadding 会额外占用 80 逻辑像素，窄屏下会导致内容溢出，
+      // 这里收紧外边距并配合固定内容宽度。
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      titlePadding: const EdgeInsets.fromLTRB(20, 16, 8, 4),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      actionsPadding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      scrollable: true,
+      title: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('自定义 Body'),
+                if (widget.modelId.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      widget.modelId.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: isEmpty ? null : _formatJson,
+            icon: const Icon(Icons.format_align_left, size: 18),
+            tooltip: '格式化 JSON',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: isEmpty ? null : () => _replaceText(''),
+            icon: const Icon(Icons.backspace_outlined, size: 18),
+            tooltip: '清空',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+          ),
+        ],
+      ),
+      // 内容区总高度固定：提示文案出现时由输入框收缩让位，
+      // 因此既不会残留空白，输入合法 / 非法内容时弹窗高度也不会变化。
+      content: SizedBox(
+        width: 460,
+        height: 268,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                autofocus: true,
+                expands: true,
+                maxLines: null,
+                minLines: null,
+                textAlignVertical: TextAlignVertical.top,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                onChanged: _onChanged,
+                decoration: InputDecoration(
+                  hintText: _sampleText,
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                  ),
+                  contentPadding: const EdgeInsets.all(12),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: hasError ? errorBorder : null,
+                  focusedBorder: hasError ? focusedErrorBorder : null,
+                ),
+              ),
+            ),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              _buildError(theme),
+            ],
+            const SizedBox(height: 6),
+            _buildReservedHint(theme),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _isValid ? _submit : null,
+          child: const Text('完成'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildError(ThemeData theme) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            _errorText!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.3,
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 展示应用内部管理、不允许在自定义 body 中出现的字段。
+  ///
+  /// 只列出前 [_maxShownReservedKeys] 个字段，其余用「等」概括，
+  /// 保证高度固定为一行且窄屏下不被截断。
+  Widget _buildReservedHint(ThemeData theme) {
+    final keys = kReservedCustomBodyKeys.toList(growable: false);
+    final shownKeys = keys.take(_maxShownReservedKeys);
+    final hasMore = keys.length > _maxShownReservedKeys;
+    final hintStyle = TextStyle(
+      fontSize: 11.5,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final keyStyle = TextStyle(
+      fontSize: 11,
+      fontFamily: 'monospace',
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return SizedBox(
+      height: 24,
+      child: Row(
+        children: [
+          Text('请勿填写内部管理字段', style: hintStyle),
+          for (final key in shownKeys) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(key, style: keyStyle),
+            ),
+          ],
+          if (hasMore) ...[
+            const SizedBox(width: 6),
+            Text('等', style: hintStyle),
+          ],
+        ],
+      ),
     );
   }
 }
