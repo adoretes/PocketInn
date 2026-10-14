@@ -350,6 +350,14 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<UserSetting?> _onUserSettingCreatePressed(BuildContext context) async {
+    final created = await showCreateUserSettingDialog(context);
+    if (created == null || !mounted) return null;
+
+    await _viewModel.handleUserSettingCreated(created);
+    return created;
+  }
+
   void _onUserSettingsPressed(BuildContext context) {
     showUserSettingMenu(
       context: context,
@@ -359,6 +367,7 @@ class _ChatPageState extends State<ChatPage> {
         await _viewModel.setSelectedUserSettingId(value);
       },
       onEdit: _onUserSettingEditPressed,
+      onCreate: _onUserSettingCreatePressed,
     );
   }
 

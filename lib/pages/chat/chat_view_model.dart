@@ -1466,6 +1466,12 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 处理新建用户设定。
+  Future<void> handleUserSettingCreated(UserSetting setting) async {
+    await addUserSetting(setting);
+    notifyListeners();
+  }
+
   // --- 测试辅助 ---
 
   /// 仅供测试使用：批量覆盖内部状态，便于在不依赖 service 的前提下

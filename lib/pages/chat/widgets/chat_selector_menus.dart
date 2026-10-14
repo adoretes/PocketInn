@@ -31,7 +31,8 @@ class _MenuEntry {
 
 /// 统一的选择菜单实现（底部抽屉 + 流式胶囊）：
 /// - 传入 [onSelected]（单选模式）：点击胶囊后抽屉关闭，以选中项 value 回调；
-/// - 传入 [onToggle]（多选模式）：点击仅触发切换，抽屉保持打开并实时更新选中态。
+/// - 传入 [onToggle]（多选模式）：点击仅触发切换，抽屉保持打开并实时更新选中态；
+/// - 传入 [onCreateEntry]：标题栏显示「新建」按钮，回调返回新项后追加到抽屉中。
 Future<void> _showItemsSheet({
   required BuildContext context,
   required String title,
@@ -39,6 +40,7 @@ Future<void> _showItemsSheet({
   required ValueChanged<String> onEdit,
   ValueChanged<String>? onSelected,
   ValueChanged<String>? onToggle,
+  Future<_MenuEntry?> Function(BuildContext context)? onCreateEntry,
 }) async {
   assert(onSelected != null || onToggle != null);
 
@@ -65,6 +67,7 @@ Future<void> _showItemsSheet({
             onSelected: onSelected,
             onToggle: onToggle,
             onEdit: onEdit,
+            onCreateEntry: onCreateEntry,
           ),
         ),
       );
@@ -72,30 +75,37 @@ Future<void> _showItemsSheet({
   );
 }
 
-/// 显示用户设定选择菜单。选中后回调 [onSelected]，编辑图标回调 [onEdit]。
+/// 显示用户设定选择菜单。选中后回调 [onSelected]，编辑图标回调 [onEdit]；
+/// 传入 [onCreate] 时标题栏显示「新建」按钮，创建成功后新项会追加到菜单中。
 Future<void> showUserSettingMenu({
   required BuildContext context,
   required List<UserSetting> settings,
   required String? selectedId,
   required ValueChanged<String> onSelected,
   required ValueChanged<String> onEdit,
+  Future<UserSetting?> Function(BuildContext context)? onCreate,
 }) async {
+  _MenuEntry buildEntry(UserSetting setting) => _MenuEntry(
+    id: setting.id,
+    name: setting.name,
+    isSelected: setting.id == selectedId,
+    highlightColor: setting.color.withValues(alpha: 0.12),
+    accentColor: setting.color,
+    leading: _MenuAvatar(color: setting.color, text: setting.avatarText),
+  );
+
   await _showItemsSheet(
     context: context,
     title: '用户设定',
-    entries: [
-      for (final setting in settings)
-        _MenuEntry(
-          id: setting.id,
-          name: setting.name,
-          isSelected: setting.id == selectedId,
-          highlightColor: setting.color.withValues(alpha: 0.12),
-          accentColor: setting.color,
-          leading: _MenuAvatar(color: setting.color, text: setting.avatarText),
-        ),
-    ],
+    entries: [for (final setting in settings) buildEntry(setting)],
     onSelected: onSelected,
     onEdit: onEdit,
+    onCreateEntry: onCreate == null
+        ? null
+        : (sheetContext) async {
+            final created = await onCreate(sheetContext);
+            return created == null ? null : buildEntry(created);
+          },
   );
 }
 
@@ -192,6 +202,7 @@ class _SelectorSheet extends StatefulWidget {
     required this.onSelected,
     required this.onToggle,
     required this.onEdit,
+    required this.onCreateEntry,
   });
 
   final String title;
@@ -199,19 +210,58 @@ class _SelectorSheet extends StatefulWidget {
   final ValueChanged<String>? onSelected;
   final ValueChanged<String>? onToggle;
   final ValueChanged<String> onEdit;
+  final Future<_MenuEntry?> Function(BuildContext context)? onCreateEntry;
 
   @override
   State<_SelectorSheet> createState() => _SelectorSheetState();
 }
 
 class _SelectorSheetState extends State<_SelectorSheet> {
+  /// 抽屉打开期间的本地条目列表，新建后追加，无需重开抽屉。
+  late final List<_MenuEntry> _entries = List.of(widget.entries);
+
   /// 抽屉打开期间的本地选中态，保证多选切换时胶囊实时刷新。
   late final Set<String> _selectedIds = {
     for (final entry in widget.entries)
       if (entry.isSelected) entry.id,
   };
 
+  final ScrollController _scrollController = ScrollController();
+
+  bool _isCreating = false;
+
   bool get _isMultiSelect => widget.onToggle != null;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onCreate() async {
+    final onCreateEntry = widget.onCreateEntry;
+    if (onCreateEntry == null || _isCreating) return;
+
+    setState(() => _isCreating = true);
+    try {
+      final entry = await onCreateEntry(context);
+      if (entry == null || !mounted) return;
+      setState(() => _entries.add(entry));
+      // 新项追加在末尾，滚动到底部让其可见。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollController.hasClients) return;
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isCreating = false);
+      }
+    }
+  }
 
   void _onTap(_MenuEntry entry) {
     if (_isMultiSelect) {
@@ -274,18 +324,31 @@ class _SelectorSheetState extends State<_SelectorSheet> {
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
+              if (widget.onCreateEntry != null) ...[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _isCreating ? null : _onCreate,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('新建'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
         const SizedBox(height: 12),
         Flexible(
           child: SingleChildScrollView(
+            controller: _scrollController,
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final entry in widget.entries)
+                for (final entry in _entries)
                   _CapsuleChip(
                     entry: entry,
                     isSelected: _selectedIds.contains(entry.id),

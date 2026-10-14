@@ -49,134 +49,14 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   }
 
   Future<void> _onCreateRequested() async {
-    final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController();
-    final descriptionController = TextEditingController();
-    Color selectedColor = const Color(0xFF5C6BC0);
+    final newSetting = await showCreateUserSettingDialog(context);
+    if (newSetting == null || !mounted) return;
 
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              insetPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 24,
-              ),
-              title: const Text('新建用户设定'),
-              content: SizedBox(
-                width: 480,
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: nameController,
-                        decoration: const InputDecoration(
-                          labelText: '名字',
-                          hintText: '请输入名字',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return '名字不能为空';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: descriptionController,
-                        maxLines: 5,
-                        minLines: 4,
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: const InputDecoration(
-                          labelText: '描述',
-                          hintText: '请输入用户设定描述',
-                          alignLabelWithHint: true,
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          const Text('颜色：'),
-                          const SizedBox(width: 8),
-                          ...[
-                            const Color(0xFF5C6BC0),
-                            const Color(0xFF00897B),
-                            const Color(0xFFD81B60),
-                            const Color(0xFFE76F51),
-                            const Color(0xFF277DA1),
-                          ].map(
-                            (color) => Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: GestureDetector(
-                                onTap: () {
-                                  setDialogState(() {
-                                    selectedColor = color;
-                                  });
-                                },
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: color,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: selectedColor == color
-                                        ? Border.all(
-                                            color: colorScheme.onSurface,
-                                            width: 2,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    if (formKey.currentState?.validate() ?? false) {
-                      final newSetting = UserSetting(
-                        id: generateUserSettingId(),
-                        name: nameController.text.trim(),
-                        prompt: descriptionController.text.trim(),
-                        colorValue: selectedColor.toARGB32(),
-                      );
-
-                      setState(() {
-                        _settings.add(newSetting);
-                        _selectedId ??= newSetting.id;
-                      });
-
-                      Navigator.of(context).pop();
-                      _showMessage('已创建用户设定');
-                    }
-                  },
-                  child: const Text('创建'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+    setState(() {
+      _settings.add(newSetting);
+      _selectedId ??= newSetting.id;
+    });
+    _showMessage('已创建用户设定');
   }
 
   Future<void> _openEditDialog(UserSetting setting) async {
@@ -306,6 +186,134 @@ class UserSettingsPageResult {
 
   final List<UserSetting> settings;
   final String? selectedId;
+}
+
+/// 显示新建用户设定弹窗（可复用于 chat_page 等场景）。
+///
+/// 创建成功时返回新建的 [UserSetting]，取消时返回 null。
+Future<UserSetting?> showCreateUserSettingDialog(BuildContext context) async {
+  final formKey = GlobalKey<FormState>();
+  final nameController = TextEditingController();
+  final descriptionController = TextEditingController();
+  Color selectedColor = const Color(0xFF5C6BC0);
+
+  return showDialog<UserSetting>(
+    context: context,
+    builder: (context) {
+      final colorScheme = Theme.of(context).colorScheme;
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 24,
+            ),
+            title: const Text('新建用户设定'),
+            content: SizedBox(
+              width: 480,
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: '名字',
+                        hintText: '请输入名字',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return '名字不能为空';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: descriptionController,
+                      maxLines: 5,
+                      minLines: 4,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: const InputDecoration(
+                        labelText: '描述',
+                        hintText: '请输入用户设定描述',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Text('颜色：'),
+                        const SizedBox(width: 8),
+                        ...[
+                          const Color(0xFF5C6BC0),
+                          const Color(0xFF00897B),
+                          const Color(0xFFD81B60),
+                          const Color(0xFFE76F51),
+                          const Color(0xFF277DA1),
+                        ].map(
+                          (color) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  selectedColor = color;
+                                });
+                              },
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: selectedColor == color
+                                      ? Border.all(
+                                          color: colorScheme.onSurface,
+                                          width: 2,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (formKey.currentState?.validate() ?? false) {
+                    Navigator.of(context).pop(
+                      UserSetting(
+                        id: generateUserSettingId(),
+                        name: nameController.text.trim(),
+                        prompt: descriptionController.text.trim(),
+                        colorValue: selectedColor.toARGB32(),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('创建'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
 }
 
 /// 编辑用户设定弹窗的结果
