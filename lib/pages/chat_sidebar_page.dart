@@ -6,8 +6,8 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import '../data/mock_user_settings.dart';
 import '../models/character_card.dart';
 import '../models/chat_session.dart';
-import '../services/chat_character_resolver.dart';
 import '../services/chat_database_service.dart';
+import '../services/chat_sidebar_service.dart';
 import '../services/character_service.dart';
 import 'char_edit_page.dart';
 import 'char_list_page.dart';
@@ -27,13 +27,16 @@ class ChatSidebarPage extends StatefulWidget {
 
 class _ChatSidebarPageState extends State<ChatSidebarPage> {
   String? _selectedCharacterId;
-  late Future<_SidebarData> _sidebarDataFuture;
-  _SidebarData? _lastSidebarData;
+
+  ChatSidebarService get _sidebarService => ChatSidebarService.instance;
 
   @override
   void initState() {
     super.initState();
-    _sidebarDataFuture = _loadSidebarData();
+    // 抽屉每次打开都会重建本 State（Flutter 关闭抽屉时会把内容移出 widget 树），
+    // 因此数据快照缓存在 ChatSidebarService：命中快照即可即时渲染，不再每次转圈。
+    _sidebarService.ensureFresh();
+    // 抽屉打开期间数据变化即时刷新；关闭后由 service 的过期标记负责，避免白跑。
     ChatDatabaseService.instance.changeNotifier.addListener(
       _handleDatabaseChanged,
     );
@@ -51,61 +54,7 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _sidebarDataFuture = _loadSidebarData();
-    });
-  }
-
-  Future<_SidebarData> _loadSidebarData() async {
-    final summaries = await ChatDatabaseService.instance.loadSessionSummaries();
-    final entries = <_ChatListEntry>[];
-    final roleMap = <String, _RoleFilter>{};
-
-    final realCharacters = await CharacterService.instance.loadAllSummaries();
-    for (final character in realCharacters) {
-      final name = character.name.isNotEmpty ? character.name : '未命名角色';
-      roleMap[character.id] = _RoleFilter(
-        id: character.id,
-        name: name,
-        avatarText: name.isNotEmpty ? name[0] : '?',
-        imagePath: character.thumbnailPath,
-        isRealCharacter: true,
-      );
-    }
-
-    for (final summary in summaries) {
-      final character = await ChatCharacterResolver.instance.resolveById(
-        summary.characterId,
-      );
-      final roleName = character?.name ?? summary.characterId;
-      final avatarText = roleName.isNotEmpty ? roleName[0] : '?';
-      entries.add(
-        _ChatListEntry(
-          summary: summary,
-          roleName: roleName,
-          avatarText: avatarText,
-          characterId: summary.characterId,
-          imagePath: character?.thumbnailPath ?? character?.imagePath,
-        ),
-      );
-      roleMap.putIfAbsent(
-        summary.characterId,
-        () => _RoleFilter(
-          id: summary.characterId,
-          name: roleName,
-          avatarText: avatarText,
-          imagePath: character?.thumbnailPath ?? character?.imagePath,
-          isRealCharacter: character?.sourceLabel == '真实角色',
-        ),
-      );
-    }
-
-    final roles = [
-      const _RoleFilter(id: null, name: '全部角色', avatarText: '全'),
-      ...roleMap.values.toList()..sort((a, b) => a.name.compareTo(b.name)),
-    ];
-
-    return _SidebarData(roles: roles, chats: entries);
+    _sidebarService.refresh();
   }
 
   Future<void> _onSettingsTap() async {
@@ -218,7 +167,7 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
     setState(() {});
   }
 
-  Future<void> _onAvatarTap(_RoleFilter selectedRole) async {
+  Future<void> _onAvatarTap(ChatSidebarRole selectedRole) async {
     final navigator = Navigator.of(context);
     navigator.pop();
 
@@ -241,7 +190,7 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
 
   Future<void> _showRoleMenu(
     BuildContext targetContext,
-    List<_RoleFilter> roles,
+    List<ChatSidebarRole> roles,
   ) async {
     final RenderBox button = targetContext.findRenderObject() as RenderBox;
     final RenderBox overlay =
@@ -258,13 +207,15 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
       Offset.zero & overlay.size,
     );
 
-    final selected = await showMenu<_RoleFilter>(
+    final selected = await showMenu<ChatSidebarRole>(
       context: targetContext,
       position: position,
       items: roles
           .map(
-            (role) =>
-                PopupMenuItem<_RoleFilter>(value: role, child: Text(role.name)),
+            (role) => PopupMenuItem<ChatSidebarRole>(
+              value: role,
+              child: Text(role.name),
+            ),
           )
           .toList(),
     );
@@ -279,26 +230,13 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FutureBuilder<_SidebarData>(
-        future: _sidebarDataFuture,
-        builder: (context, snapshot) {
-          final loadedData = snapshot.data;
-          if (loadedData != null) {
-            _lastSidebarData = loadedData;
-          }
-
-          if (snapshot.connectionState != ConnectionState.done &&
-              _lastSidebarData == null) {
+      body: ValueListenableBuilder<ChatSidebarData?>(
+        valueListenable: _sidebarService.dataNotifier,
+        builder: (context, data, _) {
+          if (data == null) {
+            // 只有首次打开、快照还没取到时才短暂出现。
             return const Center(child: CircularProgressIndicator());
           }
-
-          final data =
-              loadedData ??
-              _lastSidebarData ??
-              const _SidebarData(
-                roles: [_RoleFilter(id: null, name: '全部角色', avatarText: '全')],
-                chats: [],
-              );
 
           final selectedRole = data.roles.firstWhere(
             (role) => role.id == _selectedCharacterId,
@@ -574,45 +512,6 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
     }
     return '${time.month}/${time.day}';
   }
-}
-
-class _SidebarData {
-  const _SidebarData({required this.roles, required this.chats});
-
-  final List<_RoleFilter> roles;
-  final List<_ChatListEntry> chats;
-}
-
-class _ChatListEntry {
-  const _ChatListEntry({
-    required this.summary,
-    required this.roleName,
-    required this.avatarText,
-    required this.characterId,
-    this.imagePath,
-  });
-
-  final ChatSessionSummary summary;
-  final String roleName;
-  final String avatarText;
-  final String characterId;
-  final String? imagePath;
-}
-
-class _RoleFilter {
-  const _RoleFilter({
-    required this.id,
-    required this.name,
-    required this.avatarText,
-    this.imagePath,
-    this.isRealCharacter = false,
-  });
-
-  final String? id;
-  final String name;
-  final String avatarText;
-  final String? imagePath;
-  final bool isRealCharacter;
 }
 
 class _RoleAvatar extends StatelessWidget {
