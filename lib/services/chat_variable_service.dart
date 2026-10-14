@@ -8,6 +8,7 @@ class PromptMacroState {
     this.lastUserMessage = '',
     this.lastCharMessage = '',
     this.memoryContext = const [],
+    this.memoryContextWithHeader = true,
     Map<String, String>? localVariables,
     Map<String, String>? extraVariables,
   })  : localVariables = localVariables == null
@@ -23,6 +24,12 @@ class PromptMacroState {
   final String lastUserMessage;
   final String lastCharMessage;
   final List<String> memoryContext;
+
+  /// 宏 `{{memory}}` 是否需要注入引导语表头。
+  ///
+  /// 主聊天注入（`longTermMemory` 段 / `{{memory}}` 宏）为 `true`；
+  /// 记忆提取任务只需纯列表（[ChatMemoryService.formatMemoryList]），为 `false`。
+  final bool memoryContextWithHeader;
   final Map<String, String> localVariables;
   final Map<String, String> extraVariables;
 
@@ -34,6 +41,7 @@ class PromptMacroState {
       lastUserMessage: lastUserMessage,
       lastCharMessage: lastCharMessage,
       memoryContext: memoryContext,
+      memoryContextWithHeader: memoryContextWithHeader,
       localVariables: localVariables,
       extraVariables: extraVariables,
     );
@@ -128,7 +136,9 @@ class ChatVariableService {
       case 'lastcharmessage':
         return state.lastCharMessage;
       case 'memory':
-        return ChatMemoryService.formatMemoryContext(state.memoryContext);
+        return state.memoryContextWithHeader
+            ? ChatMemoryService.formatMemoryContext(state.memoryContext)
+            : ChatMemoryService.formatMemoryList(state.memoryContext);
       case 'trim':
         return _trimMarker;
       case 'noop':

@@ -1024,13 +1024,10 @@ class ChatService {
       sessionId: sessionId,
       pathMessageIds: pathIds,
     );
-    if (memories.isEmpty) {
-      return allMessages.where((m) => !m.isMe).length;
-    }
-    final processedIds = memories.first.sourceMessageIds.toSet();
-    return allMessages
-        .where((m) => !m.isMe && m.id != null && !processedIds.contains(m.id))
-        .length;
+    return ChatMemoryService.countNewAssistantMessages(
+      allMessages: allMessages,
+      branchMemories: memories,
+    );
   }
 
   Map<String, dynamic> _buildCompletionDefaults(

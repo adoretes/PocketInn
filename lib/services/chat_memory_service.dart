@@ -39,7 +39,7 @@ class ChatMemoryService {
     return custom.isNotEmpty ? custom : memoryExtractionPrompt;
   }
 
-  /// 将记忆列表格式化为注入到 Prompt 中的字符串。
+  /// 将记忆列表格式化为注入到 Prompt 中的字符串（含引导语表头）。
   ///
   /// 同时服务于段标识 `longTermMemory` 与宏 `{{memory}}`，避免两处实现重复。
   static String formatMemoryContext(List<String> memories) {
@@ -48,7 +48,15 @@ class ChatMemoryService {
     final header = config.hasCustomInjectionPrompt
         ? config.customInjectionPrompt.trim()
         : '以下是角色记得的关于过去事件的信息：';
-    return '$header\n${memories.map((m) => '- $m').join('\n')}';
+    return '$header\n${formatMemoryList(memories)}';
+  }
+
+  /// 仅渲染 `- 条目` 的纯列表（不含引导语表头）。
+  ///
+  /// 用于提取提示词中回填"已存在记忆"，避免把注入用的引导语表头带进提取任务。
+  static String formatMemoryList(List<String> memories) {
+    if (memories.isEmpty) return '';
+    return memories.map((m) => '- $m').join('\n');
   }
 
   /// 按 `recentRounds` 截断消息列表，保留最后 N 轮对话（1 个用户消息 + 1 个助手回复）。
@@ -130,6 +138,8 @@ class ChatMemoryService {
       lastUserMessage: lastUser?.text ?? '',
       lastCharMessage: lastChar?.text ?? '',
       memoryContext: existingMemories,
+      // 提取任务只回填"已存在记忆"列表，不注入引导语表头。
+      memoryContextWithHeader: false,
       extraVariables: cardData,
     );
     final extractionPrompt = ChatVariableService.resolveMacros(
@@ -137,6 +147,9 @@ class ChatMemoryService {
       state: macroState,
     );
 
+    // 提取窗口刻意使用 interval（提取频率）：每次触发时送给提取模型的
+    // 就是这一批新增对话。recentRounds 仅服务主聊天提示词的历史窗口，
+    // 与提取无关，勿混用。
     final truncated = truncateToRecentRounds(
       messages,
       memoryExtractionNotifier.value.interval,
@@ -192,34 +205,63 @@ class ChatMemoryService {
       sessionId: sessionId,
       pathMessageIds: pathMessageIds,
     );
-    if (all.isEmpty) return [];
+    return selectBranchMemories(
+      all: all,
+      pathMessageIds: pathMessageIds,
+      count: count,
+    );
+  }
 
-    // 按 branchLeafId 分组
-    final grouped = <String, List<MemoryNode>>{};
-    for (final m in all) {
-      grouped.putIfAbsent(m.branchLeafId, () => []).add(m);
+  /// 从 [all] 中按「分支位置」回溯选取最靠近当前叶子的 [count] 个记忆节点。
+  ///
+  /// 选取键是节点 id 在 [pathMessageIds]（根→叶有序）中的位置索引，而**不是**
+  /// 记忆的创建时间：后者会被"在早期节点手动新增/编辑记忆"扰动，使该节点组因
+  /// `last.createdAt` 变最新而被挤出注入集合（记忆点不被注入）。
+  ///
+  /// 规则：
+  /// - `count <= 0` 或记忆节点数 `<= count` 时返回全部节点（0 视为无限制）；
+  /// - 否则取索引最大（最靠近当前叶）的 [count] 个节点；
+  /// - 节点间按分支顺序（根→叶）升序、节点内按 `createdAt` 升序展开，
+  ///   保证注入文本的时间顺序自然。
+  /// - 手动新增/编辑的记忆与自动提取的记忆同等对待。
+  @visibleForTesting
+  static List<MemoryNode> selectBranchMemories({
+    required List<MemoryNode> all,
+    required List<String> pathMessageIds,
+    required int count,
+  }) {
+    if (all.isEmpty) return const [];
+
+    // 节点 id -> 其在当前分支路径中的位置（首次出现优先）。
+    final orderIndex = <String, int>{};
+    for (var i = 0; i < pathMessageIds.length; i++) {
+      orderIndex.putIfAbsent(pathMessageIds[i], () => i);
     }
 
-    // 每个节点内按时间升序排列
+    // 按 branchLeafId 分组，组内按 createdAt 升序排列。
+    final grouped = <String, List<MemoryNode>>{};
+    for (final m in all) {
+      grouped.putIfAbsent(m.branchLeafId, () => <MemoryNode>[]).add(m);
+    }
     for (final list in grouped.values) {
       list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     }
 
-    // 按节点内最新记忆的创建时间升序排列（最早的节点在前）
+    // 节点按分支位置升序（不在路径中的节点索引按 -1 处理，置于最前）。
     final sortedNodes = grouped.values.toList()
-      ..sort((a, b) => a.last.createdAt.compareTo(b.last.createdAt));
+      ..sort(
+        (a, b) => (orderIndex[a.first.branchLeafId] ?? -1)
+            .compareTo(orderIndex[b.first.branchLeafId] ?? -1),
+      );
 
-    // count <= 0 表示无限制，合并所有节点
-    if (count <= 0) {
+    // count <= 0 或节点数不足 count 时取全部。
+    if (count <= 0 || sortedNodes.length <= count) {
       return sortedNodes.expand((e) => e).toList();
     }
 
-    // 节点数不足 count 时直接合并返回
-    if (sortedNodes.length <= count) {
-      return sortedNodes.expand((e) => e).toList();
-    }
-
-    return sortedNodes.take(count).expand((e) => e).toList();
+    // 取最靠近当前叶（索引最大）的 count 个节点，仍按分支顺序输出。
+    final selected = sortedNodes.sublist(sortedNodes.length - count);
+    return selected.expand((e) => e).toList();
   }
 
   Future<bool> tryExtractAndSave({
@@ -283,16 +325,6 @@ class ChatMemoryService {
     return true;
   }
 
-  Future<void> updateMemory({
-    required String memoryId,
-    required String content,
-  }) async {
-    await ChatDatabaseService.instance.updateMemoryContent(
-      memoryId: memoryId,
-      content: content,
-    );
-  }
-
   Future<MemoryNode> addMemory({
     required String sessionId,
     required String branchLeafId,
@@ -319,6 +351,16 @@ class ChatMemoryService {
     required String branchLeafId,
     required List<String> contents,
   }) async {
+    // 编辑不改变"已处理消息水位"：继承该节点既有记忆的 sourceMessageIds 并集，
+    // 避免手动编辑写出的空来源记录使提取计数回退、误触发多余提取。
+    final existing = await ChatDatabaseService.instance.loadBranchMemories(
+      sessionId,
+      [branchLeafId],
+    );
+    final preservedSourceIds = <String>{
+      for (final m in existing) ...m.sourceMessageIds,
+    }.toList();
+
     final now = DateTime.now();
     final toInsert = <MemoryNode>[];
     for (final content in contents) {
@@ -330,6 +372,7 @@ class ChatMemoryService {
           sessionId: sessionId,
           branchLeafId: branchLeafId,
           content: trimmed,
+          sourceMessageIds: preservedSourceIds,
           isUserEdited: true,
           createdAt: now,
           updatedAt: now,
@@ -343,12 +386,36 @@ class ChatMemoryService {
     );
   }
 
-  Future<void> deleteMemory(String memoryId) async {
-    await ChatDatabaseService.instance.deleteMemory(memoryId);
-  }
-
   Future<List<MemoryNode>> loadAllSessionMemories(String sessionId) async {
     return ChatDatabaseService.instance.loadAllSessionMemories(sessionId);
+  }
+
+  /// 从记忆集合还原"已处理消息"水位：所有记忆 `sourceMessageIds` 的并集。
+  ///
+  /// 不能用单条（最新）记忆的来源集合：手动新增/编辑记忆会写出空或单条的
+  /// 来源记录，若以最新一条为准会使水位回退，导致提取计数虚高、误触发提取。
+  @visibleForTesting
+  static Set<String> processedMessageIds(List<MemoryNode> memories) {
+    return <String>{
+      for (final m in memories) ...m.sourceMessageIds,
+    };
+  }
+
+  /// 统计 [allMessages] 中尚未被已处理水位覆盖的角色消息数量。
+  ///
+  /// [branchMemories] 为空时水位为空（全部角色消息都算新增）；否则水位取
+  /// [processedMessageIds] 的并集结果。
+  static int countNewAssistantMessages({
+    required List<ChatMessage> allMessages,
+    required List<MemoryNode> branchMemories,
+  }) {
+    if (branchMemories.isEmpty) {
+      return allMessages.where((m) => !m.isMe).length;
+    }
+    final processedIds = processedMessageIds(branchMemories);
+    return allMessages
+        .where((m) => !m.isMe && m.id != null && !processedIds.contains(m.id))
+        .length;
   }
 
   @visibleForTesting

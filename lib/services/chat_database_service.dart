@@ -772,25 +772,29 @@ class ChatDatabaseService {
       final messageRow = messageRows.first;
       final parentId = messageRow['parent_id'] as String?;
 
-      final placeholders = List.filled(subtreeIds.length, '?').join(',');
-      await tx.delete(
-        'chat_branch_state',
-        where:
-            'parent_message_id IN ($placeholders) OR active_child_message_id IN ($placeholders)',
-        whereArgs: [...subtreeIds, ...subtreeIds],
-      );
+      // 分批删除：长分支的子树 id 可能上千，避免撑爆 SQLite 变量上限；
+      // 仍在同一事务内分批，整体保持原子性。
+      for (final chunk in _chunked(subtreeIds, _sqlInChunkSize)) {
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        await tx.delete(
+          'chat_branch_state',
+          where:
+              'parent_message_id IN ($placeholders) OR active_child_message_id IN ($placeholders)',
+          whereArgs: [...chunk, ...chunk],
+        );
 
-      await tx.delete(
-        'chat_memories',
-        where: 'branch_leaf_id IN ($placeholders)',
-        whereArgs: subtreeIds,
-      );
+        await tx.delete(
+          'chat_memories',
+          where: 'branch_leaf_id IN ($placeholders)',
+          whereArgs: chunk,
+        );
 
-      await tx.delete(
-        'chat_messages',
-        where: 'id IN ($placeholders)',
-        whereArgs: subtreeIds,
-      );
+        await tx.delete(
+          'chat_messages',
+          where: 'id IN ($placeholders)',
+          whereArgs: chunk,
+        );
+      }
 
       final replacementChildId = await _findPreferredChildAfterDelete(
         tx,
@@ -999,14 +1003,21 @@ class ChatDatabaseService {
     List<String> branchLeafIds,
   ) async {
     if (branchLeafIds.isEmpty) return const [];
-    final placeholders = List.filled(branchLeafIds.length, '?').join(',');
-    final rows = await _db.query(
-      'chat_memories',
-      where: 'session_id = ? AND branch_leaf_id IN ($placeholders)',
-      whereArgs: [sessionId, ...branchLeafIds],
-      orderBy: 'created_at DESC',
-    );
-    return rows.map(_memoryFromMap).toList();
+    // 分批查询：长分支的路径 id 可能上千，避免撑爆 SQLite 的变量上限。
+    final memories = <MemoryNode>[];
+    for (final chunk in _chunked(branchLeafIds, _sqlInChunkSize)) {
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await _db.query(
+        'chat_memories',
+        where: 'session_id = ? AND branch_leaf_id IN ($placeholders)',
+        whereArgs: [sessionId, ...chunk],
+        orderBy: 'created_at DESC',
+      );
+      memories.addAll(rows.map(_memoryFromMap));
+    }
+    // 分批后补一次全局排序，保持与单条 IN 查询一致的 created_at 降序语义。
+    memories.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return memories;
   }
 
   Future<List<MemoryNode>> loadAllSessionMemories(String sessionId) async {
@@ -1070,28 +1081,6 @@ class ChatDatabaseService {
         await tx.insert('chat_memories', _memoryToMap(m));
       }
     });
-    _notifyChanged();
-  }
-
-  Future<void> updateMemoryContent({
-    required String memoryId,
-    required String content,
-  }) async {
-    await _db.update(
-      'chat_memories',
-      {
-        'content': content,
-        'is_user_edited': 1,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [memoryId],
-    );
-    _notifyChanged();
-  }
-
-  Future<void> deleteMemory(String memoryId) async {
-    await _db.delete('chat_memories', where: 'id = ?', whereArgs: [memoryId]);
     _notifyChanged();
   }
 
@@ -1612,4 +1601,15 @@ List<String> _sourceMessageIdsFromJson(String json) {
     }
   } catch (_) {}
   return [];
+}
+
+/// SQL `IN (...)` 单批最大占位符数，避免触及 SQLite 变量上限（旧版默认 999）。
+const int _sqlInChunkSize = 500;
+
+/// 把 [items] 按 [size] 切分为多个子列表，用于分批执行超长 `IN (...)` 语句。
+Iterable<List<T>> _chunked<T>(List<T> items, int size) sync* {
+  for (var i = 0; i < items.length; i += size) {
+    final end = i + size < items.length ? i + size : items.length;
+    yield items.sublist(i, end);
+  }
 }

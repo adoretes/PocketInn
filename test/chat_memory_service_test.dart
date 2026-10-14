@@ -2,10 +2,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_inn/models/chat_memory.dart';
 import 'package:pocket_inn/models/chat_message.dart';
 import 'package:pocket_inn/services/chat_memory_service.dart';
+import 'package:pocket_inn/services/chat_variable_service.dart';
 
 ChatMessage _user(String text) => ChatMessage(text: text, isMe: true);
 
 ChatMessage _assistant(String text) => ChatMessage(text: text, isMe: false);
+
+MemoryNode _memory({
+  required String id,
+  required String branchLeafId,
+  required String content,
+  required DateTime createdAt,
+  List<String> sourceMessageIds = const [],
+  bool isUserEdited = false,
+}) {
+  return MemoryNode(
+    id: id,
+    sessionId: 's1',
+    branchLeafId: branchLeafId,
+    content: content,
+    sourceMessageIds: sourceMessageIds,
+    isUserEdited: isUserEdited,
+    createdAt: createdAt,
+    updatedAt: createdAt,
+  );
+}
 
 void main() {
   group('ChatMemoryService.truncateToRecentRounds', () {
@@ -186,6 +207,225 @@ void main() {
       const expectedHeader = '以下是角色记得的关于过去事件的信息：';
       final result = ChatMemoryService.formatMemoryContext(['记忆A', '记忆B']);
       expect(result, '$expectedHeader\n- 记忆A\n- 记忆B');
+    });
+  });
+
+  group('ChatMemoryService.formatMemoryList', () {
+    test('空列表返回空字符串', () {
+      expect(ChatMemoryService.formatMemoryList(<String>[]), '');
+    });
+
+    test('仅渲染条目，不含引导语表头', () {
+      expect(ChatMemoryService.formatMemoryList(['A', 'B']), '- A\n- B');
+    });
+
+    test('formatMemoryContext = 表头 + formatMemoryList', () {
+      const header = '以下是角色记得的关于过去事件的信息：';
+      final list = ChatMemoryService.formatMemoryList(['A', 'B']);
+      expect(
+        ChatMemoryService.formatMemoryContext(['A', 'B']),
+        '$header\n$list',
+      );
+    });
+  });
+
+  group('ChatVariableService {{memory}} 宏', () {
+    PromptMacroState state({required bool withHeader}) => PromptMacroState(
+      characterName: '角色',
+      userName: '用户',
+      memoryContext: const ['记忆A'],
+      memoryContextWithHeader: withHeader,
+    );
+
+    test('memoryContextWithHeader=true 时带引导语表头（主聊天注入）', () {
+      expect(
+        ChatVariableService.resolveMacros(
+          '{{memory}}',
+          state: state(withHeader: true),
+        ),
+        '以下是角色记得的关于过去事件的信息：\n- 记忆A',
+      );
+    });
+
+    test('memoryContextWithHeader=false 时为纯列表（提取场景）', () {
+      expect(
+        ChatVariableService.resolveMacros(
+          '{{memory}}',
+          state: state(withHeader: false),
+        ),
+        '- 记忆A',
+      );
+    });
+  });
+
+  group('ChatMemoryService.selectBranchMemories', () {
+    // 当前分支 根→叶：n1..n5。
+    const path = ['n1', 'n2', 'n3', 'n4', 'n5'];
+    final baseTime = DateTime(2026, 1, 1);
+
+    MemoryNode at(String node, String content, {int minutes = 0}) => _memory(
+      id: '$node-$content',
+      branchLeafId: node,
+      content: content,
+      createdAt: baseTime.add(Duration(minutes: minutes)),
+    );
+
+    test('无记忆返回空列表', () {
+      expect(
+        ChatMemoryService.selectBranchMemories(
+          all: const [],
+          pathMessageIds: path,
+          count: 2,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('count <= 0 视为无限制，返回全部并按分支顺序展开', () {
+      final all = [at('n1', 'a'), at('n5', 'c'), at('n3', 'b')];
+      final result = ChatMemoryService.selectBranchMemories(
+        all: all,
+        pathMessageIds: path,
+        count: 0,
+      );
+      expect(result.map((m) => m.content), ['a', 'b', 'c']);
+    });
+
+    test('节点数 <= count 时返回全部，节点内按 createdAt 升序', () {
+      final all = [
+        at('n3', 'c2', minutes: 5),
+        at('n1', 'a1'),
+        at('n3', 'c1', minutes: 1),
+      ];
+      final result = ChatMemoryService.selectBranchMemories(
+        all: all,
+        pathMessageIds: path,
+        count: 3,
+      );
+      expect(result.map((m) => m.content), ['a1', 'c1', 'c2']);
+    });
+
+    test('节点数 > count 时取最靠近当前叶的 count 个节点', () {
+      final all = [at('n1', 'a'), at('n3', 'c'), at('n5', 'e')];
+      final result = ChatMemoryService.selectBranchMemories(
+        all: all,
+        pathMessageIds: path,
+        count: 2,
+      );
+      // 取 n3、n5（最靠近叶），输出仍按分支顺序。
+      expect(result.map((m) => m.content), ['c', 'e']);
+    });
+
+    test('在最早的节点手动新增记忆不改变节点选取集合', () {
+      final base = [at('n1', 'a'), at('n3', 'c'), at('n5', 'e')];
+      final before = ChatMemoryService.selectBranchMemories(
+        all: base,
+        pathMessageIds: path,
+        count: 2,
+      );
+      expect(before.map((m) => m.branchLeafId).toSet(), {'n3', 'n5'});
+
+      // 模拟在最早的 n1 上手动新增一条"最新"记忆。
+      final edited = [
+        ...base,
+        _memory(
+          id: 'n1-manual',
+          branchLeafId: 'n1',
+          content: '手动',
+          createdAt: baseTime.add(const Duration(days: 30)),
+          isUserEdited: true,
+        ),
+      ];
+      final after = ChatMemoryService.selectBranchMemories(
+        all: edited,
+        pathMessageIds: path,
+        count: 2,
+      );
+      // 选取的节点集合保持不变（不再被 createdAt 扰动）。
+      expect(after.map((m) => m.branchLeafId).toSet(), {'n3', 'n5'});
+    });
+
+    test('路径外节点（异常数据）不抛异常且排在最早', () {
+      final all = [at('nX', 'x'), at('n5', 'e')];
+      final result = ChatMemoryService.selectBranchMemories(
+        all: all,
+        pathMessageIds: path,
+        count: 1,
+      );
+      expect(result.map((m) => m.content), ['e']);
+    });
+  });
+
+  group('ChatMemoryService 提取水位线', () {
+    test('processedMessageIds 返回所有记忆来源的并集', () {
+      final memories = [
+        _memory(
+          id: 'm1',
+          branchLeafId: 'a1',
+          content: 'x',
+          createdAt: DateTime(2026),
+          sourceMessageIds: const ['a', 'b'],
+        ),
+        _memory(
+          id: 'm2',
+          branchLeafId: 'a2',
+          content: 'y',
+          createdAt: DateTime(2026, 1, 2),
+          sourceMessageIds: const ['b', 'c'],
+        ),
+      ];
+      expect(ChatMemoryService.processedMessageIds(memories), {'a', 'b', 'c'});
+    });
+
+    test('无记忆时统计全部角色消息', () {
+      final all = [
+        ChatMessage(id: 'u1', text: 'u1', isMe: true),
+        ChatMessage(id: 'a1', text: 'a1', isMe: false),
+        ChatMessage(id: 'u2', text: 'u2', isMe: true),
+        ChatMessage(id: 'a2', text: 'a2', isMe: false),
+      ];
+      expect(
+        ChatMemoryService.countNewAssistantMessages(
+          allMessages: all,
+          branchMemories: const [],
+        ),
+        2,
+      );
+    });
+
+    test('手动编辑写出的空来源记忆不回退水位', () {
+      final all = [
+        ChatMessage(id: 'u1', text: 'u1', isMe: true),
+        ChatMessage(id: 'a1', text: 'a1', isMe: false),
+        ChatMessage(id: 'u2', text: 'u2', isMe: true),
+        ChatMessage(id: 'a2', text: 'a2', isMe: false),
+      ];
+      final memories = [
+        // 手动编辑产生的最新记忆，来源为空（不能作为水位依据）。
+        _memory(
+          id: 'm-edit',
+          branchLeafId: 'a1',
+          content: 'edited',
+          createdAt: DateTime(2026, 5, 1),
+          isUserEdited: true,
+        ),
+        // 自动提取的原始记忆，覆盖 u1/a1。
+        _memory(
+          id: 'm-auto',
+          branchLeafId: 'a1',
+          content: 'auto',
+          createdAt: DateTime(2026),
+          sourceMessageIds: const ['u1', 'a1'],
+        ),
+      ];
+      // 并集水位 = {u1, a1}，仅 a2 属于新增。
+      expect(
+        ChatMemoryService.countNewAssistantMessages(
+          allMessages: all,
+          branchMemories: memories,
+        ),
+        1,
+      );
     });
   });
 }

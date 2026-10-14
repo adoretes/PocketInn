@@ -122,11 +122,14 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     for (var i = 0; i < nodes.length; i++) {
       orderIndex[nodes[i].id] = i;
     }
-    void sortChildren(_TreeNode n) {
-      n.children.sort((a, b) =>
-          (orderIndex[a.id] ?? 0).compareTo(orderIndex[b.id] ?? 0));
-      for (final c in n.children) {
-        sortChildren(c);
+    // 迭代遍历（显式栈）：超长分支下避免递归栈溢出。
+    void sortChildren(_TreeNode root) {
+      final stack = <_TreeNode>[root];
+      while (stack.isNotEmpty) {
+        final n = stack.removeLast();
+        n.children.sort((a, b) =>
+            (orderIndex[a.id] ?? 0).compareTo(orderIndex[b.id] ?? 0));
+        stack.addAll(n.children);
       }
     }
 
@@ -150,18 +153,24 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     // 上方分支在 Y 轴结束后释放该轨道，供下方分支复用（Skyline 轮廓压缩）。
     final isMain = <String, bool>{for (final id in activeIds) id: true};
 
-    void assignDepth(_TreeNode n, int depth) {
-      n.depth = depth;
-      for (final c in n.children) {
-        assignDepth(c, depth + 1);
+    void assignDepth(_TreeNode root, int depth) {
+      final stack = <(int, _TreeNode)>[(depth, root)];
+      while (stack.isNotEmpty) {
+        final (d, n) = stack.removeLast();
+        n.depth = d;
+        for (final c in n.children) {
+          stack.add((d + 1, c));
+        }
       }
     }
 
-    int maxDepthOf(_TreeNode n) {
-      var max = n.depth;
-      for (final c in n.children) {
-        final d = maxDepthOf(c);
-        if (d > max) max = d;
+    int maxDepthOf(_TreeNode root) {
+      var max = root.depth;
+      final stack = <_TreeNode>[root];
+      while (stack.isNotEmpty) {
+        final n = stack.removeLast();
+        if (n.depth > max) max = n.depth;
+        stack.addAll(n.children);
       }
       return max;
     }
@@ -209,15 +218,17 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
 
       final sideStarts = <_TreeNode>[];
       final sideStartParent = <_TreeNode, _TreeNode>{};
-      void collectSideStarts(_TreeNode n) {
-        for (final c in n.children) {
-          if (c != n.primaryChild) {
-            sideStarts.add(c);
-            sideStartParent[c] = n;
+      void collectSideStarts(_TreeNode root) {
+        final stack = <_TreeNode>[root];
+        while (stack.isNotEmpty) {
+          final n = stack.removeLast();
+          for (final c in n.children) {
+            if (c != n.primaryChild) {
+              sideStarts.add(c);
+              sideStartParent[c] = n;
+            }
+            stack.add(c);
           }
-        }
-        for (final c in n.children) {
-          collectSideStarts(c);
         }
       }
 
@@ -267,11 +278,13 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
 
       final maxLane = laneEnd.length - 1;
 
-      void assignPos(_TreeNode n) {
-        n.x = _padding + n.lane * _laneSpacing;
-        n.y = _padding + n.depth * _rowSpacing;
-        for (final c in n.children) {
-          assignPos(c);
+      void assignPos(_TreeNode root) {
+        final stack = <_TreeNode>[root];
+        while (stack.isNotEmpty) {
+          final n = stack.removeLast();
+          n.x = _padding + n.lane * _laneSpacing;
+          n.y = _padding + n.depth * _rowSpacing;
+          stack.addAll(n.children);
         }
       }
 
@@ -286,10 +299,12 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
     // 选择默认 tab：包含 activeLeafMessageId 的根；否则 0。
     var defaultIndex = 0;
     if (widget.activeLeafMessageId != null) {
-      bool contains(_TreeNode n, String id) {
-        if (n.id == id) return true;
-        for (final c in n.children) {
-          if (contains(c, id)) return true;
+      bool contains(_TreeNode root, String id) {
+        final stack = <_TreeNode>[root];
+        while (stack.isNotEmpty) {
+          final n = stack.removeLast();
+          if (n.id == id) return true;
+          stack.addAll(n.children);
         }
         return false;
       }
@@ -1165,10 +1180,15 @@ class _MemoryTreeStack extends StatelessWidget {
   final bool Function(_TreeNode parent, _TreeNode child) isEdgeActive;
   final bool Function(_TreeNode) isNodeActive;
 
-  void _flatten(_TreeNode n, List<_TreeNode> out) {
-    out.add(n);
-    for (final c in n.children) {
-      _flatten(c, out);
+  void _flatten(_TreeNode root, List<_TreeNode> out) {
+    // 迭代前序遍历（子节点逆序入栈，出栈即按原顺序），保持与递归一致的顺序。
+    final stack = <_TreeNode>[root];
+    while (stack.isNotEmpty) {
+      final n = stack.removeLast();
+      out.add(n);
+      for (var i = n.children.length - 1; i >= 0; i--) {
+        stack.add(n.children[i]);
+      }
     }
   }
 
@@ -1358,10 +1378,17 @@ class _TreeEdgePainter extends CustomPainter {
       }
     }
 
-    void walk(_TreeNode n) {
-      for (final c in n.children) {
-        drawEdge(n, c);
-        walk(c);
+    // 迭代前序遍历：出栈即画到父节点的连线，保持与递归一致的绘制顺序。
+    void walk(_TreeNode root) {
+      final stack = <(_TreeNode?, _TreeNode)>[(null, root)];
+      while (stack.isNotEmpty) {
+        final (parent, n) = stack.removeLast();
+        if (parent != null) {
+          drawEdge(parent, n);
+        }
+        for (var i = n.children.length - 1; i >= 0; i--) {
+          stack.add((n, n.children[i]));
+        }
       }
     }
 
