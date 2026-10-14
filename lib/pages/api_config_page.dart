@@ -184,12 +184,25 @@ class _OpenAICompatibleConfigPageState
       return;
     }
 
+    // 选择要测试的模型：仅有一个模型时直接使用，多个模型时弹窗让用户选择。
+    ApiModel targetModel;
+    if (draft.models.length == 1) {
+      targetModel = draft.models.first;
+    } else {
+      final selectedId = await showDialog<String>(
+        context: context,
+        builder: (_) => _TestModelDialog(models: draft.models),
+      );
+      if (selectedId == null || !mounted) return;
+      targetModel = draft.models.firstWhere((m) => m.id == selectedId);
+    }
+
     setState(() {
       _testingIds.add(item.id);
     });
     try {
       final result = await OpenAICompatibleApiService.instance.testConnection(
-        draft.resolveFirstOrEmpty(),
+        draft.resolve(targetModel),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -983,6 +996,77 @@ class _FetchModelsDialogState extends State<_FetchModelsDialog> {
                   : null,
               visualDensity: VisualDensity.compact,
             ),
+      ],
+    );
+  }
+}
+
+/// 测试连接时选择要测试的模型（单选）。
+class _TestModelDialog extends StatefulWidget {
+  final List<ApiModel> models;
+
+  const _TestModelDialog({required this.models});
+
+  @override
+  State<_TestModelDialog> createState() => _TestModelDialogState();
+}
+
+class _TestModelDialogState extends State<_TestModelDialog> {
+  String? _selectedId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.models.isNotEmpty) {
+      _selectedId = widget.models.first.id;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('选择测试模型'),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.85,
+        height: MediaQuery.of(context).size.height * 0.5,
+        child: ListView(
+          children: [
+            for (final m in widget.models)
+              ListTile(
+                onTap: () => setState(() => _selectedId = m.id),
+                selected: _selectedId == m.id,
+                dense: true,
+                contentPadding: const EdgeInsets.only(left: 4, right: 8),
+                visualDensity: VisualDensity.compact,
+                leading: Icon(
+                  _selectedId == m.id
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 20,
+                ),
+                title: Text(
+                  m.modelId.trim().isEmpty ? '(未填写 Model ID)' : m.modelId,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: m.modelId.trim().isEmpty ? null : 'monospace',
+                    color: m.modelId.trim().isEmpty ? Colors.grey[500] : null,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _selectedId == null
+              ? null
+              : () => Navigator.of(context).pop(_selectedId),
+          child: const Text('测试'),
+        ),
       ],
     );
   }
