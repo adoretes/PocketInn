@@ -72,6 +72,20 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.8',
+                  date: '2026-10-14',
+                  changes: [
+                    '新增自定义请求头配置功能',
+                    '完善自定义请求体配置与弹窗',
+                    '重构聊天页选择菜单为底部抽屉与流式胶囊布局',
+                    '新增用户设定创建功能',
+                    '优化消息气泡浮窗位置计算，确保在可视区内显示',
+                    '优化会话列表加载机制，新增缓存数据快照',
+                    '优化树节点处理逻辑，增强记忆提取的分批查询与删除',
+                    '完善 API 配置卡片测试按钮',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.7',
                   date: '2026-10-09',
                   changes: [
