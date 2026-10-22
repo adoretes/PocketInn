@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
@@ -9,8 +7,10 @@ import '../models/chat_session.dart';
 import '../services/chat_database_service.dart';
 import '../services/chat_sidebar_service.dart';
 import '../services/character_service.dart';
+import '../widgets/role_avatar.dart';
 import 'char_edit_page.dart';
 import 'char_list_page.dart';
+import 'chat/widgets/role_filter_menu.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
 import 'user_settings_page.dart';
@@ -189,42 +189,25 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
   }
 
   Future<void> _showRoleMenu(
-    BuildContext targetContext,
+    BuildContext anchorContext,
     List<ChatSidebarRole> roles,
   ) async {
-    final RenderBox button = targetContext.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Overlay.of(targetContext).context.findRenderObject() as RenderBox;
-
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(
-          button.size.bottomRight(Offset.zero),
-          ancestor: overlay,
-        ),
-      ),
-      Offset.zero & overlay.size,
-    );
-
-    final selected = await showMenu<ChatSidebarRole>(
-      context: targetContext,
-      position: position,
-      items: roles
-          .map(
-            (role) => PopupMenuItem<ChatSidebarRole>(
-              value: role,
-              child: Text(role.name),
-            ),
-          )
-          .toList(),
-    );
-
-    if (selected != null && mounted) {
-      setState(() {
-        _selectedCharacterId = selected.id;
-      });
+    if (roles.isEmpty) {
+      return;
     }
+
+    final selected = await showRoleFilterMenu(
+      anchorContext: anchorContext,
+      roles: roles,
+      selectedId: _selectedCharacterId,
+    );
+
+    if (!mounted || selected == null) {
+      return;
+    }
+    setState(() {
+      _selectedCharacterId = selected.id;
+    });
   }
 
   @override
@@ -395,7 +378,7 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                                     selected: isActive,
                                     leading: GestureDetector(
                                       onTap: () => _onChatAvatarTap(item.characterId),
-                                      child: _RoleAvatar(
+                                      child: RoleAvatar(
                                         imagePath: item.imagePath,
                                         fallbackText: item.avatarText,
                                         radius: 20,
@@ -426,45 +409,20 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                       ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
                 child: Row(
                   children: [
-                    GestureDetector(
-                      onTap: () => _onAvatarTap(selectedRole),
-                      child: _RoleAvatar(
-                        imagePath: selectedRole.imagePath,
-                        fallbackText: selectedRole.avatarText,
-                        radius: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: Builder(
-                        builder: (menuContext) => GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => _showRoleMenu(menuContext, data.roles),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  selectedRole.name,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              const Icon(Icons.arrow_drop_down),
-                            ],
-                          ),
+                        builder: (anchorContext) => _RoleFilterTrigger(
+                          role: selectedRole,
+                          onTap: () =>
+                              _showRoleMenu(anchorContext, data.roles),
+                          onAvatarTap: () => _onAvatarTap(selectedRole),
                         ),
                       ),
                     ),
+                    const SizedBox(width: 4),
                     IconButton(
                       icon: const Icon(Icons.people_alt_outlined),
                       onPressed: () {
@@ -514,40 +472,56 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
   }
 }
 
-class _RoleAvatar extends StatelessWidget {
-  const _RoleAvatar({
-    required this.fallbackText,
-    required this.radius,
-    this.imagePath,
+/// 抽屉底部的角色筛选触发卡片，视觉与设置页的「颜色模式 / 预设主题」一致。
+class _RoleFilterTrigger extends StatelessWidget {
+  const _RoleFilterTrigger({
+    required this.role,
+    required this.onTap,
+    required this.onAvatarTap,
   });
 
-  final String fallbackText;
-  final double radius;
-  final String? imagePath;
+  final ChatSidebarRole role;
+  final VoidCallback onTap;
+  final VoidCallback onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
-    final path = imagePath;
-    if (path == null || path.isEmpty) {
-      return CircleAvatar(radius: radius, child: Text(fallbackText));
-    }
+    final colorScheme = Theme.of(context).colorScheme;
 
-    final imageProvider = path.startsWith('assets/')
-        ? AssetImage(path) as ImageProvider
-        : FileImage(File(path));
-
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: ClipOval(
-        child: Image(
-          image: imageProvider,
-          width: radius * 2,
-          height: radius * 2,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Center(child: Text(fallbackText));
-          },
+    return Material(
+      // 与抽屉上方的卡片一致：用底色区分层次，不描边。
+      color: colorScheme.primaryContainer.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 8, 6),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: onAvatarTap,
+                child: RoleAvatar(
+                  imagePath: role.imagePath,
+                  fallbackText: role.avatarText,
+                  radius: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  role.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
