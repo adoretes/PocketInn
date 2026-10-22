@@ -26,8 +26,6 @@ class ChatSidebarPage extends StatefulWidget {
 }
 
 class _ChatSidebarPageState extends State<ChatSidebarPage> {
-  String? _selectedCharacterId;
-
   ChatSidebarService get _sidebarService => ChatSidebarService.instance;
 
   @override
@@ -167,25 +165,20 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
     setState(() {});
   }
 
-  Future<void> _onAvatarTap(ChatSidebarRole selectedRole) async {
+  /// 触发卡片上的头像点击：只有“单选一个真实角色”才有明确的编辑目标，
+  /// 其余情况（全部角色 / 多选 / 角色卡已删除）统一进角色列表页。
+  Future<void> _onAvatarTap(List<ChatSidebarRole> selectedRoles) async {
     final navigator = Navigator.of(context);
     navigator.pop();
 
-    if (selectedRole.id == null) {
-      await navigator.push(
-        MaterialPageRoute(builder: (context) => const CharListPage()),
-      );
+    if (selectedRoles.length == 1 && selectedRoles.single.isRealCharacter) {
+      await _openCharacterEditor(selectedRoles.single.id!);
       return;
     }
 
-    if (!selectedRole.isRealCharacter) {
-      await navigator.push(
-        MaterialPageRoute(builder: (context) => const CharListPage()),
-      );
-      return;
-    }
-
-    await _openCharacterEditor(selectedRole.id!);
+    await navigator.push(
+      MaterialPageRoute(builder: (context) => const CharListPage()),
+    );
   }
 
   Future<void> _showRoleMenu(
@@ -196,41 +189,44 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
       return;
     }
 
-    final selected = await showRoleFilterMenu(
+    // 面板每次切换都会把集合回写 service，所以这里不需要接收返回值：
+    // 筛选条件由 service 持有，抽屉关闭重建后依然有效。
+    await showRoleFilterMenu(
       anchorContext: anchorContext,
       roles: roles,
-      selectedId: _selectedCharacterId,
+      selectedIds: _sidebarService.selectedRoleIdsNotifier.value,
+      onSelectionChanged: _sidebarService.setSelectedRoleIds,
     );
-
-    if (!mounted || selected == null) {
-      return;
-    }
-    setState(() {
-      _selectedCharacterId = selected.id;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ValueListenableBuilder<ChatSidebarData?>(
-        valueListenable: _sidebarService.dataNotifier,
-        builder: (context, data, _) {
+      // 同时监听数据快照与选中集合：切换筛选只重建列表，不重读数据源。
+      body: ListenableBuilder(
+        listenable: Listenable.merge([
+          _sidebarService.dataNotifier,
+          _sidebarService.selectedRoleIdsNotifier,
+        ]),
+        builder: (context, _) {
+          final data = _sidebarService.dataNotifier.value;
+          final selectedIds = _sidebarService.selectedRoleIdsNotifier.value;
           if (data == null) {
             // 只有首次打开、快照还没取到时才短暂出现。
             return const Center(child: CircularProgressIndicator());
           }
 
-          final selectedRole = data.roles.firstWhere(
-            (role) => role.id == _selectedCharacterId,
-            orElse: () => data.roles.first,
-          );
-          final filteredChats = _selectedCharacterId == null
+          // 按面板中的顺序取出选中角色，供触发卡片展示。
+          final selectedRoles = [
+            for (final role in data.roles)
+              if (role.id != null && selectedIds.contains(role.id)) role,
+          ];
+          // 空集等价于“全部角色”，否则取所选角色会话的并集。
+          final filteredChats = selectedIds.isEmpty
               ? data.chats
               : data.chats
                     .where(
-                      (item) =>
-                          item.summary.characterId == _selectedCharacterId,
+                      (item) => selectedIds.contains(item.summary.characterId),
                     )
                     .toList();
 
@@ -325,7 +321,9 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                 child: filteredChats.isEmpty
                     ? Center(
                         child: Text(
-                          '暂无聊天记录',
+                          selectedIds.isEmpty
+                              ? '暂无聊天记录'
+                              : '所选角色暂无聊天记录',
                           style: TextStyle(color: Colors.grey[600]),
                         ),
                       )
@@ -415,10 +413,10 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
                     Expanded(
                       child: Builder(
                         builder: (anchorContext) => _RoleFilterTrigger(
-                          role: selectedRole,
+                          roles: selectedRoles,
                           onTap: () =>
                               _showRoleMenu(anchorContext, data.roles),
-                          onAvatarTap: () => _onAvatarTap(selectedRole),
+                          onAvatarTap: () => _onAvatarTap(selectedRoles),
                         ),
                       ),
                     ),
@@ -473,20 +471,38 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
 }
 
 /// 抽屉底部的角色筛选触发卡片，视觉与设置页的「颜色模式 / 预设主题」一致。
+///
+/// 未筛选显示“全部角色”，单选显示该角色头像与名称，多选显示首个角色头像
+/// 加“已选 N 个角色”，避免窄卡片里塞下一长串名字。
 class _RoleFilterTrigger extends StatelessWidget {
   const _RoleFilterTrigger({
-    required this.role,
+    required this.roles,
     required this.onTap,
     required this.onAvatarTap,
   });
 
-  final ChatSidebarRole role;
+  /// 当前选中的角色（按面板中的顺序）；空表示“全部角色”。
+  final List<ChatSidebarRole> roles;
   final VoidCallback onTap;
   final VoidCallback onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final primary = roles.isEmpty ? null : roles.first;
+
+    final String label;
+    final String avatarText;
+    final String? imagePath;
+    if (primary == null) {
+      label = '全部角色';
+      avatarText = '全';
+      imagePath = null;
+    } else {
+      label = roles.length == 1 ? primary.name : '已选 ${roles.length} 个角色';
+      avatarText = primary.avatarText;
+      imagePath = primary.imagePath;
+    }
 
     return Material(
       // 与抽屉上方的卡片一致：用底色区分层次，不描边。
@@ -502,15 +518,16 @@ class _RoleFilterTrigger extends StatelessWidget {
               GestureDetector(
                 onTap: onAvatarTap,
                 child: RoleAvatar(
-                  imagePath: role.imagePath,
-                  fallbackText: role.avatarText,
+                  imagePath: imagePath,
+                  fallbackText: avatarText,
                   radius: 18,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  role.name,
+                  label,
+                  key: const Key('role-filter-trigger-label'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

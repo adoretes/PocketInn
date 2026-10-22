@@ -8,7 +8,8 @@ import 'chat_database_service.dart';
 class ChatSidebarData {
   const ChatSidebarData({required this.roles, required this.chats});
 
-  /// 角色下拉筛选项，首项固定为“全部角色”（[ChatSidebarRole.id] 为 null）。
+  /// 角色筛选项，只包含确实存在会话的角色，首项固定为“全部角色”
+  /// （[ChatSidebarRole.id] 为 null，点击即清空筛选）。
   final List<ChatSidebarRole> roles;
 
   /// 全部会话摘要（未按角色过滤，过滤由界面完成）。
@@ -69,6 +70,25 @@ class ChatSidebarService {
   final ValueNotifier<ChatSidebarData?> dataNotifier =
       ValueNotifier<ChatSidebarData?>(null);
 
+  /// 当前选中的角色 id 集合；空集表示“全部角色”。
+  ///
+  /// 放在 service 而不是 `ChatSidebarPage` 的 State 里：抽屉关闭时
+  /// `DrawerController` 会把内容整棵移出 widget 树，State 随之销毁，
+  /// 留在 State 里的筛选条件每次重开抽屉都会悄悄回到“全部角色”。
+  /// 只在内存里保存，重启应用后自然重置，不需要落盘。
+  final ValueNotifier<Set<String>> selectedRoleIdsNotifier =
+      ValueNotifier<Set<String>>(const <String>{});
+
+  /// 写入选中集合；与当前值相同时不广播，避免无意义的整页重建。
+  void setSelectedRoleIds(Set<String> ids) {
+    final next = Set<String>.unmodifiable(ids);
+    final current = selectedRoleIdsNotifier.value;
+    if (current.length == next.length && current.containsAll(next)) {
+      return;
+    }
+    selectedRoleIdsNotifier.value = next;
+  }
+
   /// 数据源（会话库或角色索引）在上次读取后是否已变化。
   bool _stale = true;
   Future<void>? _inFlight;
@@ -109,12 +129,27 @@ class ChatSidebarService {
     try {
       final data = await _load();
       dataNotifier.value = data;
+      _pruneSelection(data);
       _stale = false;
     } catch (error, stackTrace) {
       // 失败时保留旧快照，标记过期以便下次再试。
       _stale = true;
       debugPrint('ChatSidebarService 加载失败: $error\n$stackTrace');
     }
+  }
+
+  /// 会话或角色被删除后，选中集合里可能残留已不存在的角色 id；
+  /// 不清理会让触发卡片显示一个筛不出任何会话的角色。
+  void _pruneSelection(ChatSidebarData data) {
+    final available = <String>{
+      for (final role in data.roles)
+        if (role.id != null) role.id!,
+    };
+    final current = selectedRoleIdsNotifier.value;
+    if (current.every(available.contains)) {
+      return;
+    }
+    setSelectedRoleIds(current.where(available.contains).toSet());
   }
 
   Future<ChatSidebarData> _load() async {
@@ -126,19 +161,9 @@ class ChatSidebarService {
       for (final character in characters) character.id: character,
     };
 
+    // 筛选项只收录“确有会话”的角色：角色索引里的其他角色卡从未聊过天，
+    // 选中它们只会得到空列表，没必要出现在面板里。
     final roleMap = <String, ChatSidebarRole>{};
-    for (final character in characters) {
-      final name = character.name.isNotEmpty ? character.name : '未命名角色';
-      final thumbnail = character.thumbnailPath;
-      roleMap[character.id] = ChatSidebarRole(
-        id: character.id,
-        name: name,
-        avatarText: name.isNotEmpty ? name[0] : '?',
-        imagePath: thumbnail.isNotEmpty ? thumbnail : null,
-        isRealCharacter: true,
-      );
-    }
-
     final entries = <ChatSidebarEntry>[];
     for (final summary in summaries) {
       final character = characterById[summary.characterId];

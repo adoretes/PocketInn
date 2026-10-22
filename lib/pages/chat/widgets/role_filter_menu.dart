@@ -16,14 +16,17 @@ const double _menuMinHeight = 120;
 ///
 /// 视觉与设置页的「颜色模式 / 预设主题」卡片保持一致：
 /// `surfaceContainerLow` 底色 + 20 圆角 + `outlineVariant` 细描边。
-/// 选中条目通过 `Navigator.pop` 返回，取消则返回 null。
-Future<ChatSidebarRole?> showRoleFilterMenu({
+///
+/// 面板支持多选：点击条目只切换选中状态并通过 [onSelectionChanged] 立即回写，
+/// 不关闭面板；点面板外关闭。「全部角色」用于一键清空筛选。
+Future<void> showRoleFilterMenu({
   required BuildContext anchorContext,
   required List<ChatSidebarRole> roles,
-  required String? selectedId,
+  required Set<String> selectedIds,
+  required ValueChanged<Set<String>> onSelectionChanged,
 }) {
   if (roles.isEmpty) {
-    return Future<ChatSidebarRole?>.value();
+    return Future<void>.value();
   }
 
   final anchorBox = anchorContext.findRenderObject() as RenderBox?;
@@ -33,7 +36,7 @@ Future<ChatSidebarRole?> showRoleFilterMenu({
       overlayBox == null ||
       !anchorBox.hasSize ||
       !overlayBox.hasSize) {
-    return Future<ChatSidebarRole?>.value();
+    return Future<void>.value();
   }
 
   // 以根 Overlay 为坐标系，与 useRootNavigator 的浮层保持一致。
@@ -64,7 +67,7 @@ Future<ChatSidebarRole?> showRoleFilterMenu({
   final height = math.min(_menuMaxHeight, math.max(_menuMinHeight, available));
   final top = math.max(_screenMargin, anchorRect.top - _menuGap - height);
 
-  return showGeneralDialog<ChatSidebarRole>(
+  return showGeneralDialog<void>(
     context: anchorContext,
     useRootNavigator: true,
     barrierDismissible: true,
@@ -80,7 +83,8 @@ Future<ChatSidebarRole?> showRoleFilterMenu({
             width: width,
             child: _RoleFilterPanel(
               roles: roles,
-              selectedId: selectedId,
+              selectedIds: selectedIds,
+              onSelectionChanged: onSelectionChanged,
               maxHeight: height,
             ),
           ),
@@ -109,12 +113,14 @@ Future<ChatSidebarRole?> showRoleFilterMenu({
 class _RoleFilterPanel extends StatefulWidget {
   const _RoleFilterPanel({
     required this.roles,
-    required this.selectedId,
+    required this.selectedIds,
+    required this.onSelectionChanged,
     required this.maxHeight,
   });
 
   final List<ChatSidebarRole> roles;
-  final String? selectedId;
+  final Set<String> selectedIds;
+  final ValueChanged<Set<String>> onSelectionChanged;
   final double maxHeight;
 
   @override
@@ -124,10 +130,13 @@ class _RoleFilterPanel extends StatefulWidget {
 class _RoleFilterPanelState extends State<_RoleFilterPanel> {
   final GlobalKey _initialFocusKey = GlobalKey();
 
+  /// 面板内的选中集合，只服务本层即时渲染；真源始终是 service 里的集合。
+  late Set<String> _selectedIds = Set<String>.of(widget.selectedIds);
+
   @override
   void initState() {
     super.initState();
-    // 角色较多时把当前选中项滚到面板中部，避免默认停在顶部。
+    // 角色较多时把首个选中项滚到面板中部，避免默认停在顶部。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final targetContext = _initialFocusKey.currentContext;
       if (targetContext == null || !mounted) {
@@ -142,13 +151,56 @@ class _RoleFilterPanelState extends State<_RoleFilterPanel> {
     });
   }
 
+  /// 点击未选中的角色是单选：直接替换选中项并关闭面板，保持“选完就走”的习惯；
+  /// 点击已选中的角色只把它取消掉（面板不关），取消不该比选中更费力。
+  void _handleTap(ChatSidebarRole role) {
+    final id = role.id;
+    if (id != null && _selectedIds.contains(id)) {
+      _applySelection(Set<String>.of(_selectedIds)..remove(id));
+      return;
+    }
+    _applySelection(id == null ? const <String>{} : <String>{id});
+    Navigator.of(context).pop();
+  }
+
+  /// 长按是多选：切换该项的选中状态并保持面板打开，方便连续勾选多个角色。
+  void _handleLongPress(ChatSidebarRole role) {
+    final id = role.id;
+    final next = Set<String>.of(_selectedIds);
+    if (id == null) {
+      next.clear();
+    } else if (!next.remove(id)) {
+      next.add(id);
+    }
+    _applySelection(next);
+  }
+
+  void _applySelection(Set<String> next) {
+    // 集合没变就不麻烦 service，避免整页无意义重建。
+    if (next.length == _selectedIds.length && next.containsAll(_selectedIds)) {
+      return;
+    }
+    setState(() {
+      _selectedIds = next;
+    });
+    widget.onSelectionChanged(Set<String>.unmodifiable(next));
+  }
+
+  bool _isSelected(ChatSidebarRole role) {
+    final id = role.id;
+    // 空集等价于“全部角色”，此时高亮首项表达“当前未筛选”。
+    return id == null ? _selectedIds.isEmpty : _selectedIds.contains(id);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final selectedIndex = widget.roles.indexWhere(
-      (role) => role.id == widget.selectedId,
+    // 首项固定为“全部角色”，钉在面板顶部，不随下方列表滚动。
+    final allRole = widget.roles.first;
+    final scrollRoles = widget.roles.skip(1).toList();
+    final focusIndex = scrollRoles.indexWhere(
+      (role) => _selectedIds.contains(role.id),
     );
-    final focusIndex = selectedIndex < 0 ? 0 : selectedIndex;
 
     return Material(
       key: const Key('role-filter-panel'),
@@ -165,25 +217,50 @@ class _RoleFilterPanelState extends State<_RoleFilterPanel> {
           padding: const EdgeInsets.all(8),
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: widget.maxHeight - 16),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var index = 0; index < widget.roles.length; index++)
-                    Padding(
-                      padding: EdgeInsets.only(
-                        bottom: index == widget.roles.length - 1 ? 0 : 2,
-                      ),
-                      child: _RoleFilterItem(
-                        key: index == focusIndex ? _initialFocusKey : null,
-                        role: widget.roles[index],
-                        selected: index == selectedIndex,
-                        onTap: () =>
-                            Navigator.of(context).pop(widget.roles[index]),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _RoleFilterItem(
+                  role: allRole,
+                  selected: _isSelected(allRole),
+                  onTap: () => _handleTap(allRole),
+                  onLongPress: () => _handleLongPress(allRole),
+                ),
+                if (scrollRoles.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (
+                            var index = 0;
+                            index < scrollRoles.length;
+                            index++
+                          )
+                            Padding(
+                              padding: EdgeInsets.only(
+                                bottom: index == scrollRoles.length - 1
+                                    ? 0
+                                    : 2,
+                              ),
+                              child: _RoleFilterItem(
+                                key: index == focusIndex
+                                    ? _initialFocusKey
+                                    : null,
+                                role: scrollRoles[index],
+                                selected: _isSelected(scrollRoles[index]),
+                                onTap: () => _handleTap(scrollRoles[index]),
+                                onLongPress: () =>
+                                    _handleLongPress(scrollRoles[index]),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         ),
@@ -198,11 +275,13 @@ class _RoleFilterItem extends StatelessWidget {
     required this.role,
     required this.selected,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final ChatSidebarRole role;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +295,7 @@ class _RoleFilterItem extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(_itemRadius),
         child: Container(
           constraints: const BoxConstraints(minHeight: 44),
