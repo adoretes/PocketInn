@@ -44,34 +44,34 @@ void main() {
   });
 
   group('ChatMarkdownBody quote syntax', () {
-    test('matches Chinese curly double quotes', () {
-      final tags = _elementTags(_parseChatMarkdown('“你好”'));
-      expect(tags, contains('pinn_quote'));
+    test('matches all double quote variants', () {
+      const inputs = [
+        '“你好”', // 中文弯引号
+        '「你好」', // 直角引号
+        '『你好』', // 双直角引号
+        'She said "hello" to me', // ASCII 引号（不与单词字符相邻）
+      ];
+      for (final input in inputs) {
+        expect(
+          _elementTags(_parseChatMarkdown(input)),
+          contains('pinn_quote'),
+          reason: input,
+        );
+      }
     });
 
-    test('matches corner quotes', () {
-      final tags = _elementTags(_parseChatMarkdown('「你好」'));
-      expect(tags, contains('pinn_quote'));
-    });
-
-    test('matches double corner quotes', () {
-      final tags = _elementTags(_parseChatMarkdown('『你好』'));
-      expect(tags, contains('pinn_quote'));
-    });
-
-    test('matches ASCII double quotes not adjacent to word characters', () {
-      final tags = _elementTags(_parseChatMarkdown('She said "hello" to me'));
-      expect(tags, contains('pinn_quote'));
-    });
-
-    test('matches Unicode single quotes', () {
-      final tags = _elementTags(_parseChatMarkdown('\u2018\u4f60\u597d\u2019'));
-      expect(tags, contains('pinn_single_quote'));
-    });
-
-    test('matches ASCII single quotes not adjacent to word characters', () {
-      final tags = _elementTags(_parseChatMarkdown("He said 'hello' to me"));
-      expect(tags, contains('pinn_single_quote'));
+    test('matches Unicode and ASCII single quotes', () {
+      const inputs = [
+        '\u2018\u4f60\u597d\u2019',
+        "He said 'hello' to me",
+      ];
+      for (final input in inputs) {
+        expect(
+          _elementTags(_parseChatMarkdown(input)),
+          contains('pinn_single_quote'),
+          reason: input,
+        );
+      }
     });
 
     test('does not match quotes inside code spans', () {
@@ -84,24 +84,15 @@ void main() {
   });
 
   group('ChatMarkdownBody bracket syntax', () {
-    test('matches fullwidth parentheses', () {
-      final tags = _elementTags(_parseChatMarkdown('（旁白）'));
-      expect(tags, contains('pinn_bracket'));
-    });
-
-    test('matches ASCII parentheses', () {
-      final tags = _elementTags(_parseChatMarkdown('(aside)'));
-      expect(tags, contains('pinn_bracket'));
-    });
-
-    test('matches fullwidth square brackets', () {
-      final tags = _elementTags(_parseChatMarkdown('【动作】'));
-      expect(tags, contains('pinn_bracket'));
-    });
-
-    test('matches ASCII square brackets', () {
-      final tags = _elementTags(_parseChatMarkdown('[action]'));
-      expect(tags, contains('pinn_bracket'));
+    test('matches fullwidth and ASCII brackets', () {
+      const inputs = ['（旁白）', '(aside)', '【动作】', '[action]'];
+      for (final input in inputs) {
+        expect(
+          _elementTags(_parseChatMarkdown(input)),
+          contains('pinn_bracket'),
+          reason: input,
+        );
+      }
     });
 
     test('does not match brackets inside code spans', () {

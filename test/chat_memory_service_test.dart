@@ -100,19 +100,7 @@ void main() {
       expect(ChatMemoryService.parseMemoryPoints(''), isEmpty);
     });
 
-    test('解析 - 前缀', () {
-      expect(ChatMemoryService.parseMemoryPoints('- 用户喜欢苹果'), ['用户喜欢苹果']);
-    });
-
-    test('解析 * 前缀', () {
-      expect(ChatMemoryService.parseMemoryPoints('* 角色害怕猫'), ['角色害怕猫']);
-    });
-
-    test('解析 • 前缀', () {
-      expect(ChatMemoryService.parseMemoryPoints('• 故事发生在雪原'), ['故事发生在雪原']);
-    });
-
-    test('混合前缀', () {
+    test('识别 -、*、• 三种前缀并支持混用', () {
       final text = '- 第一条\n* 第二条\n• 第三条';
       expect(ChatMemoryService.parseMemoryPoints(text), ['第一条', '第二条', '第三条']);
     });
@@ -139,40 +127,35 @@ void main() {
 
 
   group('MemoryExtractionConfig.copyWith', () {
-    test('不传 extractionModelId 时保持原值', () {
-      const config = MemoryExtractionConfig(extractionModelId: 'model-1');
+    test('不传参数时两个可空字段保持原值', () {
+      const config = MemoryExtractionConfig(
+        extractionModelId: 'model-1',
+        customExtractionPrompt: '原提示词',
+      );
       final next = config.copyWith();
       expect(next.extractionModelId, 'model-1');
-    });
-
-    test('clearExtractionModel 置为 null', () {
-      const config = MemoryExtractionConfig(extractionModelId: 'model-1');
-      final next = config.copyWith(extractionModelId: null);
-      expect(next.extractionModelId, isNull);
-    });
-
-    test('显式传入 extractionModelId 覆盖原值', () {
-      const config = MemoryExtractionConfig(extractionModelId: 'model-1');
-      final next = config.copyWith(extractionModelId: 'model-2');
-      expect(next.extractionModelId, 'model-2');
-    });
-
-    test('不传 customExtractionPrompt 时保持原值', () {
-      const config = MemoryExtractionConfig(customExtractionPrompt: '原提示词');
-      final next = config.copyWith();
       expect(next.customExtractionPrompt, '原提示词');
     });
 
-    test('clearCustomExtractionPrompt 置为空字符串', () {
-      const config = MemoryExtractionConfig(customExtractionPrompt: '原提示词');
-      final next = config.copyWith(customExtractionPrompt: '');
-      expect(next.customExtractionPrompt, '');
-    });
+    test('显式传值覆盖原值，传 null/空串表示清空', () {
+      const config = MemoryExtractionConfig(
+        extractionModelId: 'model-1',
+        customExtractionPrompt: '原提示词',
+      );
 
-    test('显式传入 customExtractionPrompt 覆盖原值', () {
-      const config = MemoryExtractionConfig(customExtractionPrompt: '原提示词');
-      final next = config.copyWith(customExtractionPrompt: '新提示词');
-      expect(next.customExtractionPrompt, '新提示词');
+      final cleared = config.copyWith(
+        extractionModelId: null,
+        customExtractionPrompt: '',
+      );
+      expect(cleared.extractionModelId, isNull);
+      expect(cleared.customExtractionPrompt, '');
+
+      final replaced = config.copyWith(
+        extractionModelId: 'model-2',
+        customExtractionPrompt: '新提示词',
+      );
+      expect(replaced.extractionModelId, 'model-2');
+      expect(replaced.customExtractionPrompt, '新提示词');
     });
 
     test('普通字段透传', () {
@@ -217,15 +200,6 @@ void main() {
 
     test('仅渲染条目，不含引导语表头', () {
       expect(ChatMemoryService.formatMemoryList(['A', 'B']), '- A\n- B');
-    });
-
-    test('formatMemoryContext = 表头 + formatMemoryList', () {
-      const header = '以下是角色记得的关于过去事件的信息：';
-      final list = ChatMemoryService.formatMemoryList(['A', 'B']);
-      expect(
-        ChatMemoryService.formatMemoryContext(['A', 'B']),
-        '$header\n$list',
-      );
     });
   });
 

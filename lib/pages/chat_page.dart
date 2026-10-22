@@ -31,6 +31,13 @@ import '../services/preset_service.dart';
 import '../services/regex_rule_group_service.dart';
 import '../services/world_book_service.dart';
 
+/// 左右抽屉两侧对称的拖拽区宽度（45% 屏宽，各自不超过 320），互不重叠。
+///
+/// 抽成顶层函数以便测试直接引用真实公式，避免测试里另抄一份实现。
+double chatDrawerEdgeDragWidth(double screenWidth) {
+  return (screenWidth * 0.45).clamp(128.0, 320.0);
+}
+
 /// 聊天页面
 class ChatPage extends StatefulWidget {
   final String? sessionId;
@@ -655,10 +662,8 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 左右抽屉两侧对称的拖拽区（45% 宽，各自不超过 320），互不重叠。
-    final drawerEdgeDragWidth = (MediaQuery.sizeOf(context).width * 0.45).clamp(
-      128.0,
-      320.0,
+    final drawerEdgeDragWidth = chatDrawerEdgeDragWidth(
+      MediaQuery.sizeOf(context).width,
     );
     // Flutter 的 DrawerController 在桌面平台直接关掉抽屉边缘拖拽
     // （macOS/Linux/Windows），那里只能靠按钮打开。

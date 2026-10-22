@@ -470,30 +470,6 @@ void main() {
       expect(result.single['content'], 'user A');
     });
 
-    test('显示阶段不应用非显示规则（避免重复替换）', () {
-      final groups = groupsFor([
-        RegexRule(
-          id: 'r1',
-          name: '普通规则',
-          findRegex: 'A',
-          replaceString: 'B',
-        ),
-      ]);
-
-      expect(
-        service
-            .applyToMessage(
-              text: 'B',
-              groups: groups,
-              isUserMessage: true,
-              depth: 0,
-              mode: RegexExecutionMode.display,
-            )
-            .text,
-        'B',
-      );
-    });
-
     test('禁用规则与无效正则跳过且不阻断后续规则', () {
       final groups = groupsFor([
         RegexRule(

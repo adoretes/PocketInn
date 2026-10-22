@@ -1,12 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:pocket_inn/services/chat_database_service.dart';
 
+import '../helpers/legacy_db.dart';
 import '../helpers/test_env.dart';
 
 void main() {
@@ -78,83 +76,7 @@ void main() {
 
     // 直接以 v4 schema（chat_sessions 无 gal_mode_enabled 列）建库，
     // 写入一条旧版本会话，模拟升级前遗留的数据库文件。
-    final appDir = await getApplicationSupportDirectory();
-    final dbPath = p.join(appDir.path, 'pocket_inn_data', 'pocket_inn_chat.db');
-    Directory(p.dirname(dbPath)).createSync(recursive: true);
-    final raw = await databaseFactory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 4,
-        onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
-        onCreate: (db, version) async {
-          await db.execute('''
-            CREATE TABLE chat_sessions (
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL,
-              character_id TEXT NOT NULL,
-              selected_user_setting_id TEXT,
-              selected_preset_id TEXT,
-              current_leaf_message_id TEXT,
-              last_message_preview TEXT NOT NULL DEFAULT '',
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            )
-          ''');
-          await db.execute('''
-            CREATE TABLE chat_session_world_books (
-              session_id TEXT NOT NULL,
-              world_book_id TEXT NOT NULL,
-              PRIMARY KEY (session_id, world_book_id)
-            )
-          ''');
-          await db.execute('''
-            CREATE TABLE chat_session_regex_rule_groups (
-              session_id TEXT NOT NULL,
-              regex_rule_group_id TEXT NOT NULL,
-              PRIMARY KEY (session_id, regex_rule_group_id)
-            )
-          ''');
-          await db.execute('''
-            CREATE TABLE chat_messages (
-              id TEXT PRIMARY KEY,
-              session_id TEXT NOT NULL,
-              parent_id TEXT,
-              role TEXT NOT NULL,
-              text TEXT NOT NULL,
-              thinking_chain TEXT,
-              created_at TEXT NOT NULL,
-              sibling_order INTEGER NOT NULL
-            )
-          ''');
-          await db.execute('''
-            CREATE TABLE chat_branch_state (
-              parent_message_id TEXT PRIMARY KEY,
-              active_child_message_id TEXT NOT NULL
-            )
-          ''');
-          await db.execute('''
-            CREATE TABLE chat_memories (
-              id TEXT PRIMARY KEY,
-              session_id TEXT NOT NULL,
-              branch_leaf_id TEXT NOT NULL,
-              content TEXT NOT NULL,
-              source_message_ids TEXT NOT NULL DEFAULT '[]',
-              is_user_edited INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            )
-          ''');
-        },
-      ),
-    );
-    await raw.insert('chat_sessions', {
-      'id': 'legacy-1',
-      'title': '旧会话',
-      'character_id': 'char-1',
-      'created_at': '2024-01-01T00:00:00Z',
-      'updated_at': '2024-01-01T00:00:00Z',
-    });
-    await raw.close();
+    await createLegacyDatabase(version: 4);
 
     // 服务初始化触发 v4 -> v5 迁移，旧行由列默认值兜底为关闭。
     await service.initialize();

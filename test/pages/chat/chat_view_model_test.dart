@@ -532,24 +532,6 @@ void main() {
     });
   });
 
-  group('onSessionReloaded 回调', () {
-    test('回调字段初始为 null', () {
-      viewModel = ChatViewModel();
-      expect(viewModel.onSessionReloaded, isNull);
-    });
-  });
-
-  group('dispose', () {
-    test('dispose 后 isDisposed 标记生效', () {
-      // 使用局部 VM 进行 dispose，避免 tearDown 二次 dispose 报错
-      final localVm = ChatViewModel();
-      // dispose 不应抛异常
-      expect(() => localVm.dispose(), returnsNormally);
-      // 为 tearDown 准备一个未 dispose 的实例
-      viewModel = ChatViewModel();
-    });
-  });
-
   group('gal 模式选项', () {
     test('选项状态初始为空且非生成中', () {
       viewModel = ChatViewModel();

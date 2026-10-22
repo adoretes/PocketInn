@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,9 +8,7 @@ import 'package:pocket_inn/services/chat_database_service.dart';
 import 'package:pocket_inn/services/storage_service.dart';
 import 'package:pocket_inn/services/world_book_service.dart';
 
-const MethodChannel _pathProviderChannel = MethodChannel(
-  'plugins.flutter.io/path_provider',
-);
+import 'helpers/test_env.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -19,13 +16,7 @@ void main() {
   late Directory tempDir;
 
   setUpAll(() async {
-    tempDir = await Directory.systemTemp.createTemp('pocket_inn_test_');
-
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(_pathProviderChannel, (methodCall) async {
-          return tempDir.path;
-        });
-
+    tempDir = setUpPathProviderMocks();
     SharedPreferences.setMockInitialValues({});
     await StorageService.instance.initialize();
     await WorldBookService.instance.initialize();
@@ -35,15 +26,7 @@ void main() {
 
   tearDownAll(() async {
     await ChatDatabaseService.instance.deleteDatabaseFiles();
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(_pathProviderChannel, null);
-    if (await tempDir.exists()) {
-      try {
-        await tempDir.delete(recursive: true);
-      } on FileSystemException {
-        // Windows 下文件句柄可能延迟释放，临时目录留给系统清理即可。
-      }
-    }
+    tearDownPathProviderMocks(tempDir);
   });
 
   setUp(() async {

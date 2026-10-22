@@ -46,14 +46,17 @@ void main() {
       expect(parseGalChoices('{"choices": ["a"'), isEmpty);
     });
 
-    test('前文孤立花括号时尝试后续候选块', () {
-      const raw = '好的，选项{1}：{"choices": ["继续追问", "转身离开"]}';
-      expect(parseGalChoices(raw), ['继续追问', '转身离开']);
-    });
-
-    test('首个候选非法 JSON 时回退到后续候选', () {
-      const raw = '结果 {"a" "b"} 然后 {"choices": ["动手", "观望"]}';
-      expect(parseGalChoices(raw), ['动手', '观望']);
+    test('首个候选块不可用时回退到后续候选', () {
+      // 前文孤立花括号。
+      expect(
+        parseGalChoices('好的，选项{1}：{"choices": ["继续追问", "转身离开"]}'),
+        ['继续追问', '转身离开'],
+      );
+      // 首个候选是非法 JSON。
+      expect(parseGalChoices('结果 {"a" "b"} 然后 {"choices": ["动手", "观望"]}'), [
+        '动手',
+        '观望',
+      ]);
     });
 
     test('接受 options 与中文「选项」键', () {
