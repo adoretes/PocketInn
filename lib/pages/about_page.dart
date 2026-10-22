@@ -72,6 +72,15 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.9',
+                  date: '2026-10-22',
+                  changes: [
+                    '记住上次打开的聊天会话',
+                    '角色筛选菜单支持多选与长按操作',
+                    '优化角色选择样式',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.8',
                   date: '2026-10-14',
                   changes: [
