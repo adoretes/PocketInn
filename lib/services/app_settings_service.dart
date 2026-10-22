@@ -52,6 +52,7 @@ class AppSettingsService {
       'app_gal_choice_auto_generate';
   static const String _keyGalChoiceCount = 'app_gal_choice_count';
   static const String _keyGalChoicePrompt = 'app_gal_choice_prompt';
+  static const String _keyLastChatSessionId = 'app_last_chat_session_id';
 
   /// 加载应用设置
   Future<AppSettings> load() async {
@@ -195,6 +196,24 @@ class AppSettingsService {
   /// 更新是否显示 API 请求日志入口
   Future<void> updateShowApiRequestLogEntry(bool enabled) async {
     await StorageService.instance.setBool(_keyShowApiRequestLogEntry, enabled);
+  }
+
+  /// 记住上次打开的聊天会话，供下次启动时恢复。
+  Future<void> saveLastChatSessionId(String? sessionId) async {
+    final storage = StorageService.instance;
+    final normalized = _normalizeOptionalString(sessionId);
+    if (normalized == null) {
+      await storage.remove(_keyLastChatSessionId);
+      return;
+    }
+    await storage.setString(_keyLastChatSessionId, normalized);
+  }
+
+  /// 读取上次打开的聊天会话 id，未记录时返回 null。
+  String? getLastChatSessionId() {
+    return _normalizeOptionalString(
+      StorageService.instance.getString(_keyLastChatSessionId),
+    );
   }
 
   T _enumValueOrDefault<T>(List<T> values, int? index, T fallback) {

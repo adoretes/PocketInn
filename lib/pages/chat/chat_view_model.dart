@@ -11,6 +11,7 @@ import '../../models/chat_session.dart';
 import '../../models/preset.dart';
 import '../../models/world_book.dart';
 import '../../services/api_config_service.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/chat_character_resolver.dart';
 import '../../services/chat_database_service.dart';
 import '../../services/chat_opening_message_builder.dart';
@@ -441,8 +442,10 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
 
+    // 未指定会话时优先恢复上次选择的聊天，而不是最近更新的那条。
+    final targetSessionId = preferredSessionId ?? _rememberedSessionId();
     final targetSummary = summaries.firstWhere(
-      (item) => item.id == preferredSessionId,
+      (item) => item.id == targetSessionId,
       orElse: () => summaries.first,
     );
     final bundle = await getIt<ChatDatabaseService>().loadSessionBundle(
@@ -511,6 +514,31 @@ class ChatViewModel extends ChangeNotifier {
     _isSwitchingSession = false;
     notifyListeners();
     onSessionReloaded?.call();
+
+    // 记住当前会话，下次启动时优先恢复到这条聊天。
+    unawaited(_rememberSession(bundle.session.id));
+  }
+
+  /// 读取上次选择的聊天会话 id（储存不可用时忽略）。
+  String? _rememberedSessionId() {
+    try {
+      return AppSettingsService.instance.getLastChatSessionId();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 持久化当前选择的聊天会话 id，值未变化时不重复写入。
+  Future<void> _rememberSession(String sessionId) async {
+    final service = AppSettingsService.instance;
+    try {
+      if (service.getLastChatSessionId() == sessionId) {
+        return;
+      }
+      await service.saveLastChatSessionId(sessionId);
+    } catch (_) {
+      // 忽略储存异常，不影响聊天流程。
+    }
   }
 
   /// 从侧边栏选择一个会话。返回是否已开始切换（false 表示当前正在发送）。
