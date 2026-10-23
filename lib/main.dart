@@ -37,7 +37,7 @@ class MyApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
           ],
-          supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
+          supportedLocales: const [Locale('zh', 'CN')],
           home: const ChatPage(),
         );
       },
