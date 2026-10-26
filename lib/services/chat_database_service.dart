@@ -1207,6 +1207,18 @@ class ChatDatabaseService {
     notifyDataChanged();
   }
 
+  /// 是否仍有会话在使用指定世界书（用于删除角色时避免误删共用世界书）。
+  Future<bool> isWorldBookUsedBySessions(String worldBookId) async {
+    final rows = await _db.query(
+      'chat_session_world_books',
+      columns: ['session_id'],
+      where: 'world_book_id = ?',
+      whereArgs: [worldBookId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
   Future<List<String>> _loadSessionWorldBookIds(String sessionId) async {
     final rows = await _db.query(
       'chat_session_world_books',

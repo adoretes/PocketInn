@@ -36,26 +36,72 @@ abstract class WorldBookEntry with _$WorldBookEntry {
       _$WorldBookEntryFromJson(json);
 
   /// 从 SillyTavern 格式创建
+  ///
+  /// 同时兼容 V2 角色书条目（`keys` / `secondary_keys` / `enabled` /
+  /// `insertion_order` / 字符串形式的 `position`）。
   factory WorldBookEntry.fromSillyTavern(Map<String, dynamic> json, String id) {
     return WorldBookEntry(
       id: id,
-      key: (json['key'] as List<dynamic>?)?.cast<String>() ?? [],
-      keysecondary:
-          (json['keysecondary'] as List<dynamic>?)?.cast<String>() ?? [],
+      key: _parseStringList(json['key'] ?? json['keys']),
+      keysecondary: _parseStringList(
+        json['keysecondary'] ?? json['secondary_keys'],
+      ),
       content: json['content'] as String? ?? '',
       comment: json['comment'] as String? ?? '',
       constant: json['constant'] as bool? ?? false,
       selective: json['selective'] as bool? ?? false,
-      selectiveLogic: json['selectiveLogic'] as int? ?? 0,
-      order: json['order'] as int? ?? 100,
-      position: json['position'] as int? ?? 0,
-      depth: json['depth'] as int? ?? 4,
-      sticky: json['sticky'] as int? ?? 0,
-      cooldown: json['cooldown'] as int? ?? 0,
-      delay: json['delay'] as int? ?? 0,
-      isEnabled: !(json['disable'] as bool? ?? false),
+      selectiveLogic: _normalizeSelectiveLogic(json['selectiveLogic']),
+      order: _parseInt(json['order'] ?? json['insertion_order'], fallback: 100),
+      position: _normalizePosition(json['position']),
+      depth: _parseInt(json['depth'], fallback: 4),
+      sticky: _parseInt(json['sticky']),
+      cooldown: _parseInt(json['cooldown']),
+      delay: _parseInt(json['delay']),
+      isEnabled: _parseEnabled(json),
       extensions: _parseExtensions(json),
     );
+  }
+
+  static List<String> _parseStringList(Object? value) {
+    if (value is List) {
+      return value.map((item) => item.toString()).toList();
+    }
+    return const [];
+  }
+
+  static int _parseInt(Object? value, {int fallback = 0}) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? fallback;
+    }
+    return fallback;
+  }
+
+  /// 应用只支持「角色定义之前 / 之后」两种注入位置，其它 ST 位置
+  /// （作者注释前后、@D）统一归一化为「之后」。
+  static int _normalizePosition(Object? value) {
+    if (value is String) {
+      return value == 'after_char' ? 1 : 0;
+    }
+    return _parseInt(value) == 0 ? 0 : 1;
+  }
+
+  static int _normalizeSelectiveLogic(Object? value) {
+    final logic = _parseInt(value);
+    return logic >= 0 && logic <= 3 ? logic : 0;
+  }
+
+  static bool _parseEnabled(Map<String, dynamic> json) {
+    final enabled = json['enabled'];
+    if (enabled is bool) {
+      return enabled;
+    }
+    return !(json['disable'] as bool? ?? false);
   }
 
   /// 获取条目标题（优先使用备注，其次使用第一个关键词）
@@ -70,6 +116,9 @@ abstract class WorldBookEntry with _$WorldBookEntry {
   }
 
   /// 转换为 SillyTavern 格式
+  ///
+  /// 只写入应用实际维护的字段；其余字段原样回写 [extensions]，
+  /// 保证「导入 → 再导出」不会丢失概率、分组、递归等设置。
   Map<String, dynamic> toSillyTavernJson(int uid) {
     final result = <String, dynamic>{
       'uid': uid,
@@ -79,33 +128,20 @@ abstract class WorldBookEntry with _$WorldBookEntry {
       'content': content,
       'constant': constant,
       'selective': selective,
+      'selectiveLogic':
+          selectiveLogic >= 0 && selectiveLogic <= 3 ? selectiveLogic : 0,
       'order': order,
       'position': position,
       'disable': !isEnabled,
-      'displayIndex': uid,
-      'addMemo': true,
-      'group': '',
-      'groupOverride': false,
-      'groupWeight': 100,
+      'depth': depth,
       'sticky': sticky,
       'cooldown': cooldown,
       'delay': delay,
-      'probability': 100,
-      'depth': depth,
-      'useProbability': true,
-      'role': null,
-      'vectorized': false,
-      'excludeRecursion': false,
-      'preventRecursion': false,
-      'delayUntilRecursion': false,
-      'scanDepth': null,
-      'caseSensitive': null,
-      'matchWholeWords': null,
-      'useGroupScoring': null,
-      'automationId': '',
+      'displayIndex': uid,
+      'addMemo': true,
     };
 
-    // 添加扩展字段
+    // 添加扩展字段（未建模的 ST 字段）
     extensions.forEach((key, value) {
       if (!result.containsKey(key)) {
         result[key] = value;
@@ -116,45 +152,35 @@ abstract class WorldBookEntry with _$WorldBookEntry {
   }
 
   /// 解析 ST 格式中的扩展字段
+  ///
+  /// 仅剔除以 [WorldBookEntry] 字段形式保存的键，其余（`probability`、
+  /// `group`、递归开关等）都保留在 [extensions] 中。
   static Map<String, dynamic> _parseExtensions(Map<String, dynamic> json) {
-    final extensions = <String, dynamic>{};
-    final knownKeys = {
+    const modeledKeys = {
       'uid',
       'key',
+      'keys',
       'keysecondary',
+      'secondary_keys',
       'comment',
       'content',
       'constant',
       'selective',
       'selectiveLogic',
       'order',
+      'insertion_order',
       'position',
       'disable',
+      'enabled',
       'depth',
       'sticky',
       'cooldown',
       'delay',
-      'displayIndex',
-      'addMemo',
-      'group',
-      'groupOverride',
-      'groupWeight',
-      'probability',
-      'useProbability',
-      'role',
-      'vectorized',
-      'excludeRecursion',
-      'preventRecursion',
-      'delayUntilRecursion',
-      'scanDepth',
-      'caseSensitive',
-      'matchWholeWords',
-      'useGroupScoring',
-      'automationId',
     };
 
+    final extensions = <String, dynamic>{};
     json.forEach((key, value) {
-      if (!knownKeys.contains(key)) {
+      if (!modeledKeys.contains(key)) {
         extensions[key] = value;
       }
     });
@@ -197,7 +223,14 @@ abstract class WorldBook with _$WorldBook {
 
     final entries = <WorldBookEntry>[];
     final sortedKeys = entriesData.keys.toList()
-      ..sort((a, b) => int.parse(a).compareTo(int.parse(b)));
+      ..sort((a, b) {
+        final aValue = int.tryParse(a);
+        final bValue = int.tryParse(b);
+        if (aValue != null && bValue != null) {
+          return aValue.compareTo(bValue);
+        }
+        return a.compareTo(b);
+      });
 
     for (final key in sortedKeys) {
       final entryJson = entriesData[key] as Map<String, dynamic>;

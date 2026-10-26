@@ -9,6 +9,7 @@ import '../models/world_book.dart';
 import '../services/prompt_assembler.dart';
 import '../services/world_book_service.dart';
 import '../widgets/expanded_text_editor_field.dart';
+import '../widgets/dialog_text_controller_builder.dart';
 import '../widgets/variable_edit_dialog.dart';
 import 'world_book_edit_page.dart';
 
@@ -102,9 +103,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
     tags = List<String>.from(data['tags'] as List? ?? const []);
     // decodeCardVariables 无声明时返回不可变空表，这里复制为可变列表，
     // 供「添加变量」直接增删。
-    _variables = List<ChatVariable>.from(
-      decodeCardVariables({'data': data}),
-    );
+    _variables = List<ChatVariable>.from(decodeCardVariables({'data': data}));
     _selectedWorldBookId = widget.initialWorldBookId;
     _initialBackgroundImage = _imageProviderForPath(widget.imagePath);
     _nameFocusNode.addListener(_onNameFocusChange);
@@ -304,34 +303,33 @@ class _RoleEditPageState extends State<RoleEditPage> {
   }
 
   Future<void> _createAndBindWorldBook() async {
-    final controller = TextEditingController(
-      text: '${nameController.text.trim()}-世界书',
-    );
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('创建世界书'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: '世界书名称',
-            border: OutlineInputBorder(),
+      builder: (context) => DialogTextControllerBuilder(
+        initialText: '${nameController.text.trim()}-世界书',
+        builder: (context, controller) => AlertDialog(
+          title: const Text('创建世界书'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: '世界书名称',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
           ),
-          autofocus: true,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('创建'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('创建'),
-          ),
-        ],
       ),
     );
-    controller.dispose();
     if (name == null || name.isEmpty) return;
 
     final book = await WorldBookService.instance.create(name: name);
@@ -838,7 +836,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                               decoration: const InputDecoration(
                                 labelText: '系统提示词',
                                 helperMaxLines: 2,
-                                helperText: '非空时覆盖预设的 main 提示词；写 '
+                                helperText:
+                                    '非空时覆盖预设的 main 提示词；写 '
                                     '${PromptAssembler.presetContentPlaceholder}'
                                     ' 可引用被覆盖的预设原文。',
                                 border: OutlineInputBorder(),
@@ -851,7 +850,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                               decoration: const InputDecoration(
                                 labelText: '对话历史后指令',
                                 helperMaxLines: 2,
-                                helperText: '非空时覆盖预设的 jailbreak 提示词；写 '
+                                helperText:
+                                    '非空时覆盖预设的 jailbreak 提示词；写 '
                                     '${PromptAssembler.presetContentPlaceholder}'
                                     ' 可引用被覆盖的预设原文。',
                                 border: OutlineInputBorder(),
@@ -934,8 +934,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                         variable.type.label,
                                         if (variable.metadata?.minValue !=
                                                 null ||
-                                            variable.metadata?.maxValue !=
-                                                null)
+                                            variable.metadata?.maxValue != null)
                                           '${variable.metadata?.minValue ?? '-∞'} ~ '
                                               '${variable.metadata?.maxValue ?? '+∞'}',
                                       ].join(' · '),
@@ -962,7 +961,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                           Icons.edit_outlined,
                                           size: 20,
                                         ),
-                                        onPressed: () => _editVariable(variable),
+                                        onPressed: () =>
+                                            _editVariable(variable),
                                       ),
                                       IconButton(
                                         tooltip: '删除',

@@ -119,10 +119,6 @@ class PromptAssembler {
     required List<ChatMessage> chatMessages,
     required String currentInput,
   }) {
-    final scanCorpus = [
-      for (final message in chatMessages) message.text,
-      currentInput,
-    ].join('\n').toLowerCase();
     final activated = <ActivatedWorldBookEntry>[];
     final seen = <String>{};
 
@@ -141,7 +137,13 @@ class PromptAssembler {
           continue;
         }
         final triggeredByConstant = entry.constant;
-        final matchesKeywords = _matchesWorldBookEntry(entry, scanCorpus);
+        final matchesKeywords =
+            !triggeredByConstant &&
+            _matchesWorldBookEntry(
+              entry,
+              chatMessages: chatMessages,
+              currentInput: currentInput,
+            );
         if (!triggeredByConstant && !matchesKeywords) {
           continue;
         }
@@ -172,18 +174,78 @@ class PromptAssembler {
     return activated;
   }
 
-  static bool _matchesWorldBookEntry(WorldBookEntry entry, String scanCorpus) {
-    if (scanCorpus.trim().isEmpty) {
+  /// 关键词匹配：主关键词之间为「或」关系；启用 [WorldBookEntry.selective]
+  /// 时，次要关键词按 [WorldBookEntry.selectiveLogic] 作为门控条件参与判断。
+  static bool _matchesWorldBookEntry(
+    WorldBookEntry entry, {
+    required List<ChatMessage> chatMessages,
+    required String currentInput,
+  }) {
+    final scanCorpus = _buildScanCorpus(
+      chatMessages: chatMessages,
+      currentInput: currentInput,
+      depth: entry.depth,
+    );
+    if (scanCorpus.isEmpty) {
       return false;
     }
 
-    final keywords = [
-      ...entry.key,
-      ...entry.keysecondary,
-    ].map((item) => item.trim().toLowerCase()).where((item) => item.isNotEmpty);
+    final primaryKeywords = _normalizeKeywords(entry.key);
+    if (primaryKeywords.isEmpty || !_containsAny(scanCorpus, primaryKeywords)) {
+      return false;
+    }
 
+    final secondaryKeywords = _normalizeKeywords(entry.keysecondary);
+    if (!entry.selective || secondaryKeywords.isEmpty) {
+      return true;
+    }
+
+    final hits = [
+      for (final keyword in secondaryKeywords) scanCorpus.contains(keyword),
+    ];
+    // SillyTavern selectiveLogic: 0=AND ANY, 1=NOT ALL, 2=NOT ANY, 3=AND ALL
+    switch (entry.selectiveLogic) {
+      case 1:
+        return hits.any((hit) => !hit);
+      case 2:
+        return hits.every((hit) => !hit);
+      case 3:
+        return hits.every((hit) => hit);
+      case 0:
+      default:
+        return hits.any((hit) => hit);
+    }
+  }
+
+  /// 按条目的扫描深度截取聊天记录：只看最近 [depth] 条消息，
+  /// 再拼接当前输入；`depth` 为 0 时只扫描当前输入。
+  static String _buildScanCorpus({
+    required List<ChatMessage> chatMessages,
+    required String currentInput,
+    required int depth,
+  }) {
+    final normalizedDepth = depth < 0 ? 0 : depth;
+    final scanStart = chatMessages.length - normalizedDepth;
+    final scanMessages = normalizedDepth == 0
+        ? const <ChatMessage>[]
+        : chatMessages.sublist(scanStart < 0 ? 0 : scanStart);
+
+    return [
+      for (final message in scanMessages) message.text,
+      currentInput,
+    ].join('\n').toLowerCase();
+  }
+
+  static List<String> _normalizeKeywords(List<String> keywords) {
+    return keywords
+        .map((item) => item.trim().toLowerCase())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static bool _containsAny(String corpus, List<String> keywords) {
     for (final keyword in keywords) {
-      if (scanCorpus.contains(keyword)) {
+      if (corpus.contains(keyword)) {
         return true;
       }
     }

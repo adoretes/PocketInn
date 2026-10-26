@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/world_book.dart';
 import '../services/world_book_service.dart';
+import '../widgets/dialog_text_controller_builder.dart';
 import '../widgets/expanded_text_editor_field.dart';
 
 /// 标签输入框组件 - 支持输入多个关键词
@@ -52,7 +53,7 @@ class _TagInputFieldState extends State<_TagInputField> {
 
   void _onChanged(String value) {
     final tags = value
-        .split(',')
+        .split(RegExp(r'[,，]'))
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
@@ -230,6 +231,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
   late List<WorldBookEntry> _entries;
+  late WorldBook _baseline;
   bool _isSaving = false;
 
   @override
@@ -240,6 +242,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
       text: widget.worldBook.description,
     );
     _entries = widget.worldBook.entries.map((item) => item.copyWith()).toList();
+    _baseline = widget.worldBook;
   }
 
   @override
@@ -288,13 +291,13 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
   }
 
   bool _hasChanges() {
-    if (_nameController.text != widget.worldBook.name) return true;
-    if (_descriptionController.text != widget.worldBook.description) {
+    if (_nameController.text != _baseline.name) return true;
+    if (_descriptionController.text != _baseline.description) {
       return true;
     }
-    if (_entries.length != widget.worldBook.entries.length) return true;
+    if (_entries.length != _baseline.entries.length) return true;
     for (var i = 0; i < _entries.length; i++) {
-      if (_entries[i] != widget.worldBook.entries[i]) return true;
+      if (_entries[i] != _baseline.entries[i]) return true;
     }
     return false;
   }
@@ -307,16 +310,17 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     });
 
     try {
-      final updatedBook = widget.worldBook.copyWith(
+      final updatedBook = _baseline.copyWith(
         name: _nameController.text.trim().isEmpty
-            ? widget.worldBook.name
+            ? _baseline.name
             : _nameController.text.trim(),
         description: _descriptionController.text,
-        entries: _entries,
+        entries: List<WorldBookEntry>.from(_entries),
         updatedAt: DateTime.now(),
       );
 
       await WorldBookService.instance.save(updatedBook);
+      _baseline = updatedBook;
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -345,8 +349,13 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
       _entries = [..._entries, newEntry];
     });
 
-    // 直接打开编辑对话框
-    await _openEntryDialog(newEntry);
+    // 直接打开编辑对话框；用户取消时撤销这条占位条目
+    final saved = await _openEntryDialog(newEntry);
+    if (!saved && mounted) {
+      setState(() {
+        _entries = _entries.where((e) => e.id != newEntry.id).toList();
+      });
+    }
   }
 
   Future<void> _onToggleEntry(WorldBookEntry entry, bool value) async {
@@ -386,8 +395,8 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     }
   }
 
-  /// 打开条目编辑弹窗
-  Future<void> _openEntryDialog(WorldBookEntry entry) async {
+  /// 打开条目编辑弹窗；返回是否保存。
+  Future<bool> _openEntryDialog(WorldBookEntry entry) async {
     final formKey = GlobalKey<FormState>();
 
     // 表单状态
@@ -397,22 +406,18 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     var content = entry.content;
     var comment = entry.comment;
     var constant = entry.constant;
-    var selectiveLogic = entry.selectiveLogic;
+    var selectiveLogic = _displaySelectiveLogic(entry);
     var depth = entry.depth;
-    var position = entry.position;
+    // 历史数据可能带有不支持的 ST 注入位置（2/3/4），统一按「之后」展示
+    var position = entry.position == 0 ? 0 : 1;
     var order = entry.order;
-    var sticky = entry.sticky;
-    var cooldown = entry.cooldown;
-    var delay = entry.delay;
-    final contentController = TextEditingController(text: content);
 
-    // 下拉选项 - selectiveLogic 包含 NONE 选项
     const selectiveLogicOptions = [
-      _SelectOption(label: '无', value: -1),
-      _SelectOption(label: '任一主要关键词匹配', value: 0),
-      _SelectOption(label: '全部主要关键词匹配', value: 1),
-      _SelectOption(label: '不包含任一主要关键词', value: 2),
-      _SelectOption(label: '不包含全部主要关键词', value: 3),
+      _SelectOption(label: '仅使用主要关键词', value: -1),
+      _SelectOption(label: '命中任一次要关键词', value: 0),
+      _SelectOption(label: '未命中全部次要关键词', value: 1),
+      _SelectOption(label: '未命中任何次要关键词', value: 2),
+      _SelectOption(label: '命中全部次要关键词', value: 3),
     ];
 
     const positionOptions = [
@@ -430,358 +435,352 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
+        // 控制器由弹窗自身的 State 持有：退场动画结束后才 dispose，
+        // 避免关闭瞬间仍在渲染的输入框访问已销毁的控制器。
+        return DialogTextControllerBuilder(
+          initialText: content,
+          builder: (context, contentController) {
+            final colorScheme = Theme.of(context).colorScheme;
 
-        return AlertDialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 24,
-          ),
-          titlePadding: EdgeInsets.zero,
-          contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-          title: Container(
-            padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: colorScheme.outlineVariant),
+            return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 24,
               ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '编辑条目',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+              titlePadding: EdgeInsets.zero,
+              contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              title: Container(
+                padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: colorScheme.outlineVariant),
                   ),
                 ),
-                // 启用/禁用开关置于标题栏右侧
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+                child: Row(
                   children: [
-                    Text(
-                      '启用',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: colorScheme.onSurfaceVariant,
+                    Expanded(
+                      child: Text(
+                        '编辑条目',
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    StatefulBuilder(
-                      builder: (context, setSwitchState) {
-                        return Switch(
-                          value: enabled,
-                          onChanged: (value) {
-                            setSwitchState(() {
-                              enabled = value;
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          content: SizedBox(
-            width: 640,
-            child: Form(
-              key: formKey,
-              child: StatefulBuilder(
-                builder: (context, setDialogState) {
-                  return SingleChildScrollView(
-                    child: Column(
+                    // 启用/禁用开关置于标题栏右侧
+                    Row(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ========== 基础信息区域 ==========
-                        const _SectionTitle(
-                          title: '基础信息',
-                          icon: Icons.info_outline,
-                        ),
-
-                        // comment - 单行文本框（移到前面）
-                        TextFormField(
-                          initialValue: comment,
-                          decoration: const InputDecoration(
-                            labelText: '备注',
-                            hintText: '仅用于内部管理，如"战斗风格描述"',
-                            border: OutlineInputBorder(),
+                        Text(
+                          '启用',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: colorScheme.onSurfaceVariant,
                           ),
-                          onChanged: (value) {
-                            comment = value;
-                          },
                         ),
-                        const SizedBox(height: 16),
-
-                        // key - 标签输入框
-                        _TagInputField(
-                          tags: key,
-                          label: '关键词',
-                          hintText: '输入触发关键词',
-                          enabled: !constant,
-                          onChanged: (tags) {
-                            setDialogState(() {
-                              key = tags;
-                            });
-                          },
-                        ),
-                        if (key.isEmpty && !constant)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '请输入至少一个关键词',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                            ),
-                          ),
-                        const SizedBox(height: 16),
-
-                        // content - 多行文本框
-                        ExpandedTextEditorField(
-                          controller: contentController,
-                          maxLines: 8,
-                          minLines: 6,
-                          dialogTitle: '编辑世界书条目内容',
-                          textAlignVertical: TextAlignVertical.top,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 13,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: '内容',
-                            hintText: '激活后注入的实际文本内容',
-                            alignLabelWithHint: true,
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return '内容不能为空';
-                            }
-                            return null;
-                          },
-                          onChanged: (value) {
-                            content = value;
-                          },
-                        ),
-                        const SizedBox(height: 24),
-
-                        // ========== 触发条件区域 ==========
-                        const _SectionTitle(
-                          title: '触发条件',
-                          icon: Icons.settings_suggest_outlined,
-                        ),
-
-                        // constant - 复选框
-                        CheckboxListTile(
-                          value: constant,
-                          onChanged: (value) {
-                            setDialogState(() {
-                              syncConstantState(value ?? false);
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('常驻激活'),
-                        ),
-                        const SizedBox(height: 12),
-
-                        if (!constant) ...[
-                          // selectiveLogic - 下拉选择
-                          _SelectField(
-                            value: selectiveLogic,
-                            label: '匹配逻辑',
-                            options: selectiveLogicOptions,
-                            width: double.infinity,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                selectiveLogic = value;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // keysecondary - 标签输入框（仅当 selectiveLogic != -1 时显示）
-                        if (!constant && selectiveLogic != -1)
-                          Opacity(
-                            opacity: constant ? 0.5 : 1.0,
-                            child: IgnorePointer(
-                              ignoring: constant,
-                              child: _TagInputField(
-                                tags: keysecondary,
-                                label: '次要关键词',
-                                hintText: '次要触发词',
-                                onChanged: (tags) {
-                                  setDialogState(() {
-                                    keysecondary = tags;
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                        if (!constant && selectiveLogic != -1)
-                          const SizedBox(height: 16),
-
-                        // depth - 数字输入框
-                        if (!constant)
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _NumberInputField(
-                                value: depth,
-                                label: '扫描深度',
-                                minValue: 0,
-                                maxValue: 20,
-                                width: double.infinity,
-                                onChanged: (value) {
-                                  depth = value;
-                                },
-                              ),
-                              const _FieldHint('在当前消息之前多少条消息内扫描关键词'),
-                            ],
-                          ),
-                        if (!constant) const SizedBox(height: 24),
-
-                        // ========== 注入控制区域 ==========
-                        const _SectionTitle(title: '注入控制', icon: Icons.tune),
-
-                        // position - 下拉选择
-                        _SelectField(
-                          value: position,
-                          label: '注入位置',
-                          options: positionOptions,
-                          width: double.infinity,
-                          onChanged: (value) {
-                            setDialogState(() {
-                              position = value;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // order - 数字输入框
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _NumberInputField(
-                              value: order,
-                              label: '优先级',
-                              minValue: 0,
-                              maxValue: 999,
-                              width: double.infinity,
+                        const SizedBox(width: 8),
+                        StatefulBuilder(
+                          builder: (context, setSwitchState) {
+                            return Switch(
+                              value: enabled,
                               onChanged: (value) {
-                                order = value;
+                                setSwitchState(() {
+                                  enabled = value;
+                                });
                               },
-                            ),
-                            const _FieldHint('同一注入位置时，数值越小越先注入'),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // sticky, cooldown, delay - 数字输入框组
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _NumberInputField(
-                                value: sticky,
-                                label: '持续',
-                                minValue: 0,
-                                maxValue: 999,
-                                width: double.infinity,
-                                onChanged: (value) {
-                                  sticky = value;
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _NumberInputField(
-                                value: cooldown,
-                                label: '冷却',
-                                minValue: 0,
-                                maxValue: 999,
-                                width: double.infinity,
-                                onChanged: (value) {
-                                  cooldown = value;
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _NumberInputField(
-                                value: delay,
-                                label: '延迟',
-                                minValue: 0,
-                                maxValue: 999,
-                                width: double.infinity,
-                                onChanged: (value) {
-                                  delay = value;
-                                },
-                              ),
-                            ),
-                          ],
+                            );
+                          },
                         ),
                       ],
                     ),
-                  );
-                },
+                  ],
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState?.validate() ?? false) {
-                  if (key.isEmpty && !constant) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(const SnackBar(content: Text('请输入至少一个关键词')));
-                    return;
-                  }
-                  Navigator.of(context).pop(true);
-                }
-              },
-              child: const Text('保存'),
-            ),
-          ],
+              content: SizedBox(
+                width: 640,
+                child: Form(
+                  key: formKey,
+                  child: StatefulBuilder(
+                    builder: (context, setDialogState) {
+                      return SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // ========== 基础信息区域 ==========
+                            const _SectionTitle(
+                              title: '基础信息',
+                              icon: Icons.info_outline,
+                            ),
+
+                            // comment - 单行文本框（移到前面）
+                            TextFormField(
+                              initialValue: comment,
+                              decoration: const InputDecoration(
+                                labelText: '备注',
+                                hintText: '仅用于内部管理，如"战斗风格描述"',
+                                border: OutlineInputBorder(),
+                              ),
+                              onChanged: (value) {
+                                comment = value;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+
+                            // key - 标签输入框
+                            _TagInputField(
+                              tags: key,
+                              label: '关键词',
+                              hintText: '输入触发关键词',
+                              enabled: !constant,
+                              onChanged: (tags) {
+                                setDialogState(() {
+                                  key = tags;
+                                });
+                              },
+                            ),
+                            if (key.isEmpty && !constant)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  '请输入至少一个关键词',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 16),
+
+                            // content - 多行文本框
+                            ExpandedTextEditorField(
+                              controller: contentController,
+                              maxLines: 8,
+                              minLines: 6,
+                              dialogTitle: '编辑世界书条目内容',
+                              textAlignVertical: TextAlignVertical.top,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 13,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: '内容',
+                                hintText: '激活后注入的实际文本内容',
+                                alignLabelWithHint: true,
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return '内容不能为空';
+                                }
+                                return null;
+                              },
+                              onChanged: (value) {
+                                content = value;
+                              },
+                            ),
+                            const SizedBox(height: 24),
+
+                            // ========== 触发条件区域 ==========
+                            const _SectionTitle(
+                              title: '触发条件',
+                              icon: Icons.settings_suggest_outlined,
+                            ),
+
+                            // constant - 复选框
+                            CheckboxListTile(
+                              value: constant,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  syncConstantState(value ?? false);
+                                });
+                              },
+                              contentPadding: EdgeInsets.zero,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: const Text('常驻激活'),
+                            ),
+                            const SizedBox(height: 12),
+
+                            if (!constant) ...[
+                              // selectiveLogic - 下拉选择
+                              _SelectField(
+                                value: selectiveLogic,
+                                label: '次要关键词逻辑',
+                                options: selectiveLogicOptions,
+                                width: double.infinity,
+                                onChanged: (value) {
+                                  setDialogState(() {
+                                    selectiveLogic = value;
+                                  });
+                                },
+                              ),
+                              const _FieldHint('先命中主要关键词，再按此逻辑判断次要关键词'),
+                              const SizedBox(height: 16),
+                            ],
+
+                            // keysecondary - 标签输入框（仅当使用次要关键词时显示）
+                            if (!constant && selectiveLogic != -1)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _TagInputField(
+                                    tags: keysecondary,
+                                    label: '次要关键词',
+                                    hintText: '命中主要关键词后再判断这些词',
+                                    onChanged: (tags) {
+                                      setDialogState(() {
+                                        keysecondary = tags;
+                                      });
+                                    },
+                                  ),
+                                  if (keysecondary.isEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        '请填写次要关键词，或把逻辑改为「仅使用主要关键词」',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.error,
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 16),
+                                ],
+                              ),
+
+                            // depth - 数字输入框
+                            if (!constant)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _NumberInputField(
+                                    value: depth,
+                                    label: '扫描深度',
+                                    minValue: 0,
+                                    maxValue: 20,
+                                    width: double.infinity,
+                                    onChanged: (value) {
+                                      depth = value;
+                                    },
+                                  ),
+                                  const _FieldHint('扫描最近多少条聊天消息，0 表示只扫描当前输入'),
+                                ],
+                              ),
+                            if (!constant) const SizedBox(height: 24),
+
+                            // ========== 注入控制区域 ==========
+                            const _SectionTitle(
+                              title: '注入控制',
+                              icon: Icons.tune,
+                            ),
+
+                            // position - 下拉选择
+                            _SelectField(
+                              value: position,
+                              label: '注入位置',
+                              options: positionOptions,
+                              width: double.infinity,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  position = value;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+
+                            // order - 数字输入框
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _NumberInputField(
+                                  value: order,
+                                  label: '优先级',
+                                  minValue: 0,
+                                  maxValue: 999,
+                                  width: double.infinity,
+                                  onChanged: (value) {
+                                    order = value;
+                                  },
+                                ),
+                                const _FieldHint('同一注入位置时，数值越小越先注入'),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (!(formKey.currentState?.validate() ?? false)) {
+                      return;
+                    }
+                    if (key.isEmpty && !constant) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请输入至少一个关键词')),
+                      );
+                      return;
+                    }
+                    if (!constant &&
+                        selectiveLogic != -1 &&
+                        keysecondary.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请填写次要关键词，或改为仅使用主要关键词')),
+                      );
+                      return;
+                    }
+                    Navigator.of(context).pop(true);
+                  },
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
-    contentController.dispose();
 
-    if (saved == true && mounted) {
-      // 更新条目
-      final updatedEntry = entry.copyWith(
-        key: key,
-        keysecondary: keysecondary,
-        content: content,
-        comment: comment,
-        constant: constant,
-        selective: !constant && selectiveLogic != -1,
-        selectiveLogic: constant ? -1 : selectiveLogic,
-        depth: depth,
-        position: position,
-        order: order,
-        sticky: sticky,
-        cooldown: cooldown,
-        delay: delay,
-        isEnabled: enabled,
-      );
-
-      setState(() {
-        _entries = _entries.map((e) {
-          return e.id == entry.id ? updatedEntry : e;
-        }).toList();
-      });
+    if (saved != true || !mounted) {
+      return false;
     }
+
+    final useSecondary = !constant && selectiveLogic != -1;
+    final updatedEntry = entry.copyWith(
+      key: key,
+      keysecondary: keysecondary,
+      content: content,
+      comment: comment,
+      constant: constant,
+      selective: useSecondary,
+      selectiveLogic: useSecondary ? selectiveLogic : 0,
+      depth: depth,
+      position: position,
+      order: order,
+      isEnabled: enabled,
+    );
+
+    setState(() {
+      _entries = _entries.map((e) {
+        return e.id == entry.id ? updatedEntry : e;
+      }).toList();
+    });
+    return true;
+  }
+
+  /// 历史数据中的 -1 / 越界值统一映射为「仅使用主要关键词」或默认逻辑。
+  int _displaySelectiveLogic(WorldBookEntry entry) {
+    if (!entry.selective) {
+      return -1;
+    }
+    final logic = entry.selectiveLogic;
+    return logic >= 0 && logic <= 3 ? logic : 0;
   }
 
   @override

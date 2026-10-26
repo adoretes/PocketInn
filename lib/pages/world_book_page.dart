@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/world_book.dart';
 import '../services/world_book_service.dart';
+import '../widgets/dialog_text_controller_builder.dart';
 import 'world_book_edit_page.dart';
 
 class WorldBookPage extends StatefulWidget {
@@ -75,55 +76,58 @@ class _WorldBookPageState extends State<WorldBookPage> {
   }
 
   Future<void> _onCreate() async {
-    final nameController = TextEditingController(text: '新世界书');
-
-    final result = await showDialog<bool>(
+    final name = await showDialog<String>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('新建世界书'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: '名称',
-                  border: OutlineInputBorder(),
-                ),
-                autofocus: true,
+        return DialogTextControllerBuilder(
+          initialText: '新世界书',
+          builder: (context, nameController) {
+            return AlertDialog(
+              title: const Text('新建世界书'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: '名称',
+                      border: OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('创建'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.of(context).pop(nameController.text.trim()),
+                  child: const Text('创建'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    final normalizedName = nameController.text.trim();
-    nameController.dispose();
+    if (name == null || !mounted) {
+      return;
+    }
 
-    if (result == true && mounted) {
-      try {
-        await WorldBookService.instance.create(
-          name: normalizedName.isEmpty ? '新世界书' : normalizedName,
-        );
-        await _loadWorldBooks();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('创建失败: $e')));
-        }
+    try {
+      await WorldBookService.instance.create(
+        name: name.isEmpty ? '新世界书' : name,
+      );
+      await _loadWorldBooks();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('创建失败: $e')));
       }
     }
   }
@@ -323,7 +327,6 @@ class _WorldBookCard extends StatelessWidget {
             padding: const EdgeInsets.all(18),
             child: Row(
               children: [
-
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

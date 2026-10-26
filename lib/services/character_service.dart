@@ -324,14 +324,54 @@ class CharacterService {
       if (record.thumbnailPath.isNotEmpty) {
         await _deleteIfExists(File(record.thumbnailPath));
       }
-      if (record.worldBookId != null && record.worldBookId!.isNotEmpty) {
-        await WorldBookService.instance.delete(record.worldBookId!);
+      final worldBookId = record.worldBookId;
+      if (worldBookId != null && worldBookId.isNotEmpty) {
+        // 世界书可能是单独创建后被关联的共用资源，只有确认没有被其它
+        // 角色或会话引用时才随角色一起删除，避免误删。
+        final usedByOtherCharacter = await _isWorldBookUsedByOtherCharacter(
+          worldBookId,
+          excludingId: id,
+        );
+        final usedBySession = await ChatDatabaseService.instance
+            .isWorldBookUsedBySessions(worldBookId);
+        if (!usedByOtherCharacter && !usedBySession) {
+          await WorldBookService.instance.delete(worldBookId);
+        }
       }
     }
 
     final summaries = await loadAllSummaries();
     summaries.removeWhere((item) => item.id == id);
     await _saveSummaries(summaries);
+  }
+
+  /// 检查除 [excludingId] 之外是否还有角色关联同一本世界书。
+  Future<bool> _isWorldBookUsedByOtherCharacter(
+    String worldBookId, {
+    required String excludingId,
+  }) async {
+    final summaries = await loadAllSummaries();
+    for (final summary in summaries) {
+      if (summary.id == excludingId) {
+        continue;
+      }
+      final record = await loadById(summary.id);
+      if (record?.worldBookId == worldBookId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// 应用只支持「角色定义之前 / 之后」，其它 ST 位置统一归一到「之后」。
+  int _normalizeWorldBookPosition(Object? value) {
+    if (value is String) {
+      return value == 'after_char' ? 1 : 0;
+    }
+    if (value is num) {
+      return value.toInt() == 0 ? 0 : 1;
+    }
+    return 0;
   }
 
   Future<CharacterImportResult?> importFromFile({
@@ -717,11 +757,7 @@ class CharacterService {
         : <String, dynamic>{};
 
     final positionValue = entry['position'];
-    final position = positionValue is int
-        ? positionValue
-        : positionValue == 'after_char'
-        ? 1
-        : 0;
+    final position = _normalizeWorldBookPosition(positionValue);
 
     return WorldBookEntry(
       id: 'entry-${entry['id'] ?? fallbackId}',

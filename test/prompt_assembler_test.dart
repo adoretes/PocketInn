@@ -453,6 +453,109 @@ void main() {
       },
     );
 
+    test('次要关键词按 selectiveLogic 门控而不是额外的触发词', () {
+      bool activated(WorldBookEntry entry, String message) {
+        final result = PromptAssembler.build(
+          PromptAssemblyContext(
+            characterName: '艾琳',
+            characterCardData: _cardData(),
+            userName: '林澈',
+            userSettingPrompt: '',
+            preset: _worldInfoPreset(),
+            selectedWorldBooks: [
+              WorldBook(
+                id: 'wb-1',
+                name: '世界书',
+                description: '',
+                colorValue: 0xFF000000,
+                entries: [entry],
+              ),
+            ],
+            chatMessages: [ChatMessage(text: message, isMe: true)],
+            currentInput: '',
+          ),
+        );
+        return result.activatedWorldBookEntries.isNotEmpty;
+      }
+
+      WorldBookEntry buildEntry(int logic, List<String> secondary) {
+        return WorldBookEntry(
+          id: 'entry-1',
+          key: const ['龙'],
+          keysecondary: secondary,
+          content: '龙的设定',
+          comment: '龙',
+          selective: true,
+          selectiveLogic: logic,
+          order: 10,
+          position: 0,
+          depth: 4,
+        );
+      }
+
+      // 0 = AND ANY：命中任一次要关键词
+      final andAny = buildEntry(0, ['剑']);
+      expect(activated(andAny, '龙'), isFalse);
+      expect(activated(andAny, '龙与剑'), isTrue);
+
+      // 1 = NOT ALL：未命中全部次要关键词
+      final notAll = buildEntry(1, ['剑', '盾']);
+      expect(activated(notAll, '龙与剑'), isTrue);
+      expect(activated(notAll, '龙与剑与盾'), isFalse);
+
+      // 2 = NOT ANY：未命中任何次要关键词
+      final notAny = buildEntry(2, ['剑']);
+      expect(activated(notAny, '龙与剑'), isFalse);
+      expect(activated(notAny, '龙与盾'), isTrue);
+
+      // 3 = AND ALL：命中全部次要关键词
+      final andAll = buildEntry(3, ['剑', '盾']);
+      expect(activated(andAll, '龙与剑'), isFalse);
+      expect(activated(andAll, '龙与剑与盾'), isTrue);
+    });
+
+    test('扫描深度只扫描最近若干条消息', () {
+      bool activated({required int depth}) {
+        final result = PromptAssembler.build(
+          PromptAssemblyContext(
+            characterName: '艾琳',
+            characterCardData: _cardData(),
+            userName: '林澈',
+            userSettingPrompt: '',
+            preset: _worldInfoPreset(),
+            selectedWorldBooks: [
+              WorldBook(
+                id: 'wb-1',
+                name: '世界书',
+                description: '',
+                colorValue: 0xFF000000,
+                entries: [
+                  WorldBookEntry(
+                    id: 'entry-1',
+                    key: const ['禁书库'],
+                    content: '禁书库的设定',
+                    comment: '禁书库',
+                    depth: depth,
+                    position: 0,
+                  ),
+                ],
+              ),
+            ],
+            chatMessages: [
+              ChatMessage(text: '第一句提到禁书库', isMe: true),
+              ChatMessage(text: '第二句闲聊', isMe: false),
+            ],
+            currentInput: '',
+          ),
+        );
+        return result.activatedWorldBookEntries.isNotEmpty;
+      }
+
+      expect(activated(depth: 1), isFalse);
+      expect(activated(depth: 2), isTrue);
+      expect(activated(depth: 0), isFalse);
+    });
+
     test('merges adjacent messages with the same role', () {
       final result = PromptAssembler.build(
         PromptAssemblyContext(
@@ -699,6 +802,21 @@ void main() {
       expect(result.messages.last.content, '第一句');
     });
   });
+}
+
+Preset _worldInfoPreset() {
+  return Preset(
+    id: 'preset-1',
+    name: '测试预设',
+    updatedAt: DateTime(2026),
+    prompts: [
+      PresetPrompt(
+        identifier: 'worldInfoBefore',
+        name: 'World Before',
+        marker: true,
+      ),
+    ],
+  );
 }
 
 Map<String, dynamic> _cardData({

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -26,6 +27,7 @@ class WorldBookService {
 
   late String _worldBooksPath;
   bool _initialized = false;
+  int _idSequence = 0;
 
   /// 初始化服务
   Future<void> initialize() async {
@@ -53,32 +55,68 @@ class WorldBookService {
   }
 
   /// 加载所有世界书的索引信息
+  ///
+  /// 索引文件缺失、版本不匹配或结构损坏时，改为扫描 `world_books` 目录
+  /// 重建索引，避免后续保存把索引覆盖成只剩当前一本。
   Future<List<WorldBookIndexInfo>> loadAllIndexInfo() async {
     _checkInitialized();
 
     final storage = StorageService.instance;
     final data = await storage.readJsonMap(_indexFilename);
 
-    if (data == null) {
-      return [];
+    if (data != null) {
+      final version = data['version'] as int? ?? _dataVersion;
+      final booksList = data['books'];
+      if (version == _dataVersion && booksList is List) {
+        try {
+          return [
+            for (final json in booksList)
+              if (json is Map<String, dynamic>)
+                WorldBookIndexInfo.fromJson(json),
+          ];
+        } catch (error, stack) {
+          developer.log(
+            '世界书索引解析失败，改为按文件重建',
+            name: 'WorldBookService',
+            error: error,
+            stackTrace: stack,
+          );
+        }
+      }
     }
 
-    final version = data['version'] as int? ?? 1;
-    if (version != _dataVersion) {
-      // 未来可以在这里处理数据迁移
-      return [];
+    return await _rebuildIndexFromFiles() ?? const [];
+  }
+
+  /// 扫描世界书目录重建索引；目录不存在时返回 null（不做任何写入）。
+  Future<List<WorldBookIndexInfo>?> _rebuildIndexFromFiles() async {
+    final dir = Directory(_worldBooksPath);
+    if (!await dir.exists()) {
+      return null;
     }
 
-    final booksList = data['books'] as List<dynamic>?;
-    if (booksList == null || booksList.isEmpty) {
-      return [];
+    final infos = <WorldBookIndexInfo>[];
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.json')) {
+        continue;
+      }
+      try {
+        final json =
+            jsonDecode(await entity.readAsString()) as Map<String, dynamic>;
+        infos.add(WorldBook.fromJson(json).toIndexInfo());
+      } catch (error, stack) {
+        developer.log(
+          '跳过无法解析的世界书文件: ${entity.path}',
+          name: 'WorldBookService',
+          error: error,
+          stackTrace: stack,
+        );
+      }
     }
 
-    return booksList
-        .map(
-          (json) => WorldBookIndexInfo.fromJson(json as Map<String, dynamic>),
-        )
-        .toList();
+    infos.sort((a, b) => a.name.compareTo(b.name));
+    await _saveIndexInfo(infos);
+    return infos;
   }
 
   /// 保存索引信息
@@ -123,7 +161,13 @@ class WorldBookService {
       final content = await file.readAsString();
       final json = jsonDecode(content) as Map<String, dynamic>;
       return WorldBook.fromJson(json);
-    } catch (_) {
+    } catch (error, stack) {
+      developer.log(
+        '世界书解析失败，已跳过: $id',
+        name: 'WorldBookService',
+        error: error,
+        stackTrace: stack,
+      );
       return null;
     }
   }
@@ -199,13 +243,18 @@ class WorldBookService {
   }
 
   /// 生成唯一 ID
-  String generateId() {
-    return 'wb-${DateTime.now().millisecondsSinceEpoch}';
-  }
+  String generateId() => _generateUniqueId('wb');
 
   /// 生成条目唯一 ID
-  String generateEntryId() {
-    return 'entry-${DateTime.now().millisecondsSinceEpoch}';
+  String generateEntryId() => _generateUniqueId('entry');
+
+  /// 毫秒时间戳不足以区分同一毫秒内的多次创建，尾部追加三位序号。
+  /// 只使用数字，方便导出角色卡时由尾部数字反解出稳定的条目标识。
+  String _generateUniqueId(String prefix) {
+    _idSequence = (_idSequence + 1) % 1000;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final suffix = _idSequence.toString().padLeft(3, '0');
+    return '$prefix-$stamp$suffix';
   }
 
   // ==================== 导入导出功能 ====================

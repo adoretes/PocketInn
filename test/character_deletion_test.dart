@@ -84,6 +84,25 @@ void main() {
     expect(summaries.single.characterId, keptCharacter.id);
   });
 
+  test('共用世界书不会随单个角色删除', () async {
+    final book = await WorldBookService.instance.create(name: '共用设定');
+
+    final alice = await CharacterService.instance.createFromCard(
+      cardJson: _buildCard('Alice'),
+      selectedWorldBookId: book.id,
+    );
+    final bob = await CharacterService.instance.createFromCard(
+      cardJson: _buildCard('Bob'),
+      selectedWorldBookId: book.id,
+    );
+
+    await CharacterService.instance.delete(alice.id);
+    expect(await WorldBookService.instance.loadById(book.id), isNotNull);
+
+    await CharacterService.instance.delete(bob.id);
+    expect(await WorldBookService.instance.loadById(book.id), isNull);
+  });
+
   test('updating a character can remove its portrait assets', () async {
     final sourceImage = File('${tempDir.path}/source_portrait.png');
     await sourceImage.writeAsBytes(_tinyPngBytes);
