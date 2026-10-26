@@ -102,6 +102,17 @@ class _MessageBubbleState extends State<MessageBubble> {
   @override
   void didUpdateWidget(covariant MessageBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 流式占位每帧都会带来新文本；此时气泡没有操作按钮，浮窗也不可能
+    // 处于打开状态，跳过关闭逻辑以免每帧排队一次无意义的帧回调。
+    final isStreamingUpdate =
+        !widget.showActions &&
+        !oldWidget.showActions &&
+        !widget.message.isMe &&
+        widget.message.id == null &&
+        oldWidget.message.id == null;
+    if (isStreamingUpdate) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _hideActionPopup();
     });

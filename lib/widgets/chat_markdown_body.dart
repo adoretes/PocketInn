@@ -9,6 +9,10 @@ const String _singleQuoteTokenTag = 'pinn_single_quote';
 const String _bracketTokenTag = 'pinn_bracket';
 const String _underlineTag = 'u';
 
+/// 内联语法实例无状态，整棵应用共享一份，避免流式每帧重复分配。
+final List<md.InlineSyntax> _chatMarkdownInlineSyntaxes =
+    buildChatMarkdownInlineSyntaxes();
+
 class ChatMarkdownBody extends StatelessWidget {
   const ChatMarkdownBody({
     super.key,
@@ -46,7 +50,7 @@ class ChatMarkdownBody extends StatelessWidget {
       data: normalizeSimpleHtmlBlocks(text),
       // SelectionArea can select across Markdown's multiple text widgets.
       selectable: false,
-      inlineSyntaxes: buildChatMarkdownInlineSyntaxes(),
+      inlineSyntaxes: _chatMarkdownInlineSyntaxes,
       builders: buildChatMarkdownBuilders(
         chatTextTheme: chatTextTheme,
         colorScheme: colorScheme,

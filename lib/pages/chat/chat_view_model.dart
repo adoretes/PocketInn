@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../core/service_locator.dart';
 import '../../data/api_configs.dart';
@@ -24,6 +25,7 @@ import '../../services/regex_rule_group_service.dart';
 import '../../services/status_extraction_service.dart';
 import '../../services/variable_state_service.dart';
 import '../../services/world_book_service.dart';
+import 'streaming_message_snapshot.dart';
 import 'widgets/message_edit_dialog.dart';
 
 /// 聊天页面的视图模型。
@@ -105,6 +107,21 @@ class ChatViewModel extends ChangeNotifier {
   String _streamingAssistantText = '';
   String _streamingThinkingChain = '';
   String _streamingImpersonationText = '';
+
+  /// 流式正文/思考链的高频发布通道。
+  ///
+  /// 该通道独立于 [notifyListeners]，只让流式中那条气泡订阅，避免每个
+  /// token 都重建页面骨架、历史消息与输入区。发布节奏由
+  /// [_scheduleStreamingPublish] 合并到下一帧。
+  final ValueNotifier<StreamingMessageSnapshot> _streamingSnapshotNotifier =
+      ValueNotifier<StreamingMessageSnapshot>(StreamingMessageSnapshot.empty);
+
+  /// 本帧是否已注册过发布回调（同一帧内多次增量只发布一次）。
+  bool _streamingPublishScheduled = false;
+
+  /// 待执行帧回调的 id，用于结束流式或销毁时取消。
+  int? _streamingPublishCallbackId;
+
   bool _isDraftSession = false;
   List<String> _draftOpeningAssistantMessages = const [];
   int _draftOpeningMessageIndex = 0;
@@ -165,6 +182,10 @@ class ChatViewModel extends ChangeNotifier {
   String? get regeneratingUserMessageId => _regeneratingUserMessageId;
   String get streamingAssistantText => _streamingAssistantText;
   String get streamingThinkingChain => _streamingThinkingChain;
+
+  /// 流式正文/思考链的只读订阅入口（按帧合并，内容不变时不通知）。
+  ValueListenable<StreamingMessageSnapshot> get streamingMessageListenable =>
+      _streamingSnapshotNotifier;
 
   /// 当前生效的可见消息列表（含待发送、流式中、重新生成占位）。
   List<ChatMessage> get visibleMessages {
@@ -415,7 +436,14 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _loadSession({String? preferredSessionId}) async {
+  /// 加载会话数据。
+  ///
+  /// [notifyReloaded] 为 false 时跳过 [onSessionReloaded]（输入框清理）：
+  /// 生成结束后的重载不应清掉用户在结果展示后立刻输入的草稿。
+  Future<void> _loadSession({
+    String? preferredSessionId,
+    bool notifyReloaded = true,
+  }) async {
     final loadGeneration = ++_sessionLoadGeneration;
     final summaries = await getIt<ChatDatabaseService>().loadSessionSummaries();
     if (_isDisposed || loadGeneration != _sessionLoadGeneration) {
@@ -468,17 +496,6 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
 
-    // 旧会话回填：早于状态系统的会话在加载时补写角色卡声明的
-    // 初始变量（仅补一次，不覆盖已有记录）。
-    if (resolvedCharacter != null) {
-      try {
-        await VariableStateService.instance.ensureCardInit(
-          sessionId: bundle.session.id,
-          cardJson: resolvedCharacter.cardJson,
-        );
-      } catch (_) {}
-    }
-
     _activeSession = bundle.session;
     _activeCharacter = resolvedCharacter;
     _messages = bundle.activeMessages;
@@ -513,7 +530,25 @@ class ChatViewModel extends ChangeNotifier {
     }
     _isSwitchingSession = false;
     notifyListeners();
-    onSessionReloaded?.call();
+    if (notifyReloaded) {
+      onSessionReloaded?.call();
+    }
+
+    // 旧会话回填：早于状态系统的会话在加载时补写角色卡声明的初始变量
+    // （仅补一次，不覆盖已有记录）。放在首屏刷新之后执行，避免拖慢
+    // 气泡与操作按钮的出现。
+    if (resolvedCharacter != null) {
+      unawaited(() async {
+        try {
+          await VariableStateService.instance.ensureCardInit(
+            sessionId: bundle.session.id,
+            cardJson: resolvedCharacter.cardJson,
+          );
+        } catch (_) {
+          // 回填失败不影响会话加载。
+        }
+      }());
+    }
 
     // 记住当前会话，下次启动时优先恢复到这条聊天。
     unawaited(_rememberSession(bundle.session.id));
@@ -852,18 +887,23 @@ class ChatViewModel extends ChangeNotifier {
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
     _isSending = true;
+    // 上一轮结束后的会话重载可能仍在进行，先让它失效。
+    _invalidateSessionReload();
     _clearGalChoices();
     _galBrowsingIndex = null;
     _replyToMessageIndex = effectiveReplyToIndex;
     _pendingUserMessage = ChatMessage(text: text, isMe: true);
     _streamingAssistantText = '';
     _streamingThinkingChain = '';
+    // 清空上一轮残留的快照，避免新气泡在首个 token 到达前显示旧文本。
+    _publishStreamingSnapshot();
     notifyListeners();
 
     ChatSession? persistedSession;
+    ChatSendResult? sendResult;
 
     try {
-      await getIt<ChatService>().sendMessage(
+      sendResult = await getIt<ChatService>().sendMessage(
         session: sessionForSend,
         character: character,
         chatMessages: chatMessages,
@@ -875,18 +915,7 @@ class ChatViewModel extends ChangeNotifier {
         selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
         useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
-        onStreamProgress: (progress) {
-          if (_isDisposed) {
-            return;
-          }
-          if (progress.textDelta.isNotEmpty) {
-            _streamingAssistantText += progress.textDelta;
-          }
-          if (progress.thinkingDelta.isNotEmpty) {
-            _streamingThinkingChain += progress.thinkingDelta;
-          }
-          notifyListeners();
-        },
+        onStreamProgress: _appendStreamProgress,
         persistSession: _isDraftSession
             ? () async {
                 final createdSession = await _persistDraftSession();
@@ -899,16 +928,28 @@ class ChatViewModel extends ChangeNotifier {
       // 用户主动终止，不弹错误提示。
     } finally {
       _resetPendingMessages();
-      final reloadSessionId = persistedSession?.id;
-      if (reloadSessionId != null || !_isDraftSession) {
-        await _loadSession(preferredSessionId: reloadSessionId ?? session.id);
-      }
       if (!_isDisposed) {
         _isSending = false;
         if (identical(_activeCompletionCancelToken, cancellationToken)) {
           _activeCompletionCancelToken = null;
         }
+        // 先用发送结果乐观更新列表，让新气泡与操作按钮立即出现；
+        // 完整重载随后补齐分支索引等派生数据。
+        _appendSendResultLocally(
+          sendResult,
+          replyToMessageIndex: effectiveReplyToIndex,
+          persistedSession: persistedSession,
+        );
         notifyListeners();
+      }
+      final reloadSessionId = persistedSession?.id;
+      if (reloadSessionId != null || !_isDraftSession) {
+        await _loadSession(
+          preferredSessionId: reloadSessionId ?? session.id,
+          notifyReloaded: false,
+        );
+      }
+      if (!_isDisposed) {
         // gal 模式下回复完成后自动生成选项。
         unawaited(_maybeGenerateGalChoices());
       }
@@ -959,18 +1000,23 @@ class ChatViewModel extends ChangeNotifier {
         _messages.take(userMessageIndex).toList(growable: false);
 
     _isSending = true;
+    // 上一轮结束后的会话重载可能仍在进行，先让它失效。
+    _invalidateSessionReload();
     _pendingUserMessage = null;
     _regeneratingUserMessageId = userMessage.id;
     _streamingAssistantText = '';
     _streamingThinkingChain = '';
+    // 清空上一轮残留的快照，避免新气泡在首个 token 到达前显示旧文本。
+    _publishStreamingSnapshot();
     _clearGalChoices();
     _galBrowsingIndex = null;
     notifyListeners();
 
+    ChatSendResult? sendResult;
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
     try {
-      await getIt<ChatService>().regenerateAssistantResponse(
+      sendResult = await getIt<ChatService>().regenerateAssistantResponse(
         session: session,
         character: character,
         historyBeforeUserMessage: historyBeforeUserMessage,
@@ -981,30 +1027,29 @@ class ChatViewModel extends ChangeNotifier {
         selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
         useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
-        onStreamProgress: (progress) {
-          if (_isDisposed) {
-            return;
-          }
-          if (progress.textDelta.isNotEmpty) {
-            _streamingAssistantText += progress.textDelta;
-          }
-          if (progress.thinkingDelta.isNotEmpty) {
-            _streamingThinkingChain += progress.thinkingDelta;
-          }
-          notifyListeners();
-        },
+        onStreamProgress: _appendStreamProgress,
       );
     } on ChatCompletionCancelledException {
       // 用户主动终止，不弹错误提示。
     } finally {
       _resetPendingMessages();
-      await _loadSession(preferredSessionId: session.id);
       if (!_isDisposed) {
         _isSending = false;
         if (identical(_activeCompletionCancelToken, cancellationToken)) {
           _activeCompletionCancelToken = null;
         }
+        // 先用重新生成结果乐观更新列表，让按钮立即恢复可用。
+        _appendRegenerateResultLocally(
+          sendResult,
+          userMessageIndex: userMessageIndex,
+        );
         notifyListeners();
+      }
+      await _loadSession(
+        preferredSessionId: session.id,
+        notifyReloaded: false,
+      );
+      if (!_isDisposed) {
         // gal 模式下回复完成后自动生成选项。
         unawaited(_maybeGenerateGalChoices());
       }
@@ -1062,10 +1107,14 @@ class ChatViewModel extends ChangeNotifier {
     final cancellationToken = ChatCompletionCancelToken();
     _activeCompletionCancelToken = cancellationToken;
     _isSending = true;
+    // 上一轮结束后的会话重载可能仍在进行，先让它失效。
+    _invalidateSessionReload();
     _pendingUserMessage = null;
     _regeneratingUserMessageId = null;
     _streamingAssistantText = '';
     _streamingThinkingChain = '';
+    // 清空上一轮残留的快照，避免新气泡在首个 token 到达前显示旧文本。
+    _publishStreamingSnapshot();
     _clearGalChoices();
     _galBrowsingIndex = null;
     notifyListeners();
@@ -1081,24 +1130,16 @@ class ChatViewModel extends ChangeNotifier {
         selectedRegexRuleGroupIds: _selectedRegexRuleGroupIds,
         useStreaming: _useStreaming,
         cancellationToken: cancellationToken,
-        onStreamProgress: (progress) {
-          if (_isDisposed) {
-            return;
-          }
-          if (progress.textDelta.isNotEmpty) {
-            _streamingAssistantText += progress.textDelta;
-          }
-          if (progress.thinkingDelta.isNotEmpty) {
-            _streamingThinkingChain += progress.thinkingDelta;
-          }
-          notifyListeners();
-        },
+        onStreamProgress: _appendStreamProgress,
       );
     } on ChatCompletionCancelledException {
       // 用户主动终止，不弹错误提示。
     } finally {
       _resetPendingMessages();
-      await _loadSession(preferredSessionId: session.id);
+      await _loadSession(
+        preferredSessionId: session.id,
+        notifyReloaded: false,
+      );
       if (!_isDisposed) {
         _isSending = false;
         if (identical(_activeCompletionCancelToken, cancellationToken)) {
@@ -1538,6 +1579,13 @@ class ChatViewModel extends ChangeNotifier {
     if (streamingThinkingChain != null) {
       _streamingThinkingChain = streamingThinkingChain;
     }
+    if (streamingAssistantText != null || streamingThinkingChain != null) {
+      // 测试直接写入流式文本时同步快照，保证气泡订阅方读到同一份内容。
+      _streamingSnapshotNotifier.value = StreamingMessageSnapshot(
+        text: _streamingAssistantText,
+        thinkingChain: _streamingThinkingChain,
+      );
+    }
     if (isDraftSession != null) _isDraftSession = isDraftSession;
     if (selectedUserSettingId != null) {
       _selectedUserSettingId = selectedUserSettingId;
@@ -1545,7 +1593,189 @@ class ChatViewModel extends ChangeNotifier {
     if (selectedPresetId != null) _selectedPresetId = selectedPresetId;
   }
 
+  /// 仅供测试使用：模拟一条流式增量，验证按帧合并与主通知隔离。
+  @visibleForTesting
+  void appendStreamProgressForTesting(ChatCompletionProgress progress) {
+    _appendStreamProgress(progress);
+  }
+
+  /// 仅供测试使用：立即发布待处理快照（不依赖真实帧调度）。
+  @visibleForTesting
+  void flushStreamingSnapshotForTesting() {
+    _publishStreamingSnapshot();
+  }
+
+  /// 仅供测试使用：清空待处理消息与流式快照。
+  @visibleForTesting
+  void resetPendingMessagesForTesting() {
+    _resetPendingMessages();
+  }
+
+  /// 仅供测试使用：模拟发送成功后把助手节点乐观并入列表。
+  @visibleForTesting
+  void appendAssistantNodeLocallyForTesting(
+    ChatNode assistantNode, {
+    int? truncateToIndex,
+  }) {
+    _appendNodesLocally(
+      assistantNode: assistantNode,
+      truncateToIndex: truncateToIndex,
+    );
+  }
+
   // --- 私有辅助 ---
+
+  /// 使进行中的会话重载失效。
+  ///
+  /// 新操作（发送、重新生成、继续推进）会自行触发新的重载，若让旧重载
+  /// 继续执行，其较早的快照会覆盖刚乐观更新出来的消息。
+  void _invalidateSessionReload() {
+    _sessionLoadGeneration++;
+  }
+
+  /// 用发送结果就地追加用户与助手消息。
+  ///
+  /// 全量重载会话需要串行查询多条数据，慢设备或大历史下可能耗时一两秒；
+  /// 先用返回值补齐列表，能让新气泡及其操作按钮立即出现，重载完成后自动
+  /// 修正分支索引等派生字段。
+  void _appendSendResultLocally(
+    ChatSendResult? result, {
+    int? replyToMessageIndex,
+    ChatSession? persistedSession,
+  }) {
+    if (result == null) {
+      return;
+    }
+    if (persistedSession != null) {
+      // 草稿会话已转正式：立刻切到真实会话，界面不再停留在草稿态。
+      _activeSession = persistedSession;
+      _isDraftSession = false;
+      _draftOpeningAssistantMessages = const [];
+      _draftOpeningMessageIndex = 0;
+    }
+    _appendNodesLocally(
+      userNode: result.userNode,
+      assistantNode: result.assistantNode,
+      truncateToIndex: replyToMessageIndex,
+    );
+    _activeSession = _activeSession?.copyWith(
+      currentLeafMessageId: result.assistantNode.id,
+    );
+  }
+
+  /// 用重新生成结果替换旧分支尾部。
+  void _appendRegenerateResultLocally(
+    ChatSendResult? result, {
+    required int userMessageIndex,
+  }) {
+    if (result == null) {
+      return;
+    }
+    _appendNodesLocally(
+      assistantNode: result.assistantNode,
+      truncateToIndex: userMessageIndex,
+    );
+    _activeSession = _activeSession?.copyWith(
+      currentLeafMessageId: result.assistantNode.id,
+    );
+  }
+
+  /// 把节点并入消息列表；[truncateToIndex] 非空时先截断旧分支尾部。
+  void _appendNodesLocally({
+    required ChatNode assistantNode,
+    ChatNode? userNode,
+    int? truncateToIndex,
+  }) {
+    final base =
+        truncateToIndex != null &&
+            truncateToIndex >= 0 &&
+            truncateToIndex < _messages.length
+        ? _messages.take(truncateToIndex + 1).toList()
+        : List<ChatMessage>.of(_messages);
+    if (userNode != null) {
+      base.add(_nodeToChatMessage(userNode, isMe: true));
+    }
+    base.add(_nodeToChatMessage(assistantNode, isMe: false));
+    _messages = base;
+  }
+
+  ChatMessage _nodeToChatMessage(ChatNode node, {required bool isMe}) {
+    return ChatMessage(
+      id: node.id,
+      sessionId: node.sessionId,
+      parentId: node.parentId,
+      text: node.text,
+      isMe: isMe,
+      thinkingChain: node.thinkingChain,
+      index: node.siblingOrder + 1,
+      total: node.siblingOrder + 1,
+      siblingIds: [node.id],
+    );
+  }
+
+  /// 追加一条流式增量，并把发布推迟到下一帧。
+  ///
+  /// 高频通道不调用 [notifyListeners]，页面骨架与历史消息不参与逐 token
+  /// 刷新；同一帧内的多次增量只会发布一次快照。
+  void _appendStreamProgress(ChatCompletionProgress progress) {
+    if (_isDisposed) {
+      return;
+    }
+    if (progress.textDelta.isEmpty && progress.thinkingDelta.isEmpty) {
+      return;
+    }
+    if (progress.textDelta.isNotEmpty) {
+      _streamingAssistantText += progress.textDelta;
+    }
+    if (progress.thinkingDelta.isNotEmpty) {
+      _streamingThinkingChain += progress.thinkingDelta;
+    }
+    _scheduleStreamingPublish();
+  }
+
+  /// 注册下一帧的发布回调；本帧已注册时直接复用。
+  void _scheduleStreamingPublish() {
+    if (_streamingPublishScheduled || _isDisposed) {
+      return;
+    }
+    _streamingPublishScheduled = true;
+    _streamingPublishCallbackId = SchedulerBinding.instance
+        .scheduleFrameCallback((_) {
+          _streamingPublishCallbackId = null;
+          _streamingPublishScheduled = false;
+          if (_isDisposed) {
+            return;
+          }
+          _publishStreamingSnapshot();
+        });
+  }
+
+  /// 取消尚未执行的帧回调（结束流式、切换会话或销毁时调用）。
+  void _cancelPendingStreamingPublish() {
+    final callbackId = _streamingPublishCallbackId;
+    _streamingPublishCallbackId = null;
+    _streamingPublishScheduled = false;
+    if (callbackId == null) {
+      return;
+    }
+    SchedulerBinding.instance.cancelFrameCallbackWithId(callbackId);
+  }
+
+  /// 立即把当前缓冲区发布为快照（内容未变化时不通知监听者）。
+  void _publishStreamingSnapshot() {
+    if (_isDisposed) {
+      // 请求在页面销毁后才结束时会走到这里，notifier 已释放。
+      return;
+    }
+    final snapshot = StreamingMessageSnapshot(
+      text: _streamingAssistantText,
+      thinkingChain: _streamingThinkingChain,
+    );
+    if (_streamingSnapshotNotifier.value == snapshot) {
+      return;
+    }
+    _streamingSnapshotNotifier.value = snapshot;
+  }
 
   void _resetPendingMessages() {
     _pendingUserMessage = null;
@@ -1553,17 +1783,22 @@ class ChatViewModel extends ChangeNotifier {
     _regeneratingUserMessageId = null;
     _streamingAssistantText = '';
     _streamingThinkingChain = '';
+    // 取消待发布回调；快照保持最后一帧内容，让占位气泡在被会话重载移除前
+    // 不会短暂回落到「...」。下一轮发送开始时统一清空。
+    _cancelPendingStreamingPublish();
   }
 
   @override
   void dispose() {
     _isDisposed = true;
+    _cancelPendingStreamingPublish();
     apiConfigsNotifier.removeListener(onApiConfigsChanged);
     selectedApiModelIdNotifier.removeListener(onApiConfigsChanged);
     _chatDbChangeNotifier.removeListener(onChatDatabaseChanged);
     _presetChangeNotifier.removeListener(onPresetsChanged);
     _activeCompletionCancelToken?.cancel();
     _galChoicesCancelToken?.cancel();
+    _streamingSnapshotNotifier.dispose();
     super.dispose();
   }
 }

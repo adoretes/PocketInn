@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/chat_message.dart';
 import '../../../models/user_setting.dart';
 import '../../../services/chat_character_resolver.dart';
+import '../streaming_message_snapshot.dart';
 
 /// Gal 视图与普通消息列表共享的公共参数。
 ///
@@ -11,6 +13,7 @@ import '../../../services/chat_character_resolver.dart';
 class MessageViewParams {
   const MessageViewParams({
     required this.visibleMessages,
+    required this.streamingMessageListenable,
     required this.inputTapRegionGroupId,
     required this.isSending,
     required this.isImpersonating,
@@ -35,6 +38,11 @@ class MessageViewParams {
   });
 
   final List<ChatMessage> visibleMessages;
+
+  /// 流式正文/思考链的按帧合并通道；仅流式占位消息订阅，避免整列表
+  /// 随每个 token 重建。
+  final ValueListenable<StreamingMessageSnapshot> streamingMessageListenable;
+
   final Object inputTapRegionGroupId;
   final bool isSending;
   final bool isImpersonating;
@@ -72,6 +80,7 @@ class MessageViewParams {
   MessageViewParams withVisibleMessages(List<ChatMessage> messages) {
     return MessageViewParams(
       visibleMessages: messages,
+      streamingMessageListenable: streamingMessageListenable,
       inputTapRegionGroupId: inputTapRegionGroupId,
       isSending: isSending,
       isImpersonating: isImpersonating,
@@ -102,6 +111,7 @@ class MessageViewParams {
   MessageViewParams withoutBackgroundCopy() {
     return MessageViewParams(
       visibleMessages: visibleMessages,
+      streamingMessageListenable: streamingMessageListenable,
       inputTapRegionGroupId: inputTapRegionGroupId,
       isSending: isSending,
       isImpersonating: isImpersonating,

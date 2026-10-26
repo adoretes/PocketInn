@@ -10,6 +10,7 @@ import 'chat_message_list.dart';
 import 'message_action_availability.dart';
 import 'message_view_params.dart';
 import 'regex_display_text.dart';
+import 'streaming_message_builder.dart';
 import 'thinking_chain_widget.dart';
 
 /// Gal 模式消息视图（ADV 风格）。
@@ -590,6 +591,44 @@ class _GalMessageViewState extends State<GalMessageView>
     );
   }
 
+  /// 构建底部对话框：流式占位只让对话框订阅高频快照，其余部分保持静态。
+  Widget _buildDialogBoxOrStreaming({
+    required ColorScheme colorScheme,
+    required AppSettings settings,
+    required Size mediaSize,
+    required int messageIndex,
+    required ChatMessage message,
+    required bool isBrowsing,
+    required bool showActions,
+  }) {
+    final isStreamingPlaceholder =
+        widget.params.isSending && !message.isMe && message.id == null;
+    if (!isStreamingPlaceholder) {
+      return _buildDialogBox(
+        colorScheme,
+        settings,
+        mediaSize,
+        messageIndex,
+        message,
+        isBrowsing,
+        showActions,
+      );
+    }
+    return StreamingMessageBuilder(
+      baseMessage: message,
+      listenable: widget.params.streamingMessageListenable,
+      builder: (context, liveMessage) => _buildDialogBox(
+        colorScheme,
+        settings,
+        mediaSize,
+        messageIndex,
+        liveMessage,
+        isBrowsing,
+        showActions,
+      ),
+    );
+  }
+
   Widget _buildDialogBox(
     ColorScheme colorScheme,
     AppSettings settings,
@@ -809,14 +848,14 @@ class _GalMessageViewState extends State<GalMessageView>
             children: [
               _buildGalChoicesPanel(colorScheme, message, isBrowsing) ??
                   const SizedBox.shrink(),
-              _buildDialogBox(
-                colorScheme,
-                settings,
-                mediaSize,
-                messageIndex,
-                message,
-                isBrowsing,
-                availability.showActions,
+              _buildDialogBoxOrStreaming(
+                colorScheme: colorScheme,
+                settings: settings,
+                mediaSize: mediaSize,
+                messageIndex: messageIndex,
+                message: message,
+                isBrowsing: isBrowsing,
+                showActions: availability.showActions,
               ),
             ],
           ),

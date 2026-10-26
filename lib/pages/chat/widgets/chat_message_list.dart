@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../data/app_settings.dart';
+import '../../../models/chat_message.dart';
 import '../../../widgets/scroll_float_button.dart';
 import 'message_action_availability.dart';
 import 'message_bubble.dart';
 import 'message_view_params.dart';
 import 'regex_display_text.dart';
+import 'streaming_message_builder.dart';
 
 /// 聊天消息列表（含滚动浮动按钮）。
 ///
@@ -99,78 +101,36 @@ class _ChatMessageListState extends State<ChatMessageList>
                 itemBuilder: (context, index) {
                   final messageIndex = messages.length - 1 - index;
                   final msg = messages[messageIndex];
-                  final availability = evaluateMessageActions(
-                    message: msg,
-                    messageIndex: messageIndex,
-                    messageCount: messages.length,
-                    isSending: widget.params.isSending,
-                    isDraftSession: widget.params.isDraftSession,
-                    regeneratingUserMessageId:
-                        widget.params.regeneratingUserMessageId,
-                  );
-                  final displayText = displayTextFor(
-                    msg,
-                    messages.length - 1 - messageIndex,
-                    widget.params.selectedRegexRuleGroupIds,
-                  );
+                  final distanceFromLatest = messages.length - 1 - messageIndex;
+                  final bubbleKey = ValueKey<Object>(msg.id ?? messageIndex);
+                  // 只有末尾的流式占位消息订阅高频通道，历史消息保持静态。
+                  final isStreamingPlaceholder =
+                      distanceFromLatest == 0 &&
+                      widget.params.isSending &&
+                      !msg.isMe &&
+                      msg.id == null;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: MessageBubble(
-                      key: ValueKey(msg.id ?? messageIndex),
-                      message: msg,
-                      userSetting: widget.params.currentUserSetting,
-                      character: widget.params.activeCharacter,
-                      hasBackground: widget.params.hasBackground,
-                      inputTapRegionGroupId:
-                          widget.params.inputTapRegionGroupId,
-                      isLastUserMessageWithoutReply:
-                          availability.isLastUserMessageWithoutReply,
-                      isLastCharacterMessage:
-                          availability.isLastCharacterMessage,
-                      showActions: availability.showActions,
-                      canEdit: availability.canEdit,
-                      canDelete: availability.canDelete,
-                      isBusyRegenerating:
-                          availability.isRegeneratingUserMessage,
-                      isBusyImpersonating: widget.params.isImpersonating,
-                      displayText: displayText == msg.text ? null : displayText,
-                      onCopy: () => widget.params.onCopyMessage(msg),
-                      onEdit: availability.hasDraftOpeningActions
-                          ? widget.params.onEditDraftOpeningMessage
-                          : () => widget.params.onEditMessage(messageIndex),
-                      onDelete: () =>
-                          widget.params.onDeleteMessage(messageIndex),
-                      onGenerate:
-                          availability.isLastUserMessageWithoutReply &&
-                              availability.showActions &&
-                              !availability.isRegeneratingUserMessage
-                          ? () => widget.params.onRegenerateFromUserMessage(
-                              messageIndex,
-                            )
-                          : null,
-                      onRegenerate:
-                          availability.isLastCharacterMessage &&
-                              availability.showActions
-                          ? () =>
-                                widget.params.onRegenerateMessage(messageIndex)
-                          : null,
-                      onContinue:
-                          availability.isLastCharacterMessage &&
-                              availability.showActions
-                          ? () => widget.params.onContinueMessage(messageIndex)
-                          : null,
-                      onImpersonate:
-                          availability.isLastCharacterMessage &&
-                              availability.showActions
-                          ? widget.params.onImpersonate
-                          : null,
-                      onSelectPreviousVariant: msg.hasMultiple
-                          ? () => widget.params.onSwitchMessageVariant(msg, -1)
-                          : null,
-                      onSelectNextVariant: msg.hasMultiple
-                          ? () => widget.params.onSwitchMessageVariant(msg, 1)
-                          : null,
-                    ),
+                    child: isStreamingPlaceholder
+                        ? StreamingMessageBuilder(
+                            baseMessage: msg,
+                            listenable:
+                                widget.params.streamingMessageListenable,
+                            builder: (context, liveMessage) => _buildBubble(
+                              bubbleKey: bubbleKey,
+                              message: liveMessage,
+                              messageIndex: messageIndex,
+                              distanceFromLatest: distanceFromLatest,
+                              messageCount: messages.length,
+                            ),
+                          )
+                        : _buildBubble(
+                            bubbleKey: bubbleKey,
+                            message: msg,
+                            messageIndex: messageIndex,
+                            distanceFromLatest: distanceFromLatest,
+                            messageCount: messages.length,
+                          ),
                   );
                 },
               ),
@@ -186,6 +146,74 @@ class _ChatMessageListState extends State<ChatMessageList>
           ),
         ),
       ],
+    );
+  }
+
+  /// 构建单条消息气泡；流式占位与静态消息共用同一套参数计算。
+  Widget _buildBubble({
+    required Key bubbleKey,
+    required ChatMessage message,
+    required int messageIndex,
+    required int distanceFromLatest,
+    required int messageCount,
+  }) {
+    final availability = evaluateMessageActions(
+      message: message,
+      messageIndex: messageIndex,
+      messageCount: messageCount,
+      isSending: widget.params.isSending,
+      isDraftSession: widget.params.isDraftSession,
+      regeneratingUserMessageId: widget.params.regeneratingUserMessageId,
+    );
+    final displayText = displayTextFor(
+      message,
+      distanceFromLatest,
+      widget.params.selectedRegexRuleGroupIds,
+    );
+    return MessageBubble(
+      key: bubbleKey,
+      message: message,
+      userSetting: widget.params.currentUserSetting,
+      character: widget.params.activeCharacter,
+      hasBackground: widget.params.hasBackground,
+      inputTapRegionGroupId: widget.params.inputTapRegionGroupId,
+      isLastUserMessageWithoutReply: availability.isLastUserMessageWithoutReply,
+      isLastCharacterMessage: availability.isLastCharacterMessage,
+      showActions: availability.showActions,
+      canEdit: availability.canEdit,
+      canDelete: availability.canDelete,
+      isBusyRegenerating: availability.isRegeneratingUserMessage,
+      isBusyImpersonating: widget.params.isImpersonating,
+      displayText: displayText == message.text ? null : displayText,
+      onCopy: () => widget.params.onCopyMessage(message),
+      onEdit: availability.hasDraftOpeningActions
+          ? widget.params.onEditDraftOpeningMessage
+          : () => widget.params.onEditMessage(messageIndex),
+      onDelete: () => widget.params.onDeleteMessage(messageIndex),
+      onGenerate:
+          availability.isLastUserMessageWithoutReply &&
+              availability.showActions &&
+              !availability.isRegeneratingUserMessage
+          ? () => widget.params.onRegenerateFromUserMessage(messageIndex)
+          : null,
+      onRegenerate:
+          availability.isLastCharacterMessage && availability.showActions
+          ? () => widget.params.onRegenerateMessage(messageIndex)
+          : null,
+      onContinue:
+          availability.isLastCharacterMessage && availability.showActions
+          ? () => widget.params.onContinueMessage(messageIndex)
+          : null,
+      onImpersonate:
+          availability.isLastCharacterMessage && availability.showActions
+          ? widget.params.onImpersonate
+          : null,
+      onSelectPreviousVariant: message.hasMultiple
+          ? () => widget.params.onSwitchMessageVariant(message, -1)
+          : null,
+      onSelectNextVariant: message.hasMultiple
+          ? () => widget.params.onSwitchMessageVariant(message, 1)
+          : null,
     );
   }
 

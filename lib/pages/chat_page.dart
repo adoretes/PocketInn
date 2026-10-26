@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../data/app_settings.dart';
@@ -86,6 +87,11 @@ class _ChatPageState extends State<ChatPage> {
   );
   String _inputText = '';
 
+  /// 助手帮答的待写回文本与帧调度标记：流式增量按帧合并写入输入框，
+  /// 避免每个 token 触发整页重建。
+  String _pendingImpersonationText = '';
+  bool _impersonationWriteScheduled = false;
+
   /// 右侧边栏（记忆与状态）是否展开：收起时不为它做任何查询。
   bool _isEndDrawerOpen = false;
 
@@ -109,11 +115,43 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onTextChanged() {
-    if (_inputText == _textController.text) {
+    final text = _textController.text;
+    if (_inputText == text) {
+      return;
+    }
+    // 输入区只依赖「是否可发送」这一个布尔量；文本变化但可发送态未翻转
+    // 时无需重建整页（助手帮答逐帧写入输入框时尤其明显）。
+    final wasSendEnabled = _inputText.trim().isNotEmpty;
+    final isSendEnabled = text.trim().isNotEmpty;
+    if (wasSendEnabled == isSendEnabled) {
+      _inputText = text;
       return;
     }
     setState(() {
-      _inputText = _textController.text;
+      _inputText = text;
+    });
+  }
+
+  /// 把助手帮答的最新文本推迟到下一帧写回输入框（同帧多次回调只写一次）。
+  void _scheduleImpersonationTextWrite(String text) {
+    _pendingImpersonationText = text;
+    if (_impersonationWriteScheduled) {
+      return;
+    }
+    _impersonationWriteScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _impersonationWriteScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      final pending = _pendingImpersonationText;
+      if (_textController.text == pending) {
+        return;
+      }
+      _textController.value = TextEditingValue(
+        text: pending,
+        selection: TextSelection.collapsed(offset: pending.length),
+      );
     });
   }
 
@@ -615,10 +653,7 @@ class _ChatPageState extends State<ChatPage> {
       final reply = await _viewModel.generateUserReply(
         onProgress: (text) {
           if (!mounted) return;
-          _textController.text = text;
-          _textController.selection = TextSelection.fromPosition(
-            TextPosition(offset: text.length),
-          );
+          _scheduleImpersonationTextWrite(text);
         },
       );
       if (reply == null || reply.isEmpty || !mounted) {
@@ -858,6 +893,8 @@ class _ChatPageState extends State<ChatPage> {
                                 builder: (context) {
                                   final messageViewParams = MessageViewParams(
                                     visibleMessages: _viewModel.visibleMessages,
+                                    streamingMessageListenable:
+                                        _viewModel.streamingMessageListenable,
                                     inputTapRegionGroupId:
                                         _inputTapRegionGroupId,
                                     isSending: _viewModel.isSending,

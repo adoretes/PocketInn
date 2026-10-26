@@ -77,19 +77,27 @@ mixin RegexDisplayTextMixin<T extends StatefulWidget> on State<T> {
     final rules = _rulesFor(selectedIds);
     if (rules.isEmpty) return msg.text;
 
-    // 文本内容 + 角色 + 深度 + 规则集共同决定结果，可直接命中原结果。
-    final cacheKey = (msg.text, msg.isMe, depth, rules);
-    final cached = _displayTextCache[cacheKey];
-    if (cached != null) return cached;
+    // 流式占位的正文每帧都在增长：缓存既不会命中，又会快速堆积全文副本，
+    // 因此这类消息直接计算，不写入缓存。
+    final cacheable = msg.id != null;
+    if (cacheable) {
+      // 文本内容 + 角色 + 深度 + 规则集共同决定结果，可直接命中原结果。
+      final cacheKey = (msg.text, msg.isMe, depth, rules);
+      final cached = _displayTextCache[cacheKey];
+      if (cached != null) return cached;
+      final text = rules
+          .applyToMessage(text: msg.text, isUserMessage: msg.isMe, depth: depth)
+          .text;
+      if (_displayTextCache.length >= _maxCachedTexts) {
+        _displayTextCache.clear();
+      }
+      _displayTextCache[cacheKey] = text;
+      return text;
+    }
 
-    final text = rules
+    return rules
         .applyToMessage(text: msg.text, isUserMessage: msg.isMe, depth: depth)
         .text;
-    if (_displayTextCache.length >= _maxCachedTexts) {
-      _displayTextCache.clear();
-    }
-    _displayTextCache[cacheKey] = text;
-    return text;
   }
 
   /// 取得当前所选规则组的预编译规则集，无变化时复用上一次编译结果。

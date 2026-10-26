@@ -460,6 +460,160 @@ void main() {
     });
   });
 
+  group('流式快照通道', () {
+    test('逐 token 增量不触发主通知，合并后一次发布', () {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [_user('你好')],
+        isSending: true,
+        useStreaming: true,
+      );
+      var notifyCount = 0;
+      viewModel.addListener(() => notifyCount++);
+      var snapshotCount = 0;
+      viewModel.streamingMessageListenable.addListener(() => snapshotCount++);
+
+      viewModel.appendStreamProgressForTesting(
+        const ChatCompletionProgress(textDelta: '你'),
+      );
+      viewModel.appendStreamProgressForTesting(
+        const ChatCompletionProgress(textDelta: '好', thinkingDelta: '想'),
+      );
+
+      expect(notifyCount, 0, reason: '高频通道不应触发页面主通知');
+      expect(snapshotCount, 0, reason: '发布推迟到下一帧合并执行');
+      expect(viewModel.streamingAssistantText, '你好');
+      expect(viewModel.streamingThinkingChain, '想');
+
+      viewModel.flushStreamingSnapshotForTesting();
+      expect(snapshotCount, 1);
+      expect(viewModel.streamingMessageListenable.value.text, '你好');
+      expect(viewModel.streamingMessageListenable.value.thinkingChain, '想');
+    });
+
+    test('内容未变化时不重复发布快照', () {
+      viewModel = ChatViewModel();
+      var snapshotCount = 0;
+      viewModel.streamingMessageListenable.addListener(() => snapshotCount++);
+
+      viewModel.appendStreamProgressForTesting(
+        const ChatCompletionProgress(textDelta: '你好'),
+      );
+      viewModel.flushStreamingSnapshotForTesting();
+      expect(snapshotCount, 1);
+
+      viewModel.flushStreamingSnapshotForTesting();
+      expect(snapshotCount, 1);
+    });
+
+    test('空增量被忽略且不调度发布', () {
+      viewModel = ChatViewModel();
+      var snapshotCount = 0;
+      viewModel.streamingMessageListenable.addListener(() => snapshotCount++);
+
+      viewModel.appendStreamProgressForTesting(const ChatCompletionProgress());
+
+      expect(viewModel.streamingAssistantText, isEmpty);
+      expect(viewModel.streamingThinkingChain, isEmpty);
+      expect(snapshotCount, 0);
+    });
+
+    test('重置待处理消息时取消待发布回调并保留最后一帧', () {
+      viewModel = ChatViewModel();
+      viewModel.appendStreamProgressForTesting(
+        const ChatCompletionProgress(textDelta: '进行中'),
+      );
+      viewModel.flushStreamingSnapshotForTesting();
+      expect(viewModel.streamingMessageListenable.value.text, '进行中');
+
+      viewModel.resetPendingMessagesForTesting();
+      // 流式字段已复位，下一轮发送会重新清空快照；快照本身保留最后一帧，
+      // 避免占位气泡在会话重载移除前短暂回落到「...」。
+      expect(viewModel.streamingAssistantText, isEmpty);
+      expect(viewModel.streamingMessageListenable.value.text, '进行中');
+    });
+  });
+
+  group('生成结果的乐观更新', () {
+    ChatNode buildAssistantNode({
+      String id = 'a-new',
+      String? parentId = 'u1',
+      String text = '新回复',
+      int siblingOrder = 0,
+    }) {
+      return ChatNode(
+        id: id,
+        sessionId: 'session-1',
+        parentId: parentId,
+        role: ChatNodeRole.assistant,
+        text: text,
+        createdAt: DateTime(2026, 1, 1),
+        siblingOrder: siblingOrder,
+      );
+    }
+
+    test('追加助手节点后无需等待重载即可展示并恢复可操作态', () {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [_user('问题', id: 'u1')],
+        isSending: true,
+      );
+      viewModel.appendAssistantNodeLocallyForTesting(buildAssistantNode());
+      // 模拟 finally 中提前结束生成态（会话重载仍在后台进行）。
+      viewModel.setStateForTesting(isSending: false);
+
+      final visible = viewModel.visibleMessages;
+      expect(visible.length, 2);
+      expect(visible.last.id, 'a-new');
+      expect(visible.last.text, '新回复');
+      expect(visible.last.isMe, isFalse);
+      expect(visible.last.parentId, 'u1');
+    });
+
+    test('重新生成时截断旧分支尾部再追加新回复', () {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [
+          _user('问题', id: 'u1'),
+          _assistant('旧回复', id: 'a-old', parentId: 'u1'),
+          _user('追问', id: 'u2'),
+        ],
+      );
+      viewModel.appendAssistantNodeLocallyForTesting(
+        buildAssistantNode(text: '新回复'),
+        truncateToIndex: 0,
+      );
+
+      expect(viewModel.messages.length, 2);
+      expect(viewModel.messages[0].id, 'u1');
+      expect(viewModel.messages[1].id, 'a-new');
+      expect(viewModel.messages[1].parentId, 'u1');
+    });
+
+    test('多分支节点映射出正确的版本序号', () {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [_user('问题', id: 'u1')],
+      );
+      viewModel.appendAssistantNodeLocallyForTesting(
+        buildAssistantNode(siblingOrder: 1),
+      );
+
+      final appended = viewModel.messages.last;
+      expect(appended.index, 2);
+      expect(appended.total, 2);
+      expect(appended.hasMultiple, isTrue);
+    });
+  });
+
   group('currentUserSetting / resolvedUserName', () {
     test('无用户设定时返回 null / 默认名', () {
       userSettingsNotifier.value = [];
