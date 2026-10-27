@@ -16,6 +16,7 @@ class ChatInputArea extends StatelessWidget {
     required this.sessionKey,
     required this.isSendEnabled,
     required this.isSending,
+    required this.isImpersonating,
     required this.hasBackground,
     required this.settings,
     required this.worldBooks,
@@ -39,6 +40,7 @@ class ChatInputArea extends StatelessWidget {
   final Key? sessionKey;
   final bool isSendEnabled;
   final bool isSending;
+  final bool isImpersonating;
   final bool hasBackground;
   final AppSettings settings;
   final List<WorldBook> worldBooks;
@@ -80,12 +82,15 @@ class ChatInputArea extends StatelessWidget {
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
     final useGlassEffect = hasBackground && settings.inputGlassEffect;
-    final sendButtonBackgroundColor = isSending
+    // 主回复与助手帮答共用同一套「生成中」交互：按钮变成终止，
+    // 生成指示动画也只出现在输入框，不再占用消息气泡的操作区。
+    final isGeneratingReply = isSending || isImpersonating;
+    final sendButtonBackgroundColor = isGeneratingReply
         ? colorScheme.errorContainer
         : isSendEnabled
         ? colorScheme.primary
         : colorScheme.surfaceContainerHighest;
-    final sendButtonForegroundColor = isSending
+    final sendButtonForegroundColor = isGeneratingReply
         ? colorScheme.onErrorContainer
         : isSendEnabled
         ? colorScheme.onPrimary
@@ -101,12 +106,33 @@ class ChatInputArea extends StatelessWidget {
             controller: textController,
             focusNode: focusNode,
             groupId: inputTapRegionGroupId,
+            readOnly: isImpersonating,
             maxLines: 5,
             minLines: 1,
             keyboardType: TextInputType.multiline,
             textInputAction: TextInputAction.newline,
             decoration: InputDecoration(
-              hintText: '输入消息',
+              hint: isImpersonating
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _TypingDots(color: colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            '助手帮答中',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : null,
+              hintText: isImpersonating ? null : '输入消息',
               hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
               border: InputBorder.none,
               isDense: true,
@@ -231,19 +257,18 @@ class ChatInputArea extends StatelessWidget {
                 onPressed: onGalModeToggle,
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 40,
-                  minHeight: 40,
-                ),
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 tooltip: galModeEnabled ? '退出 gal 模式' : 'gal 模式',
               ),
               const Spacer(),
               IconButton(
-                onPressed: isSending
+                onPressed: isGeneratingReply
                     ? onStopGeneratingPressed
                     : (isSendEnabled ? onSendPressed : null),
                 icon: Icon(
-                  isSending ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                  isGeneratingReply
+                      ? Icons.stop_rounded
+                      : Icons.arrow_upward_rounded,
                   size: 15,
                 ),
                 style: IconButton.styleFrom(
@@ -258,7 +283,7 @@ class ChatInputArea extends StatelessWidget {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   padding: EdgeInsets.zero,
                 ),
-                tooltip: isSending ? '终止生成' : '发送',
+                tooltip: isGeneratingReply ? '终止生成' : '发送',
               ),
             ],
           ),
@@ -305,6 +330,60 @@ class ChatInputArea extends StatelessWidget {
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
       ),
       child: inputContent,
+    );
+  }
+}
+
+/// 生成中的三点跳动指示：只占用输入框一行高度，随生成开始/结束自动销毁。
+class _TypingDots extends StatefulWidget {
+  const _TypingDots({required this.color});
+
+  final Color color;
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final phase = (_controller.value + index / 3) % 1.0;
+            final wave = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+            return Padding(
+              padding: EdgeInsets.only(right: index == 2 ? 0 : 3),
+              child: Opacity(
+                opacity: 0.25 + 0.75 * wave,
+                child: Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: widget.color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }

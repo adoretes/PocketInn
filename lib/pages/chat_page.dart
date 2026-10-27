@@ -962,6 +962,7 @@ class _ChatPageState extends State<ChatPage> {
                             sessionKey: ValueKey(_viewModel.activeSession?.id),
                             isSendEnabled: isSendEnabled,
                             isSending: _viewModel.isSending,
+                            isImpersonating: _viewModel.isImpersonating,
                             hasBackground: hasBackground,
                             settings: settings,
                             worldBooks: _viewModel.worldBooks,

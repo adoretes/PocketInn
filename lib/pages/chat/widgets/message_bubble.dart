@@ -176,8 +176,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         (viewportRect?.bottom ?? overlaySize.height) -
         _popupEdgeMargin -
         _popupEstimatedHeight;
-    final double minTop =
-        (viewportRect?.top ?? 0) + _popupEdgeMargin;
+    final double minTop = (viewportRect?.top ?? 0) + _popupEdgeMargin;
     return _clampDouble(candidate, minTop, maxTop);
   }
 
@@ -351,23 +350,23 @@ class _MessageBubbleState extends State<MessageBubble> {
               OverlayPortal.overlayChildLayoutBuilder(
                 controller: _overlayPortalController,
                 overlayChildBuilder: _buildPopupOverlay,
-                  child: GestureDetector(
-                    key: _popupAnchorKey,
-                    onTapDown: widget.showActions
-                        ? (_) => _showActionPopup()
-                        : null,
-                    child: _buildBubbleBox(
-                      useGlassEffect: useGlassEffect,
-                      bubbleRadius: bubbleRadius,
-                      bubbleColor: bubbleColor,
-                      colorScheme: colorScheme,
-                      settings: settings,
-                      displayText: displayText,
-                      textColor: textColor,
-                      inlineCodeColor: inlineCodeColor,
-                      codeBlockColor: codeBlockColor,
-                    ),
+                child: GestureDetector(
+                  key: _popupAnchorKey,
+                  onTapDown: widget.showActions
+                      ? (_) => _showActionPopup()
+                      : null,
+                  child: _buildBubbleBox(
+                    useGlassEffect: useGlassEffect,
+                    bubbleRadius: bubbleRadius,
+                    bubbleColor: bubbleColor,
+                    colorScheme: colorScheme,
+                    settings: settings,
+                    displayText: displayText,
+                    textColor: textColor,
+                    inlineCodeColor: inlineCodeColor,
+                    codeBlockColor: codeBlockColor,
                   ),
+                ),
               ),
               if (widget.showActions) _buildActionButtons(context, colorScheme),
             ],
@@ -646,10 +645,8 @@ class _MessageBubbleState extends State<MessageBubble> {
         ),
       if (widget.isLastCharacterMessage && widget.onImpersonate != null)
         _buildActionButton(
-          icon: widget.isBusyImpersonating
-              ? Icons.hourglass_top
-              : Icons.lightbulb_outline,
-          tooltip: widget.isBusyImpersonating ? '生成中' : '助手帮答',
+          icon: Icons.lightbulb_outline,
+          tooltip: '助手帮答',
           onPressed: widget.isBusyImpersonating ? null : widget.onImpersonate,
           colorScheme: colorScheme,
         ),
