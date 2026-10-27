@@ -72,6 +72,21 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
+                  version: 'v1.6.10',
+                  date: '2026-10-27',
+                  changes: [
+                    '优化会话加载性能，合并并发广播并减少重复查询',
+                    '优化流式消息渲染性能，按帧合并增量并隔离高频刷新',
+                    '新增正则编译缓存，提升正则替换性能',
+                    '增强世界书 SillyTavern 格式兼容性',
+                    '完善状态变量在 gal/帮答提示词中的注入',
+                    '优化助手帮答生成交互，生成指示与终止操作统一至输入框',
+                    '拆分记忆变更通知通道，避免聊天页整页重载',
+                    '修复会话切换期间消息操作与配置保存的竞态问题',
+                    '修复解码崩溃与长分支求值问题',
+                  ],
+                ),
+                _UpdateLogItem(
                   version: 'v1.6.9',
                   date: '2026-10-22',
                   changes: [
