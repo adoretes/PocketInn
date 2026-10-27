@@ -4,8 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pocket_inn/models/chat_variables.dart';
+import 'package:pocket_inn/services/chat_database_service.dart';
+import 'package:pocket_inn/services/post_task_scheduler.dart';
 import 'package:pocket_inn/services/status_extraction_service.dart';
 import 'package:pocket_inn/services/storage_service.dart';
+import 'package:pocket_inn/services/variable_state_service.dart';
 
 import 'helpers/test_env.dart';
 
@@ -21,6 +24,7 @@ void main() {
   });
 
   tearDownAll(() async {
+    await ChatDatabaseService.instance.close();
     tearDownPathProviderMocks(tempDir);
   });
 
@@ -236,6 +240,55 @@ void main() {
         extractionModelId: null,
         recentMessages: 6,
         customPrompt: '',
+      );
+    });
+  });
+
+  group('关闭自动提取后的差量清理', () {
+    test('编辑消息重提时清除旧差量，不再沿用过期状态', () async {
+      updateStatusExtractionConfig(enabled: false);
+      PostTaskScheduler.instance.resetForTest();
+      await ChatDatabaseService.instance.clearAllData();
+
+      final db = ChatDatabaseService.instance;
+      final session = await db.createSession(characterId: 'char-1');
+      final assistant = await db.appendAssistantMessage(
+        sessionId: session.id,
+        parentMessageId: null,
+        text: '旧回复',
+      );
+      await db.updateMessage(
+        sessionId: session.id,
+        messageId: assistant.id,
+        text: '新回复',
+      );
+      await VariableStateService.instance.writeDiff(
+        messageId: assistant.id,
+        ops: const [
+          VariableOp(
+            kind: VariableOpKind.set,
+            variable: '心情',
+            value: '旧状态',
+          ),
+        ],
+      );
+      expect(
+        await VariableStateService.instance.readDiff(assistant.id),
+        isNotEmpty,
+      );
+
+      await StatusExtractionService.instance.extractForAssistantMessage(
+        sessionId: session.id,
+        assistantMessageId: assistant.id,
+        assistantText: '新回复',
+        recentMessages: const [],
+      );
+      await pumpEventQueue();
+
+      expect(
+        await VariableStateService.instance.readDiff(assistant.id),
+        isEmpty,
+        reason: '自动提取关闭时，编辑后的旧差量仍必须清除',
       );
     });
   });

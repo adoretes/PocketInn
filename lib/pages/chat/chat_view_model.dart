@@ -315,7 +315,20 @@ class ChatViewModel extends ChangeNotifier {
     if (sessionId == null || _isLoading || _isSwitchingSession || _isSending) {
       return;
     }
-    await _loadSession(preferredSessionId: sessionId);
+    // 初始化/切换已在加载另一条会话时，旧会话的数据库广播不得覆盖它。
+    final loadGeneration = _sessionLoadGeneration;
+    // 后台写入（记忆/状态提取等）不应清空用户正在编辑的输入框。
+    // 若目标会话已不存在并回退到其他会话，则需要清空，避免草稿串台。
+    await _loadSession(
+      preferredSessionId: sessionId,
+      notifyReloaded: false,
+    );
+    if (_isDisposed || loadGeneration + 1 != _sessionLoadGeneration) {
+      return;
+    }
+    if (!_isDisposed && _activeSession?.id != sessionId) {
+      onSessionReloaded?.call();
+    }
   }
 
   /// 预设列表变化时重新加载预设摘要。
@@ -592,7 +605,7 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<void> _persistSessionConfig() async {
     final session = _activeSession;
-    if (session == null) {
+    if (session == null || _isSwitchingSession) {
       return;
     }
 
@@ -616,7 +629,9 @@ class ChatViewModel extends ChangeNotifier {
       selectedPresetId: _selectedPresetId,
       galModeEnabled: _galModeEnabled,
     );
-    if (_isDisposed) {
+    if (_isDisposed ||
+        _isSwitchingSession ||
+        _activeSession?.id != session.id) {
       return;
     }
     _activeSession = session.copyWith(
@@ -715,6 +730,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 开关 gal 模式，状态按会话持久化。关闭时清空已生成的选项。
   Future<void> setGalMode(bool enabled) async {
+    if (_isSwitchingSession) return;
     if (_galModeEnabled == enabled) return;
     _galModeEnabled = enabled;
     if (!enabled) {
@@ -972,6 +988,7 @@ class ChatViewModel extends ChangeNotifier {
     if (session == null ||
         character == null ||
         _isSending ||
+        _isSwitchingSession ||
         _isImpersonating) {
       return;
     }
@@ -1058,7 +1075,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 重新生成指定位置的角色消息（其上一条为用户消息）。
   Future<void> regenerateMessage(int assistantMessageIndex) async {
-    if (_isSending || _isImpersonating) {
+    if (_isSending || _isSwitchingSession || _isImpersonating) {
       return;
     }
     final session = _activeSession;
@@ -1083,7 +1100,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 继续推进：基于最后一条角色消息生成新的角色消息。
   Future<void> continueAssistantMessage(int assistantMessageIndex) async {
-    if (_isSending || _isImpersonating) {
+    if (_isSending || _isSwitchingSession || _isImpersonating) {
       return;
     }
     final session = _activeSession;
@@ -1136,16 +1153,18 @@ class ChatViewModel extends ChangeNotifier {
       // 用户主动终止，不弹错误提示。
     } finally {
       _resetPendingMessages();
-      await _loadSession(
-        preferredSessionId: session.id,
-        notifyReloaded: false,
-      );
       if (!_isDisposed) {
         _isSending = false;
         if (identical(_activeCompletionCancelToken, cancellationToken)) {
           _activeCompletionCancelToken = null;
         }
         notifyListeners();
+      }
+      await _loadSession(
+        preferredSessionId: session.id,
+        notifyReloaded: false,
+      );
+      if (!_isDisposed) {
         // gal 模式下回复完成后自动生成选项。
         unawaited(_maybeGenerateGalChoices());
       }
@@ -1226,6 +1245,7 @@ class ChatViewModel extends ChangeNotifier {
     if (session == null ||
         message == null ||
         message.id == null ||
+        _isSwitchingSession ||
         _isSending) {
       return;
     }
@@ -1245,6 +1265,19 @@ class ChatViewModel extends ChangeNotifier {
             messageId: editingMessage.id!,
             text: normalizedText,
           );
+
+      // 新分支节点尚未出现在本地列表中。先补上编辑后的用户消息，
+      // 让流式占位、截断位置与乐观更新都落在正确分支上。
+      final editedMessage = _nodeToChatMessage(editedNode, isMe: true).copyWith(
+        index: editedNode.siblingOrder + 1,
+        total: editedNode.siblingOrder + 1,
+        siblingIds: [
+          ...editingMessage.siblingIds,
+          if (!editingMessage.siblingIds.contains(editedNode.id))
+            editedNode.id,
+        ],
+      );
+      _replaceUserMessageBranch(editedMessage, index);
 
       await regenerateFromUserMessage(
         userMessageIndex: index,
@@ -1326,7 +1359,10 @@ class ChatViewModel extends ChangeNotifier {
     final message = index >= 0 && index < _messages.length
         ? _messages[index]
         : null;
-    if (session == null || message?.id == null || _isSending) {
+    if (session == null ||
+        message?.id == null ||
+        _isSwitchingSession ||
+        _isSending) {
       return;
     }
 
@@ -1339,6 +1375,9 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 切换消息变体（分支）。[delta] 为 -1 或 1。
   Future<void> switchMessageVariant(ChatMessage message, int delta) async {
+    if (_isSwitchingSession) {
+      return;
+    }
     if (_isDraftSession) {
       if (message.isMe || _draftOpeningAssistantMessages.length <= 1) {
         return;
@@ -1383,6 +1422,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 更新选中的用户设定并持久化。
   Future<void> setSelectedUserSettingId(String id) async {
+    if (_isSwitchingSession) return;
     _selectedUserSettingId = id;
     notifyListeners();
     await _persistSessionConfig();
@@ -1390,6 +1430,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 切换世界书选中状态并持久化。
   Future<void> toggleWorldBook(String id) async {
+    if (_isSwitchingSession) return;
     if (_selectedWorldBookIds.contains(id)) {
       _selectedWorldBookIds.remove(id);
     } else {
@@ -1401,6 +1442,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 切换正则规则组选中状态并持久化。
   Future<void> toggleRegexRuleGroup(String id) async {
+    if (_isSwitchingSession) return;
     if (_selectedRegexRuleGroupIds.contains(id)) {
       _selectedRegexRuleGroupIds.remove(id);
     } else {
@@ -1412,6 +1454,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 更新选中的预设并持久化。
   Future<void> setSelectedPresetId(String id) async {
+    if (_isSwitchingSession) return;
     _selectedPresetId = id;
     notifyListeners();
     await _persistSessionConfig();
@@ -1426,7 +1469,7 @@ class ChatViewModel extends ChangeNotifier {
   /// 重命名当前会话标题。
   Future<void> renameChatTitle(String title) async {
     final session = _activeSession;
-    if (session == null) {
+    if (session == null || _isSwitchingSession) {
       return;
     }
     final normalizedTitle = title.trim();
@@ -1444,7 +1487,9 @@ class ChatViewModel extends ChangeNotifier {
       sessionId: session.id,
       title: normalizedTitle,
     );
-    if (_isDisposed) {
+    if (_isDisposed ||
+        _isSwitchingSession ||
+        _activeSession?.id != session.id) {
       return;
     }
     _activeSession = session.copyWith(title: normalizedTitle);
@@ -1455,7 +1500,10 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> resetChat(String nextTitle) async {
     final session = _activeSession;
     final character = _activeCharacter;
-    if (session == null || character == null || _isSending) {
+    if (session == null ||
+        character == null ||
+        _isSwitchingSession ||
+        _isSending) {
       return;
     }
 
@@ -1623,7 +1671,27 @@ class ChatViewModel extends ChangeNotifier {
     );
   }
 
+  /// 仅供测试使用：模拟“保存并发送”编辑后本地分支的即时替换。
+  @visibleForTesting
+  void replaceUserMessageBranchForTesting(
+    ChatMessage editedMessage,
+    int index,
+  ) {
+    _replaceUserMessageBranch(editedMessage, index);
+  }
+
   // --- 私有辅助 ---
+
+  /// 丢弃旧分支尾部，并把编辑生成的新用户节点放到原位置。
+  void _replaceUserMessageBranch(
+    ChatMessage editedMessage,
+    int index,
+  ) {
+    _messages = [
+      ..._messages.take(index),
+      editedMessage,
+    ];
+  }
 
   /// 使进行中的会话重载失效。
   ///

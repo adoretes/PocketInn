@@ -209,19 +209,22 @@ class StatusExtractionService {
       run: (ensureFresh) async {
         await ensureFresh();
         final config = statusExtractionNotifier.value;
-        if (!config.enabled) {
-          return;
-        }
-        if (assistantText.trim().isEmpty) {
-          return;
-        }
 
         // 原地编辑后的重提：旧差量随旧文本作废。
+        // 即使自动提取已关闭，也必须清理，否则编辑后的消息会继续沿用
+        // 旧文本产生的变量状态。
         final existingOps = await VariableStateService.instance.readDiff(
           assistantMessageId,
         );
         if (existingOps.isNotEmpty) {
           await VariableStateService.instance.clearDiff(assistantMessageId);
+        }
+
+        if (!config.enabled) {
+          return;
+        }
+        if (assistantText.trim().isEmpty) {
+          return;
         }
 
         // 分支点状态：不含该消息自身（其差量尚未写入/已清空）。

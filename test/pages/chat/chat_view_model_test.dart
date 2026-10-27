@@ -11,6 +11,7 @@ import 'package:pocket_inn/models/character_card.dart';
 import 'package:pocket_inn/models/chat_message.dart';
 import 'package:pocket_inn/models/chat_session.dart';
 import 'package:pocket_inn/pages/chat/chat_view_model.dart';
+import 'package:pocket_inn/pages/chat/widgets/message_edit_dialog.dart';
 import 'package:pocket_inn/services/character_service.dart';
 import 'package:pocket_inn/services/chat_character_resolver.dart';
 import 'package:pocket_inn/services/chat_database_service.dart';
@@ -440,6 +441,120 @@ void main() {
       );
       await viewModel.regenerateMessage(1);
       expect(viewModel.regeneratingUserMessageId, isNull);
+    });
+
+    test('会话切换中不执行', () async {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [
+          _user('问题', id: 'u1'),
+          _assistant('回复', id: 'a1', parentId: 'u1'),
+        ],
+        isSwitchingSession: true,
+      );
+      await viewModel.regenerateMessage(1);
+      expect(viewModel.regeneratingUserMessageId, isNull);
+    });
+  });
+
+  group('会话切换中的消息操作守卫', () {
+    ChatViewModel makeSwitchingViewModel() {
+      final vm = ChatViewModel();
+      vm.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [
+          _user('问题', id: 'u1'),
+          _assistant('回复', id: 'a1', parentId: 'u1'),
+        ],
+        isSwitchingSession: true,
+      );
+      return vm;
+    }
+
+    test('编辑不执行', () async {
+      viewModel = makeSwitchingViewModel();
+      await viewModel.editMessage(0, '改后', MessageEditAction.save);
+      expect(viewModel.messages.first.text, '问题');
+    });
+
+    test('删除不执行', () async {
+      viewModel = makeSwitchingViewModel();
+      await viewModel.deleteMessage(0);
+      expect(viewModel.messages.length, 2);
+    });
+
+    test('切换变体不执行', () async {
+      viewModel = makeSwitchingViewModel();
+      final message = viewModel.messages.last.copyWith(
+        index: 1,
+        total: 2,
+        siblingIds: const ['a1', 'a2'],
+      );
+      await viewModel.switchMessageVariant(message, 1);
+      expect(viewModel.messages.last.id, 'a1');
+    });
+
+    test('配置操作不修改当前选择', () async {
+      viewModel = makeSwitchingViewModel();
+      await viewModel.setSelectedUserSettingId('new-setting');
+      await viewModel.toggleWorldBook('book-1');
+      await viewModel.toggleRegexRuleGroup('regex-1');
+      await viewModel.setSelectedPresetId('new-preset');
+      await viewModel.setGalMode(true);
+
+      expect(viewModel.selectedUserSettingId, isNull);
+      expect(viewModel.selectedWorldBookIds, isEmpty);
+      expect(viewModel.selectedRegexRuleGroupIds, isEmpty);
+      expect(viewModel.selectedPresetId, isNull);
+      expect(viewModel.galModeEnabled, isFalse);
+    });
+  });
+
+  group('历史用户消息编辑后的本地分支', () {
+    test('保存并发送期间立即只保留到新用户节点及流式占位', () async {
+      viewModel = ChatViewModel();
+      viewModel.setStateForTesting(
+        activeSession: _makeSession(),
+        activeCharacter: _makeCharacter(),
+        messages: [
+          _assistant('开场', id: 'a0'),
+          _user('原问题', id: 'u1'),
+          _assistant('旧回复', id: 'a1', parentId: 'u1'),
+          _user('旧追问', id: 'u2'),
+        ],
+      );
+
+      viewModel.replaceUserMessageBranchForTesting(
+        const ChatMessage(
+          id: 'u1-new',
+          sessionId: 'session-1',
+          parentId: 'a0',
+          text: '改后的问题',
+          isMe: true,
+          index: 2,
+          total: 2,
+          siblingIds: ['u1', 'u1-new'],
+        ),
+        1,
+      );
+      viewModel.setStateForTesting(
+        regeneratingUserMessageId: 'u1-new',
+        isSending: true,
+        useStreaming: true,
+      );
+
+      final visible = viewModel.visibleMessages;
+      expect(visible.map((m) => m.text), ['开场', '改后的问题', '...']);
+      expect(visible[1].id, 'u1-new');
+      expect(visible.last.isMe, isFalse);
+      expect(
+        visible.any((m) => m.id == 'a1' || m.id == 'u2'),
+        isFalse,
+        reason: '新分支不应继续显示旧问题之后的回复',
+      );
     });
   });
 
