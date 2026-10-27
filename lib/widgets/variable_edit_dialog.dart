@@ -31,6 +31,7 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
   late final TextEditingController _enumOptionsController;
   late final TextEditingController _changeHintController;
   ChatVariableType _type = ChatVariableType.number;
+  String? _nameError;
 
   @override
   void initState() {
@@ -115,10 +116,16 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(
+                onChanged: (_) {
+                  if (_nameError != null) {
+                    setState(() => _nameError = null);
+                  }
+                },
+                decoration: InputDecoration(
                   labelText: '变量名',
                   hintText: '如：好感度、生命、状态',
-                  border: OutlineInputBorder(),
+                  errorText: _nameError,
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
@@ -219,6 +226,8 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
   void _submit() {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
+      // 变量名为空时给出字段级提示，而不是静默丢弃本次保存。
+      setState(() => _nameError = '请输入变量名');
       return;
     }
     // trim 只去掉首尾空白，文本类型的内部换行会被完整保留。
