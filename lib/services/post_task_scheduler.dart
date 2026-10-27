@@ -193,6 +193,38 @@ class PostTaskScheduler {
     _kindCursor = 0;
     _draining = false;
   }
+
+  /// 等待队列排空（无排队、无在途、调度循环已退出），仅供测试使用。
+  ///
+  /// 后台任务链路包含真实 IO（数据库、网络），测试里单次 `pumpEventQueue()`
+  /// 无法保证任务已执行完；这里用条件轮询替代固定步数等待，超时抛
+  /// [TimeoutException] 让卡住的任务显式失败。
+  @visibleForTesting
+  Future<void> waitForIdle({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (!_isIdle) {
+      if (!DateTime.now().isBefore(deadline)) {
+        throw TimeoutException(
+          'PostTaskScheduler 未在 ${timeout.inMilliseconds}ms 内排空',
+          timeout,
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+  }
+
+  /// 队列是否已排空：调度循环退出、无在途任务、各队列无排队任务。
+  ///
+  /// `_draining` 覆盖「已出队但仍在过期检查」的窗口——异步函数在第一个
+  /// await 前同步执行，故 [schedule] 返回时该标志已置位。
+  bool get _isIdle =>
+      !_draining &&
+      _inflightCount == 0 &&
+      _queues.values.every(
+        (queue) => queue.running == null && queue.pending.isEmpty,
+      );
 }
 
 class _PostTask {

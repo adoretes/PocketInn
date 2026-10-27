@@ -150,7 +150,7 @@ class ChatVariableService {
         if (variableName.isEmpty) {
           return '';
         }
-        return state.localVariables[variableName] ?? '';
+        return _lookupVariable(state.localVariables, variableName);
       case 'getstate':
       case 'getvars':
         return _formatStateVariables(state.localVariables);
@@ -189,7 +189,31 @@ class ChatVariableService {
         .replaceAllMapped(_charAliasPattern, (_) => characterName);
   }
 
-  /// `{{getstate}}` 的渲染：把全部当前变量按「名称: 值」逐行展开。
+  /// 变量名解析：精确命中优先，否则按 trim + 忽略大小写回退。
+  ///
+  /// 与写入侧 `VariableState.applyOps` 保持一致的宽松匹配，避免
+  /// `{{getvar::HP}}` 因大小写与声明不同而展开为空串。
+  static String _lookupVariable(
+    Map<String, String> variables,
+    String name,
+  ) {
+    final exact = variables[name];
+    if (exact != null) {
+      return exact;
+    }
+    final normalized = name.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return '';
+    }
+    for (final entry in variables.entries) {
+      if (entry.key.trim().toLowerCase() == normalized) {
+        return entry.value;
+      }
+    }
+    return '';
+  }
+
+  /// `{{getstate}}` 的渲染：把全部当前变量按「名称: 值」逐行输出。
   ///
   /// 变量表来自分支正确的求值结果（[PromptMacroState.localVariables]），
   /// 无变量时展开为空串。预设/世界书可用它把当前状态整体注入 prompt。

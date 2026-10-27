@@ -189,6 +189,38 @@ void main() {
       ]);
       expect(after['好感度']?.value, '65');
     });
+
+    test('变量名按 trim + 忽略大小写匹配已有变量，不新建同义项', () {
+      final state = VariableState.fromVariables({
+        'HP': const ChatVariable(
+          name: 'HP',
+          type: ChatVariableType.number,
+          value: '10',
+          metadata: ChatVariableMetadata(minValue: 0, maxValue: 100),
+        ),
+      }).applyOps([
+        const VariableOp(kind: VariableOpKind.add, variable: ' hp ', value: '5'),
+        const VariableOp(kind: VariableOpKind.set, variable: 'Hp', value: '7'),
+      ]);
+
+      expect(state.length, 1, reason: '大小写不同的同名变量应命中原键');
+      expect(state['HP']?.value, '7');
+      expect(
+        state['HP']?.metadata?.maxValue,
+        100,
+        reason: '命中原变量后仍沿用其钳制元数据',
+      );
+    });
+
+    test('未声明的新变量名按 trim 后建立，空名操作被丢弃', () {
+      final state = VariableState.empty().applyOps([
+        const VariableOp(kind: VariableOpKind.set, variable: '  金币 ', value: '20'),
+        const VariableOp(kind: VariableOpKind.set, variable: '   ', value: '1'),
+      ]);
+
+      expect(state['金币']?.value, '20');
+      expect(state.length, 1);
+    });
   });
 
   group('VariableState 序列化', () {
@@ -261,6 +293,23 @@ void main() {
       expect(op?.value, '-5');
     });
 
+    test('sub 类别名按减法取负', () {
+      final op = VariableOp.fromJson({'op': 'sub', 'var': '生命', 'value': 5});
+      expect(op?.kind, VariableOpKind.add);
+      expect(op?.value, '-5');
+
+      final chinese = VariableOp.fromJson({'op': '减少', 'var': '生命', 'value': 5});
+      expect(chinese?.value, '-5');
+
+      // 已经是负数时取负回正，与「减少 -5」的字面语义一致。
+      final doubleNegative = VariableOp.fromJson({
+        'op': 'decrease',
+        'var': '生命',
+        'value': -5,
+      });
+      expect(doubleNegative?.value, '5');
+    });
+
     test('未知 op 或缺失字段返回 null', () {
       expect(VariableOp.fromJson({'op': 'explode', 'var': 'x', 'value': 1}), isNull);
       expect(VariableOp.fromJson({'op': 'set', 'value': 1}), isNull);
@@ -317,8 +366,30 @@ void main() {
       expect(decoded[1].value, '平静');
     });
 
-    test('无声明或结构缺失返回空列表', () {
-      expect(decodeCardVariables({}), isEmpty);
+    test('映射形态的裸值按初始值解析，不再因展开崩溃', () {
+      final cardJson = {
+        'data': {
+          'extensions': {
+            'variables': {
+              'hp': 100,
+              '心情': '平静',
+              '空值': null,
+            },
+          },
+        },
+      };
+
+      final decoded = decodeCardVariables(cardJson);
+      expect(decoded.length, 3);
+      expect(decoded[0].name, 'hp');
+      expect(decoded[0].type, ChatVariableType.number);
+      expect(decoded[0].value, '100');
+      expect(decoded[1].type, ChatVariableType.text);
+      expect(decoded[1].value, '平静');
+      expect(decoded[2].value, '');
+    });
+
+    test('无声明或结构缺失返回空列表', () {      expect(decodeCardVariables({}), isEmpty);
       expect(decodeCardVariables({'data': {}}), isEmpty);
       expect(
         decodeCardVariables({

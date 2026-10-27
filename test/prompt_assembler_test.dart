@@ -307,6 +307,36 @@ void main() {
       expect(withoutVars.mergedText, contains('当前状态：'));
     });
 
+    test('getvar 按 trim + 忽略大小写解析变量名', () {
+      final result = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(),
+          userName: '林澈',
+          userSettingPrompt: '',
+          preset: Preset(
+            id: 'preset-1',
+            name: '测试预设',
+            updatedAt: DateTime(2026),
+            prompts: [
+              PresetPrompt(
+                identifier: 'main',
+                name: 'Main',
+                content: 'HP={{getvar::hp}} | 心情={{getvar:: 心情 }}',
+              ),
+            ],
+          ),
+          selectedWorldBooks: const [],
+          chatMessages: const [],
+          currentInput: '',
+          chatVariables: const {'HP': '80', '心情': '平静'},
+        ),
+      );
+
+      expect(result.mergedText, contains('HP=80'));
+      expect(result.mergedText, contains('心情=平静'));
+    });
+
     test('resolves input lastusermessage and lastcharmessage macros', () {
       final result = PromptAssembler.build(
         PromptAssemblyContext(

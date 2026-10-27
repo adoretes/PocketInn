@@ -283,7 +283,9 @@ void main() {
         assistantText: '新回复',
         recentMessages: const [],
       );
-      await pumpEventQueue();
+      // 等后台任务真正执行完：单次 pumpEventQueue 在并发跑测时不足以
+      // 覆盖 sqflite 的跨 isolate 往返，会偶发读到未清理的旧差量。
+      await PostTaskScheduler.instance.waitForIdle();
 
       expect(
         await VariableStateService.instance.readDiff(assistant.id),

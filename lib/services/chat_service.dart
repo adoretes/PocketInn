@@ -551,6 +551,16 @@ class ChatService {
 
     final truncatedChatMessages = _truncateChatMessages(chatMessages);
 
+    // 选项需要基于「最新消息时刻」的状态变量（如当前 HP / 好感度），
+    // 否则预设与提示词里的 {{getvar}} / {{getstate}} 会被渲染为空。
+    final chatVariables = await _resolveChatVariables(
+      sessionId: session.id,
+      messageId: chatMessages.isNotEmpty
+          ? chatMessages.last.id
+          : session.currentLeafMessageId,
+      fallbackCardJson: character.cardJson,
+    );
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -562,16 +572,20 @@ class ChatService {
         chatMessages: truncatedChatMessages,
         currentInput: '',
         memoryContext: memoryContext,
+        chatVariables: chatVariables,
       ),
     );
     cancellationToken?.throwIfCancelled();
 
     final fixedRole = preset.extra['fixed_prompts_role'] as String? ?? 'system';
     final rawPrompt = settings.galChoicePrompt ?? kDefaultGalChoicePrompt;
-    final choiceInstruction = ChatVariableService.replacePlaceholders(
+    final choiceInstruction = ChatVariableService.resolveMacros(
       rawPrompt.replaceAll('{{count}}', '${settings.galChoiceCount}'),
-      characterName: character.name,
-      userName: userSetting.name,
+      state: PromptMacroState(
+        characterName: character.name,
+        userName: userSetting.name,
+        localVariables: chatVariables,
+      ),
     );
 
     final requestMessages = <Map<String, dynamic>>[
@@ -645,6 +659,15 @@ class ChatService {
 
     final truncatedChatMessages = _truncateChatMessages(chatMessages);
 
+    // 帮答同样需要读取当前状态变量，否则 {{getvar}} / {{getstate}} 为空。
+    final chatVariables = await _resolveChatVariables(
+      sessionId: session.id,
+      messageId: chatMessages.isNotEmpty
+          ? chatMessages.last.id
+          : session.currentLeafMessageId,
+      fallbackCardJson: character.cardJson,
+    );
+
     final promptAssembly = PromptAssembler.build(
       PromptAssemblyContext(
         characterName: character.name,
@@ -656,15 +679,19 @@ class ChatService {
         chatMessages: truncatedChatMessages,
         currentInput: '',
         memoryContext: memoryContext,
+        chatVariables: chatVariables,
       ),
     );
     cancellationToken?.throwIfCancelled();
 
-    final impersonationPrompt = ChatVariableService.replacePlaceholders(
+    final impersonationPrompt = ChatVariableService.resolveMacros(
       preset.extra['impersonation_prompt'] as String? ??
           '[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don\'t write as {{char}} or system. Don\'t describe actions of {{char}}.]',
-      characterName: character.name,
-      userName: userSetting.name,
+      state: PromptMacroState(
+        characterName: character.name,
+        userName: userSetting.name,
+        localVariables: chatVariables,
+      ),
     ).trim();
 
     final fixedRole = preset.extra['fixed_prompts_role'] as String? ?? 'system';

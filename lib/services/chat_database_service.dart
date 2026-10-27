@@ -1141,24 +1141,44 @@ class ChatDatabaseService {
     return rows.first['ops'] as String?;
   }
 
+  /// 单条 SQL 允许绑定的最大参数个数。
+  ///
+  /// SQLite 老版本的 `SQLITE_MAX_VARIABLE_NUMBER` 为 999，长分支（上千条
+  /// 消息）一次性拼占位符会直接报 "too many SQL variables"。这里保守取
+  /// 500 并分批查询，避免深会话求值整体失败。
+  static const int _maxSqlParameters = 500;
+
   /// 批量读取多条消息的变量差量（用于沿路径折叠，避免逐条查询）。
+  ///
+  /// 消息数超过 [_maxSqlParameters] 时自动分批，结果合并后返回。
   Future<Map<String, String>> loadVariableDiffBatch(
     List<String> messageIds,
   ) async {
     if (messageIds.isEmpty) {
       return const {};
     }
-    final placeholders = List.filled(messageIds.length, '?').join(',');
-    final rows = await _db.query(
-      'chat_variable_diffs',
-      columns: ['message_id', 'ops'],
-      where: 'message_id IN ($placeholders)',
-      whereArgs: messageIds,
-    );
-    return {
-      for (final row in rows)
-        row['message_id'] as String: row['ops'] as String? ?? '[]',
-    };
+    final result = <String, String>{};
+    for (
+      var start = 0;
+      start < messageIds.length;
+      start += _maxSqlParameters
+    ) {
+      final end = start + _maxSqlParameters < messageIds.length
+          ? start + _maxSqlParameters
+          : messageIds.length;
+      final chunk = messageIds.sublist(start, end);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await _db.query(
+        'chat_variable_diffs',
+        columns: ['message_id', 'ops'],
+        where: 'message_id IN ($placeholders)',
+        whereArgs: chunk,
+      );
+      for (final row in rows) {
+        result[row['message_id'] as String] = row['ops'] as String? ?? '[]';
+      }
+    }
+    return result;
   }
 
   /// 写入（或覆盖）消息的变量差量。不广播 DB 变化，见 [saveVariableInit]。
@@ -1188,24 +1208,28 @@ class ChatDatabaseService {
 
   /// 从 [messageId] 沿 parent 链回溯到根，返回顺序为
   /// `[messageId, parent, ..., root]`；消息不存在返回空列表。
-  Future<List<String>> loadMessageAncestorIds(String messageId) async {
-    final ids = <String>[];
-    String? currentId = messageId;
-    while (currentId != null) {
-      final rows = await _db.query(
-        'chat_messages',
-        columns: ['id', 'parent_id'],
-        where: 'id = ?',
-        whereArgs: [currentId],
-        limit: 1,
-      );
-      if (rows.isEmpty) {
-        break;
-      }
-      ids.add(rows.first['id'] as String);
-      currentId = rows.first['parent_id'] as String?;
-    }
-    return ids;
+  ///
+  /// 用递归 CTE 一次取回整条路径：逐层查询在长分支上会退化成 N+1。
+  /// [maxDepth] 兜底异常的 parent 环，避免递归不收敛。
+  Future<List<String>> loadMessageAncestorIds(
+    String messageId, {
+    int maxDepth = 4096,
+  }) async {
+    final rows = await _db.rawQuery(
+      '''
+      WITH RECURSIVE path(id, parent_id, depth) AS (
+        SELECT id, parent_id, 0 FROM chat_messages WHERE id = ?
+        UNION ALL
+        SELECT m.id, m.parent_id, path.depth + 1
+        FROM chat_messages m
+        JOIN path ON m.id = path.parent_id
+        WHERE path.depth < ?
+      )
+      SELECT id FROM path ORDER BY depth ASC
+      ''',
+      [messageId, maxDepth],
+    );
+    return [for (final row in rows) row['id'] as String];
   }
 
   void notifyDataChanged() {

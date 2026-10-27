@@ -475,6 +475,14 @@ void main() {
     expect(restored['好感度']?.metadata?.maxValue, 100);
   });
 
+  test('差量批量读取按 SQL 参数上限分批，超长路径不报错', () async {
+    // 1200 个 id 超过历史 SQLite 的 999 变量上限（服务内按 500 分批），
+    // 若未分批这里会抛 "too many SQL variables"。
+    final ids = [for (var i = 0; i < 1200; i++) 'missing-message-$i'];
+    final result = await ChatDatabaseService.instance.loadVariableDiffBatch(ids);
+    expect(result, isEmpty);
+  });
+
   test('变量写入通过 changeNotifier 广播变更', () async {
     final db = ChatDatabaseService.instance;
     final service = VariableStateService.instance;

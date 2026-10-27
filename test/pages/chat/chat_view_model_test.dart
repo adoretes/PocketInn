@@ -18,6 +18,7 @@ import 'package:pocket_inn/services/chat_database_service.dart';
 import 'package:pocket_inn/services/chat_service.dart';
 import 'package:pocket_inn/services/i_openai_api_service.dart';
 import 'package:pocket_inn/services/openai_compatible_api_service.dart';
+import 'package:pocket_inn/services/post_task_scheduler.dart';
 import 'package:pocket_inn/services/preset_service.dart';
 import 'package:pocket_inn/services/storage_service.dart';
 
@@ -843,7 +844,9 @@ void main() {
       );
       // 本组 setUp 未注册 ChatService，getIt 解析抛错由 VM 转为失败态。
       await expectLater(viewModel.refreshGalChoices(), completes);
-      await pumpEventQueue(); // 经调度器排队执行，等任务结束
+      // 经调度器排队执行：等队列排空（含 DB 查询等真实 IO），
+      // 固定步数的事件队列冲刷不足以保证任务已结束。
+      await PostTaskScheduler.instance.waitForIdle();
       expect(viewModel.galChoicesError, isTrue);
       expect(viewModel.galChoices, isEmpty);
       expect(viewModel.isGeneratingGalChoices, isFalse);
@@ -913,7 +916,9 @@ void main() {
           const ChatCompletionResult(text: '{"choices": ["推开房门", "转身离开"]}');
       final vm = makeGalViewModel();
       await vm.refreshGalChoices();
-      await pumpEventQueue(); // 经调度器排队执行，等任务结束
+      // 经调度器排队执行：等队列排空（含 DB 查询等真实 IO），
+      // 固定步数的事件队列冲刷不足以保证任务已结束。
+      await PostTaskScheduler.instance.waitForIdle();
       expect(api.callCount, 1);
       expect(vm.galChoices, ['推开房门', '转身离开']);
       expect(vm.galChoicesMessageId, 'a1');
@@ -925,7 +930,9 @@ void main() {
       api.behavior = () async => throw const FormatException('boom');
       final vm = makeGalViewModel();
       await expectLater(vm.refreshGalChoices(), completes);
-      await pumpEventQueue(); // 经调度器排队执行，等任务结束
+      // 经调度器排队执行：等队列排空（含 DB 查询等真实 IO），
+      // 固定步数的事件队列冲刷不足以保证任务已结束。
+      await PostTaskScheduler.instance.waitForIdle();
       expect(vm.galChoicesError, isTrue);
       expect(vm.galChoices, isEmpty);
       expect(vm.isGeneratingGalChoices, isFalse);
@@ -1001,7 +1008,9 @@ void main() {
       // 排空 setGalMode 持久化触发的自动重载，避免与后续断言竞争。
       await vm.onChatDatabaseChanged();
       await vm.refreshGalChoices();
-      await pumpEventQueue(); // 经调度器排队执行，等任务结束
+      // 经调度器排队执行：等队列排空（含 DB 查询等真实 IO），
+      // 固定步数的事件队列冲刷不足以保证任务已结束。
+      await PostTaskScheduler.instance.waitForIdle();
       expect(vm.galChoices, ['选项A', '选项B']);
       expect(vm.galChoicesMessageId, vm.messages.last.id);
 

@@ -275,6 +275,8 @@ class VariableOp {
     }
     final dynamic opRaw = json['op'] ?? json['action'] ?? json['operation'];
     final VariableOpKind kind;
+    // 减法类别名统一走 add，但增量要取负，否则 `sub: 5` 会变成加 5。
+    var negate = false;
     switch (opRaw?.toString().toLowerCase()) {
       case 'set':
       case 'modify':
@@ -285,10 +287,17 @@ class VariableOp {
         break;
       case 'add':
       case 'plus':
-      case 'sub':
       case 'delta':
       case '增加':
       case '增减':
+        kind = VariableOpKind.add;
+        break;
+      case 'sub':
+      case 'subtract':
+      case 'decrease':
+      case '减少':
+      case '降低':
+        negate = true;
         kind = VariableOpKind.add;
         break;
       default:
@@ -307,12 +316,20 @@ class VariableOp {
       return null;
     }
 
+    var value = valueRaw.toString().trim();
+    if (negate) {
+      final numeric = double.tryParse(value);
+      if (numeric != null) {
+        value = _formatVariableNumber(-numeric);
+      }
+    }
+
     final dynamic reasonRaw =
         json['reason'] ?? json['why'] ?? json['note'] ?? json['说明'];
     return VariableOp(
       kind: kind,
       variable: variable,
-      value: valueRaw.toString().trim(),
+      value: value,
       reason: reasonRaw?.toString(),
     );
   }
@@ -369,13 +386,21 @@ class VariableState {
   }
 
   bool _applyOne(Map<String, ChatVariable> target, VariableOp op) {
-    final existing = target[op.variable];
+    final trimmedName = op.variable.trim();
+    if (trimmedName.isEmpty) {
+      return false;
+    }
+    // 模型输出的变量名可能与声明的大小写/空格不一致（如 `HP` 与 `hp`），
+    // 先解析到已有键，避免另建一个同义变量导致 {{getvar}} 读不到。
+    final resolvedName = _resolveVariableName(target, trimmedName);
+    final name = resolvedName ?? trimmedName;
+    final existing = resolvedName == null ? null : target[resolvedName];
     if (op.kind == VariableOpKind.set) {
-      final updated = _normalizeSet(existing, op.variable, op.value);
+      final updated = _normalizeSet(existing, name, op.value);
       if (updated == null) {
         return false;
       }
-      target[op.variable] = updated;
+      target[name] = updated;
       return true;
     }
 
@@ -390,10 +415,31 @@ class VariableState {
       return false;
     }
     final summed = _clampNumber(base + delta, existing?.metadata);
-    final updated = (existing ?? _inferred(op.variable, summed))
-        .copyWith(value: _formatNumber(summed));
-    target[op.variable] = updated;
+    final updated = (existing ?? _inferred(name, summed))
+        .copyWith(value: _formatVariableNumber(summed));
+    target[name] = updated;
     return true;
+  }
+
+  /// 把操作里的变量名解析到实际键：精确命中优先，否则按 trim + 忽略
+  /// 大小写回退；仍未命中返回 null（由调用方按新变量处理）。
+  static String? _resolveVariableName(
+    Map<String, ChatVariable> target,
+    String rawName,
+  ) {
+    if (target.containsKey(rawName)) {
+      return rawName;
+    }
+    final normalized = rawName.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return null;
+    }
+    for (final name in target.keys) {
+      if (name.trim().toLowerCase() == normalized) {
+        return name;
+      }
+    }
+    return null;
   }
 
   ChatVariable? _normalizeSet(
@@ -411,7 +457,7 @@ class VariableState {
         name: name,
         type: numeric != null ? ChatVariableType.number : ChatVariableType.text,
         value: numeric != null
-            ? _formatNumber(_clampNumber(numeric, null))
+            ? _formatVariableNumber(_clampNumber(numeric, null))
             : rawValue,
       );
     }
@@ -424,7 +470,7 @@ class VariableState {
           return null;
         }
         return existing.copyWith(
-          value: _formatNumber(_clampNumber(numeric, existing.metadata)),
+          value: _formatVariableNumber(_clampNumber(numeric, existing.metadata)),
         );
       case ChatVariableType.enumType:
         // 枚举白名单校验；未声明选项时退化为自由文本。
@@ -447,7 +493,7 @@ class VariableState {
     return ChatVariable(
       name: name,
       type: ChatVariableType.number,
-      value: _formatNumber(value),
+      value: _formatVariableNumber(value),
     );
   }
 
@@ -465,13 +511,6 @@ class VariableState {
       result = max;
     }
     return result;
-  }
-
-  static String _formatNumber(double value) {
-    if (value.isFinite && value == value.roundToDouble()) {
-      return value.toInt().toString();
-    }
-    return value.toString();
   }
 
   /// 序列化为 `{名称: {type, value, metadata}}` 结构（保持插入顺序）。
@@ -536,6 +575,7 @@ Map<String, dynamic> encodeCardVariables(List<ChatVariable> variables) {
 ///
 /// 兼容两种形态：`{名称: {…}}` 映射（本应用保存的形态）与
 /// `[{name: …}, …]` 列表（手写卡/导入的形态）；非法条目静默跳过。
+/// 映射形态的值也可以写成裸值（如 `{"hp": 100}`），按初始值解析。
 /// 返回可增长列表（空声明时也为可增长），调用方可安全持有与追加。
 List<ChatVariable> decodeCardVariables(Map<String, dynamic> cardJson) {
   final data = cardJson['data'];
@@ -550,11 +590,43 @@ List<ChatVariable> decodeCardVariables(Map<String, dynamic> cardJson) {
   if (raw is Map<String, dynamic>) {
     return [
       for (final entry in raw.entries)
-        ?ChatVariable.fromCardJson({...entry.value, 'name': entry.key}),
+        ?_decodeCardVariableEntry(entry.key, entry.value),
     ];
   }
   if (raw is List) {
     return [for (final item in raw) ?ChatVariable.fromCardJson(item)];
   }
   return <ChatVariable>[];
+}
+
+/// 解析映射形态的一条声明。
+///
+/// 值为对象时交给 [ChatVariable.fromCardJson]；为裸值时直接作为初始值
+/// （类型按能否解析为数值推断）。手写卡里的 `{"hp": 100}` 曾因对非 Map
+/// 值做展开而抛 TypeError，这里必须区分处理。
+ChatVariable? _decodeCardVariableEntry(String name, dynamic value) {
+  if (value is Map) {
+    return ChatVariable.fromCardJson({...value, 'name': name});
+  }
+  final variableName = name.trim();
+  if (variableName.isEmpty) {
+    return null;
+  }
+  final rawValue = value?.toString().trim() ?? '';
+  final numeric = double.tryParse(rawValue);
+  return ChatVariable(
+    name: variableName,
+    type: numeric != null ? ChatVariableType.number : ChatVariableType.text,
+    value: numeric != null ? _formatVariableNumber(numeric) : rawValue,
+  );
+}
+
+/// 数值变量的字符串形态：整数去掉尾随 `.0`，其余保持原样。
+///
+/// 状态求值与提取结果解析共用，保证两处写出的值一致。
+String _formatVariableNumber(double value) {
+  if (value.isFinite && value == value.roundToDouble()) {
+    return value.toInt().toString();
+  }
+  return value.toString();
 }
