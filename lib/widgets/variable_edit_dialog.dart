@@ -124,6 +124,14 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
               const SizedBox(height: 12),
               TextField(
                 controller: _valueController,
+                // 文本类型放开多行输入；数值/枚举仍限制单行，避免误输入。
+                minLines: _type == ChatVariableType.text ? 2 : 1,
+                maxLines: _type == ChatVariableType.text ? 6 : 1,
+                keyboardType: switch (_type) {
+                  ChatVariableType.text => TextInputType.multiline,
+                  ChatVariableType.number => TextInputType.number,
+                  ChatVariableType.enumType => null,
+                },
                 decoration: const InputDecoration(
                   labelText: '初始值',
                   hintText: '数值或文本',
@@ -213,6 +221,7 @@ class _VariableEditDialogState extends State<_VariableEditDialog> {
     if (name.isEmpty) {
       return;
     }
+    // trim 只去掉首尾空白，文本类型的内部换行会被完整保留。
     final value = _valueController.text.trim();
 
     if (_type == ChatVariableType.number) {
