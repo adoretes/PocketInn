@@ -14,7 +14,16 @@ class ChatDatabaseService {
   ChatDatabaseService._();
 
   static final ChatDatabaseService instance = ChatDatabaseService._();
+
+  /// 会话 / 消息等聊天主体数据的变更信号；监听方通常会重载整条会话。
   final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
+
+  /// 记忆数据（`chat_memories`）的变更信号。
+  ///
+  /// 记忆不参与聊天消息渲染，[changeNotifier] 有意不广播记忆写入：
+  /// 否则后台记忆提取落库会让聊天页整页重载一次。需要「记忆已更新」
+  /// 精确信号的界面（如聊天侧边栏的记忆计数）监听这里。
+  final ValueNotifier<int> memoryChangeNotifier = ValueNotifier<int>(0);
 
   static const int _dbVersion = 6;
   static const String _dbName = 'pocket_inn_chat.db';
@@ -1053,7 +1062,7 @@ class ChatDatabaseService {
 
   Future<void> insertMemory(MemoryNode memory) async {
     await _db.insert('chat_memories', _memoryToMap(memory));
-    _notifyChanged();
+    notifyMemoryChanged();
   }
 
   Future<void> insertMemoriesInTx(List<MemoryNode> memories) async {
@@ -1063,7 +1072,7 @@ class ChatDatabaseService {
         await tx.insert('chat_memories', _memoryToMap(m));
       }
     });
-    _notifyChanged();
+    notifyMemoryChanged();
   }
 
   Future<void> replaceBranchMemoriesInTx({
@@ -1081,7 +1090,7 @@ class ChatDatabaseService {
         await tx.insert('chat_memories', _memoryToMap(m));
       }
     });
-    _notifyChanged();
+    notifyMemoryChanged();
   }
 
   // ==================== 状态变量（事件溯源） ====================
@@ -1201,6 +1210,11 @@ class ChatDatabaseService {
 
   void notifyDataChanged() {
     changeNotifier.value++;
+  }
+
+  /// 广播记忆数据已变化；不触发聊天消息的重载。
+  void notifyMemoryChanged() {
+    memoryChangeNotifier.value++;
   }
 
   void _notifyChanged() {

@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_inn/models/chat_memory.dart';
 import 'package:pocket_inn/models/chat_message.dart';
+import 'package:pocket_inn/services/chat_database_service.dart';
 import 'package:pocket_inn/services/chat_memory_service.dart';
 import 'package:pocket_inn/services/chat_variable_service.dart';
+
+import 'helpers/test_env.dart';
 
 ChatMessage _user(String text) => ChatMessage(text: text, isMe: true);
 
@@ -400,6 +405,67 @@ void main() {
         ),
         1,
       );
+    });
+  });
+
+  group('记忆写入的变更广播', () {
+    late Directory tempDir;
+
+    setUpAll(() async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      tempDir = setUpPathProviderMocks();
+      await ChatDatabaseService.instance.initialize();
+    });
+
+    tearDownAll(() async {
+      await ChatDatabaseService.instance.deleteDatabaseFiles();
+      tearDownPathProviderMocks(tempDir);
+    });
+
+    setUp(() async {
+      await ChatDatabaseService.instance.clearAllData();
+    });
+
+    test('记忆写入不触发聊天数据广播，只广播记忆变更', () async {
+      final db = ChatDatabaseService.instance;
+      final service = ChatMemoryService.instance;
+      final session = await db.createSession(
+        characterId: 'char-1',
+        openingAssistantMessages: ['开场白'],
+      );
+      final leafId = session.currentLeafMessageId!;
+
+      // 基线取在会话创建之后：只断言记忆操作本身不广播。
+      final chatNotifyBefore = db.changeNotifier.value;
+      final memoryNotifyBefore = db.memoryChangeNotifier.value;
+
+      await service.addMemory(
+        sessionId: session.id,
+        branchLeafId: leafId,
+        content: '喜欢雨天',
+      );
+      expect(
+        db.changeNotifier.value,
+        chatNotifyBefore,
+        reason: '新增记忆不应触发聊天页重载',
+      );
+      expect(db.memoryChangeNotifier.value, memoryNotifyBefore + 1);
+
+      await service.replaceBranchMemories(
+        sessionId: session.id,
+        branchLeafId: leafId,
+        contents: ['喜欢雨天', '讨厌噪音'],
+      );
+      expect(
+        db.changeNotifier.value,
+        chatNotifyBefore,
+        reason: '编辑记忆不应触发聊天页重载',
+      );
+
+      // 空批量写入什么都不改，不应广播。
+      final memoryNotifyAfterEdit = db.memoryChangeNotifier.value;
+      await db.insertMemoriesInTx(const []);
+      expect(db.memoryChangeNotifier.value, memoryNotifyAfterEdit);
     });
   });
 }

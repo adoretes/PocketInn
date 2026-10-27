@@ -76,10 +76,13 @@ class _ChatSidePanelState extends State<ChatSidePanel> {
   @override
   void initState() {
     super.initState();
-    // 变量写入不广播 ChatDatabaseService 变化（那会触发会话重载），
-    // 状态提取又可能在消息落库后才写入差量；记忆写入则只广播 DB 变化。
-    // 两个信号都监听，才能保证这里的显示始终是最新值。
+    // 变量与记忆写入都不广播 ChatDatabaseService 变化（那会触发会话重载），
+    // 状态提取又可能在消息落库后才写入差量，记忆提取也是后台落库。
+    // 三个信号都监听，才能保证这里的显示始终是最新值。
     ChatDatabaseService.instance.changeNotifier.addListener(
+      _handleDataChanged,
+    );
+    ChatDatabaseService.instance.memoryChangeNotifier.addListener(
       _handleDataChanged,
     );
     VariableStateService.instance.changeNotifier.addListener(
@@ -93,6 +96,9 @@ class _ChatSidePanelState extends State<ChatSidePanel> {
   @override
   void dispose() {
     ChatDatabaseService.instance.changeNotifier.removeListener(
+      _handleDataChanged,
+    );
+    ChatDatabaseService.instance.memoryChangeNotifier.removeListener(
       _handleDataChanged,
     );
     VariableStateService.instance.changeNotifier.removeListener(

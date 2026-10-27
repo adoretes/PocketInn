@@ -317,7 +317,7 @@ class ChatViewModel extends ChangeNotifier {
     }
     // 初始化/切换已在加载另一条会话时，旧会话的数据库广播不得覆盖它。
     final loadGeneration = _sessionLoadGeneration;
-    // 后台写入（记忆/状态提取等）不应清空用户正在编辑的输入框。
+    // 后台写入触发的主体数据变化不应清空用户正在编辑的输入框。
     // 若目标会话已不存在并回退到其他会话，则需要清空，避免草稿串台。
     await _loadSession(
       preferredSessionId: sessionId,
@@ -522,8 +522,8 @@ class ChatViewModel extends ChangeNotifier {
       ..addAll(bundle.session.selectedRegexRuleGroupIds);
     _galModeEnabled = bundle.session.galModeEnabled;
     _galBrowsingIndex = null;
-    // 后台数据写入（记忆提取、状态提取等）触发的重载不应打断或清掉
-    // gal 选项：生成中跳过清理；选项归属的消息仍是当前叶子时保留。
+    // 后台数据写入触发的重载不应打断或清掉 gal 选项：生成中跳过清理；
+    // 选项归属的消息仍是当前叶子时保留。
     // 叶子变化（发送/重新生成/删除分支）或会话切换时照常清空。
     final lastMessageId = bundle.activeMessages.isNotEmpty
         ? bundle.activeMessages.last.id

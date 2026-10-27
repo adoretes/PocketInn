@@ -229,7 +229,9 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
     if (!mounted) return;
-    if (jumpedTo != null || _viewModel.activeSession?.id == session.id) {
+    // 记忆的增删改不广播聊天数据变化，不会触发重载；只有从记忆树跳转消息
+    // （活跃分支已被改写）时才需要主动重载，普通返回不再白跑一次会话加载。
+    if (jumpedTo != null) {
       await _viewModel.onChatDatabaseChanged();
     }
   }
