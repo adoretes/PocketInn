@@ -128,6 +128,12 @@ class ChatViewModel extends ChangeNotifier {
   int _sessionLoadGeneration = 0;
   bool _isDisposed = false;
 
+  /// 正在进行中的数据库变化重载任务；并发广播复用它而不是再跑一遍。
+  Future<void>? _dbReloadTask;
+
+  /// 本轮重载期间又收到了数据变化广播，结束后需要补跑一次。
+  bool _dbReloadPending = false;
+
   /// 会话重新加载完成后的回调（由 UI 层注册，用于清理输入框等 UI 状态）。
   ///
   /// 原实现中 [_loadSession] 末尾会清空文本控制器；VM 不持有 UI 控件，
@@ -307,6 +313,10 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> onApiConfigsChanged() => _refreshSelectedApiStatus();
 
   /// 聊天数据库变化时重新加载当前会话。
+  ///
+  /// 一次用户操作往往连续写入多行并连续广播多次。并发的广播不再各跑一遍
+  /// 完整加载（那会重复执行同一批 SQL，且只有最后一份结果被采用），而是
+  /// 复用正在进行的那一轮，并在结束后补跑一次以覆盖期间的新写入。
   Future<void> onChatDatabaseChanged() async {
     if (_isDraftSession) {
       return;
@@ -315,19 +325,48 @@ class ChatViewModel extends ChangeNotifier {
     if (sessionId == null || _isLoading || _isSwitchingSession || _isSending) {
       return;
     }
-    // 初始化/切换已在加载另一条会话时，旧会话的数据库广播不得覆盖它。
-    final loadGeneration = _sessionLoadGeneration;
-    // 后台写入触发的主体数据变化不应清空用户正在编辑的输入框。
-    // 若目标会话已不存在并回退到其他会话，则需要清空，避免草稿串台。
-    await _loadSession(
-      preferredSessionId: sessionId,
-      notifyReloaded: false,
-    );
-    if (_isDisposed || loadGeneration + 1 != _sessionLoadGeneration) {
+
+    final running = _dbReloadTask;
+    if (running != null) {
+      // 已有一轮在跑：登记一次补跑，并等它（含补跑）结束。
+      _dbReloadPending = true;
+      await running;
       return;
     }
-    if (!_isDisposed && _activeSession?.id != sessionId) {
-      onSessionReloaded?.call();
+
+    final task = _runDbReload(sessionId);
+    _dbReloadTask = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_dbReloadTask, task)) {
+        _dbReloadTask = null;
+      }
+    }
+  }
+
+  /// 串行执行数据库变化触发的重载：跑完当前一轮后，若期间又收到广播则再跑一轮。
+  Future<void> _runDbReload(String sessionId) async {
+    try {
+      do {
+        _dbReloadPending = false;
+        // 初始化/切换已在加载另一条会话时，旧会话的数据库广播不得覆盖它。
+        final loadGeneration = _sessionLoadGeneration;
+        // 后台写入触发的主体数据变化不应清空用户正在编辑的输入框。
+        // 若目标会话已不存在并回退到其他会话，则需要清空，避免草稿串台。
+        await _loadSession(
+          preferredSessionId: sessionId,
+          notifyReloaded: false,
+        );
+        if (_isDisposed || loadGeneration + 1 != _sessionLoadGeneration) {
+          return;
+        }
+        if (_activeSession?.id != sessionId) {
+          onSessionReloaded?.call();
+        }
+      } while (_dbReloadPending);
+    } finally {
+      _dbReloadPending = false;
     }
   }
 
@@ -458,12 +497,26 @@ class ChatViewModel extends ChangeNotifier {
     bool notifyReloaded = true,
   }) async {
     final loadGeneration = ++_sessionLoadGeneration;
-    final summaries = await getIt<ChatDatabaseService>().loadSessionSummaries();
+    final database = getIt<ChatDatabaseService>();
+    // 未指定会话时优先恢复上次选择的聊天，而不是最近更新的那条。
+    // 直接按 id 读（主键索引），避免为挑一条会话而整表扫描 chat_sessions。
+    final targetSessionId = preferredSessionId ?? _rememberedSessionId();
+    ChatSessionBundle? bundle = targetSessionId == null
+        ? null
+        : await database.loadSessionBundle(targetSessionId);
+    if (bundle == null) {
+      // 没有记忆目标，或该会话已被删除：回退到最近更新的一条。
+      final latestSessionId = await database.loadLatestSessionId();
+      if (latestSessionId != null) {
+        bundle = await database.loadSessionBundle(latestSessionId);
+      }
+    }
     if (_isDisposed || loadGeneration != _sessionLoadGeneration) {
       return;
     }
 
-    if (summaries.isEmpty) {
+    if (bundle == null) {
+      // 库中没有任何会话：回到空状态。
       _activeSession = null;
       _activeCharacter = null;
       _messages = [];
@@ -477,25 +530,6 @@ class ChatViewModel extends ChangeNotifier {
       _isDraftSession = false;
       _draftOpeningAssistantMessages = const [];
       _draftOpeningMessageIndex = 0;
-      _isLoading = false;
-      _isSwitchingSession = false;
-      notifyListeners();
-      return;
-    }
-
-    // 未指定会话时优先恢复上次选择的聊天，而不是最近更新的那条。
-    final targetSessionId = preferredSessionId ?? _rememberedSessionId();
-    final targetSummary = summaries.firstWhere(
-      (item) => item.id == targetSessionId,
-      orElse: () => summaries.first,
-    );
-    final bundle = await getIt<ChatDatabaseService>().loadSessionBundle(
-      targetSummary.id,
-    );
-    if (_isDisposed || loadGeneration != _sessionLoadGeneration) {
-      return;
-    }
-    if (bundle == null) {
       _isLoading = false;
       _isSwitchingSession = false;
       notifyListeners();
@@ -551,10 +585,11 @@ class ChatViewModel extends ChangeNotifier {
     // （仅补一次，不覆盖已有记录）。放在首屏刷新之后执行，避免拖慢
     // 气泡与操作按钮的出现。
     if (resolvedCharacter != null) {
+      final loadedSessionId = bundle.session.id;
       unawaited(() async {
         try {
           await VariableStateService.instance.ensureCardInit(
-            sessionId: bundle.session.id,
+            sessionId: loadedSessionId,
             cardJson: resolvedCharacter.cardJson,
           );
         } catch (_) {

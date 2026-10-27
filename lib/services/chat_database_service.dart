@@ -385,13 +385,30 @@ class ChatDatabaseService {
     if (session == null) {
       return null;
     }
-    final messages = await loadActivePathMessages(id);
+    // 会话对象已读到手，直接传给消息加载，避免它内部再查一次同一行。
+    final messages = await loadActivePathMessages(id, session: session);
     return ChatSessionBundle(session: session, activeMessages: messages);
   }
 
   Future<List<ChatSessionSummary>> loadSessionSummaries() async {
     final rows = await _db.query('chat_sessions', orderBy: 'updated_at DESC');
     return rows.map(_summaryFromMap).toList();
+  }
+
+  /// 最近更新的会话 id；仅在按 id 直查失败（记忆的会话已被删除）时用于回退。
+  ///
+  /// 只取主键一列，不加载整行，也不处理关联表。
+  Future<String?> loadLatestSessionId() async {
+    final rows = await _db.query(
+      'chat_sessions',
+      columns: ['id'],
+      orderBy: 'updated_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first['id'] as String;
   }
 
   Future<void> updateSessionConfig({
@@ -845,51 +862,91 @@ class ChatDatabaseService {
     _notifyChanged();
   }
 
-  Future<List<ChatMessage>> loadActivePathMessages(String sessionId) async {
-    final session = await loadSessionById(sessionId);
-    if (session == null) {
+  /// 加载会话的活跃分支消息（根 → 叶）。
+  ///
+  /// [session] 为已知的会话对象时跳过重复读取：调用方通常刚读过同一行。
+  ///
+  /// 实现要点：先一次性取回本会话所有节点的结构（id/parent_id），在内存里
+  /// 回溯路径并建立 `parent → 兄弟 id 列表` 索引，再批量取回路径节点的正文。
+  /// 旧的逐节点回溯 + 逐节点查兄弟共需 `2N` 条 SQL（线性会话下兄弟查询每次
+  /// 都只返回自己），现在固定为 `1 + ⌈N/500⌉` 条。
+  Future<List<ChatMessage>> loadActivePathMessages(
+    String sessionId, {
+    ChatSession? session,
+  }) async {
+    final resolvedSession = session ?? await loadSessionById(sessionId);
+    if (resolvedSession == null) {
       return const [];
     }
 
-    final leafId = await _resolveLeafForSession(_db, sessionId);
+    final leafId = await _resolveLeafForSession(
+      _db,
+      sessionId,
+      session: resolvedSession,
+    );
     if (leafId == null) {
       return const [];
     }
 
-    final path = <ChatNode>[];
+    // 一次性取回本会话的节点结构；命中 idx_chat_messages_session_parent。
+    // 排序与原先的兄弟查询一致，分组后组内顺序自然保持 sibling_order,created_at。
+    final structureRows = await _db.query(
+      'chat_messages',
+      columns: ['id', 'parent_id'],
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'sibling_order ASC, created_at ASC',
+    );
+    if (structureRows.isEmpty) {
+      return const [];
+    }
+
+    final parentOf = <String, String?>{};
+    final siblingsByParent = <String?, List<String>>{};
+    for (final row in structureRows) {
+      final id = row['id'] as String;
+      final parentId = row['parent_id'] as String?;
+      parentOf[id] = parentId;
+      (siblingsByParent[parentId] ??= <String>[]).add(id);
+    }
+
+    // 从叶子沿 parent 指针在内存中回溯到根。
+    final reversedPathIds = <String>[];
     String? currentId = leafId;
     while (currentId != null) {
-      final rows = await _db.query(
-        'chat_messages',
-        where: 'id = ?',
-        whereArgs: [currentId],
-        limit: 1,
-      );
-      if (rows.isEmpty) {
+      if (!parentOf.containsKey(currentId)) {
         break;
       }
-      final node = _nodeFromMap(rows.first);
-      path.add(node);
-      currentId = node.parentId;
+      reversedPathIds.add(currentId);
+      currentId = parentOf[currentId];
     }
-    final orderedPath = path.reversed.toList(growable: false);
+    if (reversedPathIds.isEmpty) {
+      return const [];
+    }
+    final pathIds = reversedPathIds.reversed.toList(growable: false);
+
+    // 只取路径节点的完整行，忽略其它分支的正文。
+    final nodesById = <String, ChatNode>{};
+    for (final chunk in _chunked(pathIds, _sqlInChunkSize)) {
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await _db.query(
+        'chat_messages',
+        where: 'id IN ($placeholders)',
+        whereArgs: chunk,
+      );
+      for (final row in rows) {
+        final node = _nodeFromMap(row);
+        nodesById[node.id] = node;
+      }
+    }
 
     final result = <ChatMessage>[];
-    for (final node in orderedPath) {
-      final siblings = await _db.query(
-        'chat_messages',
-        columns: ['id'],
-        where: node.parentId == null
-            ? 'session_id = ? AND parent_id IS NULL'
-            : 'session_id = ? AND parent_id = ?',
-        whereArgs: node.parentId == null
-            ? [sessionId]
-            : [sessionId, node.parentId],
-        orderBy: 'sibling_order ASC, created_at ASC',
-      );
-      final siblingIds = siblings
-          .map((row) => row['id'] as String)
-          .toList(growable: false);
+    for (final id in pathIds) {
+      final node = nodesById[id];
+      if (node == null) {
+        continue;
+      }
+      final siblingIds = siblingsByParent[node.parentId] ?? const <String>[];
       final siblingIndex = siblingIds.indexOf(node.id);
 
       result.add(
@@ -1359,23 +1416,32 @@ class ChatDatabaseService {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// 解析会话当前的叶子消息 id。
+  ///
+  /// [session] 为调用方刚读到的会话对象时直接复用其 `currentLeafMessageId`，
+  /// 省掉一次重复的 `chat_sessions` 查询（事务内刚改过叶子时不要传，会读到旧值）。
   Future<String?> _resolveLeafForSession(
     DatabaseExecutor tx,
-    String sessionId,
-  ) async {
-    final sessionRows = await tx.query(
-      'chat_sessions',
-      columns: ['current_leaf_message_id'],
-      where: 'id = ?',
-      whereArgs: [sessionId],
-      limit: 1,
-    );
-    if (sessionRows.isEmpty) {
-      return null;
+    String sessionId, {
+    ChatSession? session,
+  }) async {
+    String? currentLeafId;
+    if (session != null) {
+      currentLeafId = session.currentLeafMessageId;
+    } else {
+      final sessionRows = await tx.query(
+        'chat_sessions',
+        columns: ['current_leaf_message_id'],
+        where: 'id = ?',
+        whereArgs: [sessionId],
+        limit: 1,
+      );
+      if (sessionRows.isEmpty) {
+        return null;
+      }
+      currentLeafId = sessionRows.first['current_leaf_message_id'] as String?;
     }
 
-    final currentLeafId =
-        sessionRows.first['current_leaf_message_id'] as String?;
     if (currentLeafId != null) {
       final existing = await tx.query(
         'chat_messages',
