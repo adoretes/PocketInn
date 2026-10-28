@@ -42,19 +42,31 @@ class ChatVariableRow extends StatelessWidget {
     ].join(' · ');
     final changeHint = showChangeHint ? variable.changeHint : null;
 
-    return ListTile(
-      dense: dense,
-      contentPadding: EdgeInsets.zero,
-      title: Text(variable.name),
-      subtitle: Text(
-        changeHint == null ? subtitle : '$subtitle\n变化说明：$changeHint',
-      ),
-      trailing: Text(
-        variable.value,
-        style: Theme.of(
-          context,
-        ).textTheme.titleMedium?.copyWith(color: colorScheme.primary),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 文本变量的值可能很长，trailing 不限定宽度会占满整行，
+        // 触发 ListTile「Trailing widget consumes the entire tile width」断言。
+        final trailingMaxWidth = constraints.maxWidth * 0.5;
+        return ListTile(
+          dense: dense,
+          contentPadding: EdgeInsets.zero,
+          title: Text(variable.name),
+          subtitle: Text(
+            changeHint == null ? subtitle : '$subtitle\n变化说明：$changeHint',
+          ),
+          trailing: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: trailingMaxWidth),
+            child: Text(
+              variable.value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: colorScheme.primary),
+            ),
+          ),
+        );
+      },
     );
   }
 }

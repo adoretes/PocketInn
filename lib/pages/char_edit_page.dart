@@ -924,57 +924,76 @@ class _RoleEditPageState extends State<RoleEditPage> {
                             if (_variables.isNotEmpty) ...[
                               const SizedBox(height: 8),
                               for (final variable in _variables)
-                                ListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: Text(variable.name),
-                                  subtitle: Text(
-                                    [
-                                      [
-                                        variable.type.label,
-                                        if (variable.metadata?.minValue !=
-                                                null ||
-                                            variable.metadata?.maxValue != null)
-                                          '${variable.metadata?.minValue ?? '-∞'} ~ '
-                                              '${variable.metadata?.maxValue ?? '+∞'}',
-                                      ].join(' · '),
-                                      if (variable.changeHint != null)
-                                        '变化说明：${variable.changeHint}',
-                                    ].join('\n'),
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        variable.value,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    // 文本变量的值可能很长，trailing 必须限定宽度，
+                                    // 否则会占满整行触发 ListTile 的宽度断言。
+                                    final trailingMaxWidth =
+                                        constraints.maxWidth * 0.45;
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(variable.name),
+                                      subtitle: Text(
+                                        [
+                                          [
+                                            variable.type.label,
+                                            if (variable.metadata?.minValue !=
+                                                    null ||
+                                                variable.metadata?.maxValue !=
+                                                    null)
+                                              '${variable.metadata?.minValue ?? '-∞'} ~ '
+                                                  '${variable.metadata?.maxValue ?? '+∞'}',
+                                          ].join(' · '),
+                                          if (variable.changeHint != null)
+                                            '变化说明：${variable.changeHint}',
+                                        ].join('\n'),
+                                      ),
+                                      trailing: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          maxWidth: trailingMaxWidth,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                variable.value,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            IconButton(
+                                              tooltip: '编辑',
+                                              icon: const Icon(
+                                                Icons.edit_outlined,
+                                                size: 20,
+                                              ),
+                                              onPressed: () =>
+                                                  _editVariable(variable),
+                                            ),
+                                            IconButton(
+                                              tooltip: '删除',
+                                              icon: const Icon(
+                                                Icons.delete_outline,
+                                                size: 20,
+                                              ),
+                                              onPressed: () => _removeVariable(
+                                                variable.name,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        tooltip: '编辑',
-                                        icon: const Icon(
-                                          Icons.edit_outlined,
-                                          size: 20,
-                                        ),
-                                        onPressed: () =>
-                                            _editVariable(variable),
-                                      ),
-                                      IconButton(
-                                        tooltip: '删除',
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 20,
-                                        ),
-                                        onPressed: () =>
-                                            _removeVariable(variable.name),
-                                      ),
-                                    ],
-                                  ),
+                                    );
+                                  },
                                 ),
                             ],
                           ],

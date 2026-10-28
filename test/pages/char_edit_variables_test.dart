@@ -285,4 +285,39 @@ void main() {
     expect(variables.length, 1);
     expect(variables.single.changeHint, '帮她做事 +5，被冷落 -3');
   });
+
+  testWidgets('文本变量值过长时不触发 ListTile 宽度断言', (tester) async {
+    final card = minimalCard();
+    (card['data'] as Map<String, dynamic>)['extensions'] = {
+      'variables': encodeCardVariables([
+        ChatVariable(
+          name: '心情',
+          type: ChatVariableType.text,
+          value: '她正站在窗边望着雨幕，' * 30,
+        ),
+      ]),
+    };
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RoleEditPage(characterData: card, onSave: (payload) async {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('高级设置'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('高级设置'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: '长文本值应被截断而非撑满整行触发断言',
+    );
+    expect(find.widgetWithText(ListTile, '心情'), findsOneWidget);
+  });
 }
