@@ -8,6 +8,12 @@ import '../models/variable_panel.dart';
 /// 组件之间的间距。
 const double kVariablePanelGap = 8;
 
+/// 内容高度低于该值时按紧凑排版：隐藏标题、压缩数值与轨道。
+const double kVariablePanelCompactHeight = 42;
+
+/// 展示范围文案（进度条/游标两端的 min~max）需要的最小内容高度。
+const double kVariablePanelRangeLabelHeight = 46;
+
 /// 单个组件在网格中的落位（单位：格）。
 class VariablePanelPlacement {
   const VariablePanelPlacement({
@@ -27,10 +33,7 @@ class VariablePanelPlacement {
 
 /// 面板装箱结果。
 class VariablePanelLayout {
-  const VariablePanelLayout({
-    required this.placements,
-    required this.rows,
-  });
+  const VariablePanelLayout({required this.placements, required this.rows});
 
   final List<VariablePanelPlacement> placements;
   final int rows;
@@ -134,7 +137,8 @@ class VariablePanelGridView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         // 非常规容器（无限宽）时回退到侧边栏抽屉宽度，避免除零。
-        final available = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+        final available =
+            constraints.maxWidth.isFinite && constraints.maxWidth > 0
             ? constraints.maxWidth
             : 304.0;
         final cell = math.max(
@@ -185,7 +189,8 @@ class VariablePanelGrid extends StatelessWidget {
   final List<String> declaredVariableNames;
 
   /// 点击组件查看详情；空白块不触发。
-  final void Function(VariablePanelItem item, ChatVariable? variable)? onItemTap;
+  final void Function(VariablePanelItem item, ChatVariable? variable)?
+  onItemTap;
 
   @override
   Widget build(BuildContext context) {
@@ -201,8 +206,7 @@ class VariablePanelGrid extends StatelessWidget {
         final variable = resolvePanelVariable(state, item.variableName);
         final tile = VariablePanelTile(item: item, variable: variable);
         final callback = onItemTap;
-        if (callback == null ||
-            item.type == VariablePanelComponentType.blank) {
+        if (callback == null || item.type == VariablePanelComponentType.blank) {
           return tile;
         }
         return MouseRegion(
@@ -333,7 +337,7 @@ class VariablePanelTile extends StatelessWidget {
         final title =
             rawTitle.isNotEmpty &&
                 (!constraints.maxHeight.isFinite ||
-                    constraints.maxHeight >= 40)
+                    constraints.maxHeight >= kVariablePanelCompactHeight)
             ? rawTitle
             : '';
 
@@ -345,25 +349,41 @@ class VariablePanelTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (title.isNotEmpty) ...[
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: colorScheme.onSurfaceVariant,
-                  height: 1.2,
-                ),
-              ),
+              _buildTitle(context, title, color: colorScheme.onSurfaceVariant),
               const SizedBox(height: 2),
             ],
-            Expanded(
-              child: _buildContent(context, colorScheme, variable),
-            ),
+            Expanded(child: _buildContent(context, colorScheme, variable)),
           ],
         );
       },
+    );
+  }
+
+  /// 标题行：固定单行高度，宽度不够时整体等比缩小而不是截断，
+  /// 避免窄格子里「夏江…」这类省略号把变量名吃掉。
+  Widget _buildTitle(
+    BuildContext context,
+    String title, {
+    required Color color,
+  }) {
+    return SizedBox(
+      height: 14,
+      width: double.infinity,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          maxLines: 1,
+          softWrap: false,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: color,
+            height: 1.2,
+          ),
+        ),
+      ),
     );
   }
 
@@ -378,17 +398,7 @@ class VariablePanelTile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (title.isNotEmpty) ...[
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: muted,
-              height: 1.2,
-            ),
-          ),
+          _buildTitle(context, title, color: muted),
           const SizedBox(height: 2),
         ],
         Expanded(
@@ -475,9 +485,10 @@ class VariablePanelTile extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxHeight = constraints.maxHeight;
-        final tight = !maxHeight.isFinite || maxHeight < 42;
+        final tight =
+            !maxHeight.isFinite || maxHeight < kVariablePanelCompactHeight;
         // 格子太矮时优先保证值与进度条，范围文案按空间裁剪。
-        final showRange = !tight && maxHeight >= 46;
+        final showRange = !tight && maxHeight >= kVariablePanelRangeLabelHeight;
         return Semantics(
           container: true,
           label: item.displayTitle.isEmpty ? '进度' : item.displayTitle,
@@ -560,9 +571,10 @@ class VariablePanelTile extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxHeight = constraints.maxHeight;
-        final tight = !maxHeight.isFinite || maxHeight < 42;
+        final tight =
+            !maxHeight.isFinite || maxHeight < kVariablePanelCompactHeight;
         // 格子太矮时优先保证值与游标轨道，范围文案按空间裁剪。
-        final showRange = !tight && maxHeight >= 46;
+        final showRange = !tight && maxHeight >= kVariablePanelRangeLabelHeight;
         return Semantics(
           container: true,
           label: item.displayTitle.isEmpty ? '游标' : item.displayTitle,

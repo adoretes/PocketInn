@@ -46,7 +46,9 @@ class ChatVariableRow extends StatelessWidget {
       builder: (context, constraints) {
         // 文本变量的值可能很长，trailing 不限定宽度会占满整行，
         // 触发 ListTile「Trailing widget consumes the entire tile width」断言。
-        final trailingMaxWidth = constraints.maxWidth * 0.5;
+        // 无界宽（如横向滚动容器）时回退固定上限，避免 0.5 * infinity。
+        final maxWidth = constraints.maxWidth;
+        final trailingMaxWidth = maxWidth.isFinite ? maxWidth * 0.5 : 120.0;
         return ListTile(
           dense: dense,
           contentPadding: EdgeInsets.zero,

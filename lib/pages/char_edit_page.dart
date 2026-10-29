@@ -493,10 +493,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
       children: [
         Row(
           children: [
-            const Text(
-              '变量面板布局',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const Text('变量面板布局', style: TextStyle(fontWeight: FontWeight.bold)),
             const Spacer(),
             TextButton.icon(
               onPressed: _variables.isEmpty ? null : _editPanelLayout,
@@ -1071,8 +1068,11 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                   builder: (context, constraints) {
                                     // 文本变量的值可能很长，trailing 必须限定宽度，
                                     // 否则会占满整行触发 ListTile 的宽度断言。
-                                    final trailingMaxWidth =
-                                        constraints.maxWidth * 0.45;
+                                    // 无界宽时回退固定上限，避免 0.45 * infinity。
+                                    final maxWidth = constraints.maxWidth;
+                                    final trailingMaxWidth = maxWidth.isFinite
+                                        ? maxWidth * 0.45
+                                        : 120.0;
                                     return ListTile(
                                       dense: true,
                                       contentPadding: EdgeInsets.zero,

@@ -28,8 +28,12 @@ class VariablePanelEditorPage extends StatefulWidget {
 
 class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
   late List<VariablePanelItem> _items;
-  late final VariableState _previewState =
-      VariableState.fromCardVariables(widget.variables);
+
+  /// 进入页面时的布局快照，用于判断是否有未保存的改动。
+  late final List<VariablePanelItem> _initialItems;
+  late final VariableState _previewState = VariableState.fromCardVariables(
+    widget.variables,
+  );
   int _idSeed = 0;
 
   @override
@@ -40,6 +44,28 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
         VariablePanelConfig.defaultForVariables(widget.variables);
     final sanitized = _sanitize(base);
     _items = List<VariablePanelItem>.from(sanitized.items);
+    _initialItems = List<VariablePanelItem>.unmodifiable(_items);
+  }
+
+  /// 组件顺序、尺寸或绑定任一项变化都算未保存改动。
+  bool get _hasUnsavedChanges {
+    if (_initialItems.length != _items.length) {
+      return true;
+    }
+    for (var index = 0; index < _items.length; index++) {
+      final before = _initialItems[index];
+      final after = _items[index];
+      if (before.id != after.id ||
+          before.type != after.type ||
+          before.columnSpan != after.columnSpan ||
+          before.rowSpan != after.rowSpan ||
+          before.variableName != after.variableName ||
+          before.showTitle != after.showTitle ||
+          before.title != after.title) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// 补齐/清理与当前变量列表不一致的组件，避免编辑页出现死绑定。
@@ -72,69 +98,100 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('变量面板布局'),
-        actions: [
-          TextButton(
-            onPressed: widget.variables.isEmpty ? null : _resetToDefault,
-            child: const Text('恢复默认'),
-          ),
-          const SizedBox(width: 4),
-          FilledButton(
-            onPressed: _save,
-            child: const Text('保存'),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          Text(
-            '固定 $kVariablePanelColumns 列方形网格，组件宽高可在 '
-            '$kVariablePanelMinSpan~$kVariablePanelMaxWidth 列、'
-            '$kVariablePanelMinSpan~$kVariablePanelMaxHeight 行内调整。'
-            '长按卡片拖动可调整顺序，网格会自动重排。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: _onPopInvoked,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('变量面板布局'),
+          actions: [
+            TextButton(
+              onPressed: widget.variables.isEmpty ? null : _resetToDefault,
+              child: const Text('恢复默认'),
             ),
-          ),
-          const SizedBox(height: 16),
-          _buildPreview(context, colorScheme),
-          const SizedBox(height: 24),
-          Text('添加组件', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          Text(
-            '文本组件按纯文本展示，不支持 Markdown。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final type in VariablePanelComponentType.values)
-                _ComponentChip(
-                  type: type,
-                  onTap: () => _addComponent(type),
-                ),
-            ],
-          ),
-          if (widget.variables.isEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(width: 4),
+            FilledButton(onPressed: _save, child: const Text('保存')),
+            const SizedBox(width: 12),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
             Text(
-              '角色卡尚未声明初始状态变量，请先在「初始状态变量」中添加变量。',
+              '固定 $kVariablePanelColumns 列方形网格，组件宽高可在 '
+              '$kVariablePanelMinSpan~$kVariablePanelMaxWidth 列、'
+              '$kVariablePanelMinSpan~$kVariablePanelMaxHeight 行内调整。'
+              '长按卡片拖动可调整顺序，网格会自动重排。',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.error,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: 16),
+            _buildPreview(context, colorScheme),
+            const SizedBox(height: 24),
+            Text('添加组件', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              '文本组件按纯文本展示，不支持 Markdown。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final type in VariablePanelComponentType.values)
+                  _ComponentChip(type: type, onTap: () => _addComponent(type)),
+              ],
+            ),
+            if (widget.variables.isEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                '角色卡尚未声明初始状态变量，请先在「初始状态变量」中添加变量。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.error,
+                ),
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 有未保存改动时拦截返回，二次确认后才放弃。
+  Future<void> _onPopInvoked(bool didPop, Object? result) async {
+    if (didPop) {
+      return;
+    }
+    final discard = await _confirmDiscard();
+    if (!discard || !mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<bool> _confirmDiscard() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('放弃修改？'),
+        content: const Text('面板布局的改动尚未保存。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('继续编辑'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('放弃'),
+          ),
         ],
       ),
     );
+    return result ?? false;
   }
 
   Widget _buildPreview(BuildContext context, ColorScheme colorScheme) {
@@ -161,10 +218,8 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
                   ? _buildEmptyPreview(context, colorScheme)
                   : VariablePanelGridView(
                       items: _items,
-                      itemBuilder: (context, item) => _buildDraggableItem(
-                        context,
-                        item,
-                      ),
+                      itemBuilder: (context, item) =>
+                          _buildDraggableItem(context, item),
                     ),
             ),
           ),
@@ -186,9 +241,9 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
       ),
       child: Text(
         '还没有组件，从下方添加',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -196,7 +251,9 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
   Widget _buildDraggableItem(BuildContext context, VariablePanelItem item) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 80.0;
         final height = constraints.maxHeight.isFinite
             ? constraints.maxHeight
             : 80.0;
@@ -243,16 +300,20 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
     );
   }
 
+  /// 拖拽排序统一走 [VariablePanelConfig.moveItem]，
+  /// 避免模型与页面各维护一份移动逻辑。
   void _moveItem(String sourceId, String targetId) {
     final from = _items.indexWhere((item) => item.id == sourceId);
     final to = _items.indexWhere((item) => item.id == targetId);
-    if (from < 0 || to < 0 || from == to) {
+    if (from < 0 || to < 0) {
       return;
     }
-    final next = List<VariablePanelItem>.from(_items);
-    final moved = next.removeAt(from);
-    next.insert(to, moved);
-    setState(() => _items = next);
+    final current = VariablePanelConfig(items: _items);
+    final moved = current.moveItem(from, to);
+    if (identical(moved, current)) {
+      return;
+    }
+    setState(() => _items = List<VariablePanelItem>.from(moved.items));
   }
 
   Future<void> _addComponent(VariablePanelComponentType type) async {
@@ -341,10 +402,8 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => _VariablePanelItemSheet(
-        item: item,
-        variables: widget.variables,
-      ),
+      builder: (context) =>
+          _VariablePanelItemSheet(item: item, variables: widget.variables),
     );
     if (result == null || !mounted) {
       return;
@@ -374,9 +433,7 @@ class _VariablePanelEditorPageState extends State<VariablePanelEditorPage> {
 
   void _save() {
     Navigator.of(context).pop(
-      VariablePanelConfig(
-        items: List<VariablePanelItem>.unmodifiable(_items),
-      ),
+      VariablePanelConfig(items: List<VariablePanelItem>.unmodifiable(_items)),
     );
   }
 
@@ -468,10 +525,7 @@ class _ItemEditResult {
 
 /// 单个组件的编辑弹窗。
 class _VariablePanelItemSheet extends StatefulWidget {
-  const _VariablePanelItemSheet({
-    required this.item,
-    required this.variables,
-  });
+  const _VariablePanelItemSheet({required this.item, required this.variables});
 
   final VariablePanelItem item;
   final List<ChatVariable> variables;
@@ -518,7 +572,8 @@ class _VariablePanelItemSheetState extends State<_VariablePanelItemSheet> {
       return;
     }
     final current = _variableName;
-    final exists = current != null &&
+    final exists =
+        current != null &&
         _compatibleVariables.any((variable) => variable.name == current);
     if (!exists) {
       _variableName = _compatibleVariables.isEmpty
@@ -527,8 +582,7 @@ class _VariablePanelItemSheetState extends State<_VariablePanelItemSheet> {
     }
   }
 
-  bool get _canSave =>
-      !_type.bindsVariable || _variableName != null;
+  bool get _canSave => !_type.bindsVariable || _variableName != null;
 
   @override
   Widget build(BuildContext context) {
@@ -608,9 +662,9 @@ class _VariablePanelItemSheetState extends State<_VariablePanelItemSheet> {
               children: [
                 TextButton.icon(
                   onPressed: () {
-                    Navigator.of(context).pop(
-                      const _ItemEditResult(deleted: true),
-                    );
+                    Navigator.of(
+                      context,
+                    ).pop(const _ItemEditResult(deleted: true));
                   },
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('删除组件'),

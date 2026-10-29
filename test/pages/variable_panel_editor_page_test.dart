@@ -95,10 +95,7 @@ void main() {
 
     expect(harness.result, isNotNull);
     expect(harness.result!.items.length, 5);
-    expect(
-      harness.result!.items.last.type,
-      VariablePanelComponentType.blank,
-    );
+    expect(harness.result!.items.last.type, VariablePanelComponentType.blank);
   });
 
   testWidgets('编辑组件尺寸与标题后保存', (tester) async {
@@ -113,8 +110,7 @@ void main() {
 
     final titleField = find.byWidgetPredicate(
       (widget) =>
-          widget is TextField &&
-          widget.decoration?.labelText == '自定义标题（可选）',
+          widget is TextField && widget.decoration?.labelText == '自定义标题（可选）',
     );
     await tester.enterText(titleField, '生命');
     await tester.tap(find.widgetWithText(FilledButton, '确定'));
@@ -181,6 +177,47 @@ void main() {
     expect(harness.result, isNotNull);
     expect(harness.result!.items.first.variableName, '体力');
     expect(harness.result!.items.last.variableName, '好感度');
+  });
+
+  testWidgets('有未保存改动时返回会二次确认', (tester) async {
+    final harness = await pumpEditor(tester);
+
+    await tester.scrollUntilVisible(
+      find.text('空白块'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(find.text('空白块'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('空白块'));
+    await tester.pumpAndSettle();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('放弃修改？'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '继续编辑'));
+    await tester.pumpAndSettle();
+    expect(find.text('添加组件'), findsOneWidget, reason: '选择继续编辑应停留在编辑页');
+    expect(harness.result, isNull);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '放弃'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('打开编辑器'), findsOneWidget);
+    expect(harness.result, isNull, reason: '放弃修改不应写回布局');
+  });
+
+  testWidgets('未改动时返回不弹确认', (tester) async {
+    final harness = await pumpEditor(tester);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('放弃修改？'), findsNothing);
+    expect(harness.result, isNull);
   });
 
   testWidgets('恢复默认会补齐所有变量的默认组件', (tester) async {

@@ -89,9 +89,7 @@ void main() {
     });
 
     test('宽高收敛到 1~4', () {
-      final layout = packVariablePanelItems([
-        item('a', width: 99, height: 0),
-      ]);
+      final layout = packVariablePanelItems([item('a', width: 99, height: 0)]);
 
       expect(layout.placements.single.width, kVariablePanelMaxWidth);
       expect(layout.placements.single.height, 1);
@@ -131,11 +129,7 @@ void main() {
           name: 'hp',
           type: ChatVariableType.number,
           value: '25',
-          metadata: ChatVariableMetadata(
-            minValue: 0,
-            maxValue: 100,
-            unit: '%',
-          ),
+          metadata: ChatVariableMetadata(minValue: 0, maxValue: 100, unit: '%'),
         ),
         'mood': const ChatVariable(
           name: 'mood',
@@ -259,13 +253,52 @@ void main() {
       expect(find.byType(Text), findsWidgets);
     });
 
+    testWidgets('窄格子内长变量名整体缩放而不是省略', (tester) async {
+      final state = VariableState.fromVariables({
+        '夏江深雪的好感度': const ChatVariable(
+          name: '夏江深雪的好感度',
+          type: ChatVariableType.number,
+          value: '25',
+          metadata: ChatVariableMetadata(minValue: 0, maxValue: 100),
+        ),
+      });
+
+      await pumpGrid(
+        tester,
+        const VariablePanelConfig(
+          items: [
+            VariablePanelItem(
+              id: 'long',
+              type: VariablePanelComponentType.cursor,
+              variableName: '夏江深雪的好感度',
+            ),
+          ],
+        ),
+        state: state,
+        width: 304,
+      );
+
+      expect(tester.takeException(), isNull);
+      final title = tester.widget<Text>(find.text('夏江深雪的好感度'));
+      expect(
+        title.overflow,
+        isNot(TextOverflow.ellipsis),
+        reason: '标题被省略号吃掉后看不到完整变量名',
+      );
+      expect(
+        find.ancestor(
+          of: find.text('夏江深雪的好感度'),
+          matching: find.byType(FittedBox),
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('1x1 游标与进度条在大字号下不溢出', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MediaQuery(
-            data: const MediaQueryData(
-              textScaler: TextScaler.linear(1.2),
-            ),
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.2)),
             child: Scaffold(
               body: SingleChildScrollView(
                 child: SizedBox(
@@ -396,10 +429,7 @@ void main() {
     });
 
     testWidgets('显式空配置不渲染任何组件', (tester) async {
-      await pumpGrid(
-        tester,
-        const VariablePanelConfig(items: []),
-      );
+      await pumpGrid(tester, const VariablePanelConfig(items: []));
 
       expect(find.byType(VariablePanelTile), findsNothing);
       expect(tester.takeException(), isNull);
