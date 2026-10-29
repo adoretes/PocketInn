@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pocket_inn/models/chat_variables.dart';
+import 'package:pocket_inn/models/variable_panel.dart';
 import 'package:pocket_inn/pages/chat/widgets/chat_side_panel.dart';
 
 void main() {
@@ -22,6 +23,8 @@ void main() {
     Future<void> Function()? onRefresh,
     VoidCallback? onOpenMemoryManager,
     VoidCallback? onOpenVariablePage,
+    VariablePanelConfig? panelConfig,
+    List<String> declaredVariableNames = const [],
   }) {
     return ChatSidePanelContent(
       sessionTitle: sessionTitle,
@@ -36,6 +39,8 @@ void main() {
       onRefresh: onRefresh ?? () async {},
       onOpenMemoryManager: onOpenMemoryManager ?? () {},
       onOpenVariablePage: onOpenVariablePage ?? () {},
+      panelConfig: panelConfig,
+      declaredVariableNames: declaredVariableNames,
     );
   }
 
@@ -77,7 +82,7 @@ void main() {
     );
   }
 
-  testWidgets('有变量时逐行显示名称、取值与类型/选项', (tester) async {
+  testWidgets('有变量时按网格展示进度条与胶囊组件', (tester) async {
     await pumpContent(
       tester,
       buildContent(
@@ -102,13 +107,114 @@ void main() {
     expect(find.text('记忆与状态'), findsOneWidget);
     expect(find.text('测试聊天'), findsOneWidget);
     expect(find.text('3 条记忆'), findsOneWidget);
+    // 数值变量默认生成进度条：标题 + 当前值。
     expect(find.text('好感度'), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
-    expect(find.textContaining('数值'), findsOneWidget);
-    expect(find.textContaining('0.0 ~ 100.0'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    // 枚举变量默认生成胶囊：只展示当前值，不罗列全部选项。
     expect(find.text('心情'), findsOneWidget);
     expect(find.text('愉快'), findsOneWidget);
-    expect(find.textContaining('选项: 愉快/低落'), findsOneWidget);
+    expect(find.text('低落'), findsNothing);
+    // 不再展示旧的列表副标题。
+    expect(find.textContaining('数值 ·'), findsNothing);
+    expect(find.textContaining('选项:'), findsNothing);
+  });
+
+  testWidgets('角色卡显式清空面板时展示提示而非回退默认布局', (tester) async {
+    await pumpContent(
+      tester,
+      buildContent(
+        currentState: stateOf({
+          '好感度': const ChatVariable(
+            name: '好感度',
+            type: ChatVariableType.number,
+            value: '12',
+          ),
+        }),
+        panelConfig: const VariablePanelConfig(items: []),
+      ),
+    );
+
+    expect(find.textContaining('变量面板未配置组件'), findsOneWidget);
+    expect(find.text('好感度'), findsNothing);
+  });
+
+  testWidgets('自定义布局末尾追加聊天中新出现的变量', (tester) async {
+    const customPanel = VariablePanelConfig(
+      items: [
+        VariablePanelItem(
+          id: 'p',
+          type: VariablePanelComponentType.text,
+          variableName: '好感度',
+        ),
+      ],
+    );
+    final state = stateOf({
+      '好感度': const ChatVariable(
+        name: '好感度',
+        type: ChatVariableType.number,
+        value: '10',
+      ),
+      '体力': const ChatVariable(
+        name: '体力',
+        type: ChatVariableType.number,
+        value: '7',
+      ),
+    });
+
+    await pumpContent(
+      tester,
+      buildContent(
+        currentState: state,
+        panelConfig: customPanel,
+        declaredVariableNames: const ['好感度'],
+      ),
+    );
+    expect(find.text('好感度'), findsOneWidget);
+    expect(find.text('体力'), findsOneWidget, reason: '运行期新增变量应追加到末尾');
+
+    // 卡里声明过但作者没放进布局的变量不追加。
+    await pumpContent(
+      tester,
+      buildContent(
+        currentState: state,
+        panelConfig: customPanel,
+        declaredVariableNames: const ['好感度', '体力'],
+      ),
+    );
+    expect(find.text('好感度'), findsOneWidget);
+    expect(find.text('体力'), findsNothing);
+  });
+
+  testWidgets('点击组件弹出只读详情', (tester) async {
+    await pumpContent(
+      tester,
+      buildContent(
+        currentState: stateOf({
+          '好感度': const ChatVariable(
+            name: '好感度',
+            type: ChatVariableType.number,
+            value: '12',
+            metadata: ChatVariableMetadata(
+              minValue: 0,
+              maxValue: 100,
+              unit: '点',
+            ),
+            changeHint: '帮她做事 +5',
+          ),
+        }),
+      ),
+    );
+
+    await tester.tap(find.text('好感度'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前值'), findsOneWidget);
+    expect(find.textContaining('12点'), findsWidgets);
+    expect(find.text('范围'), findsOneWidget);
+    expect(find.text('0 ~ 100'), findsOneWidget);
+    expect(find.text('变化说明'), findsOneWidget);
+    expect(find.textContaining('只读展示'), findsOneWidget);
   });
 
   testWidgets('空状态区分「未声明初始变量」与「暂无变化」', (tester) async {

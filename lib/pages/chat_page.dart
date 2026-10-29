@@ -770,6 +770,8 @@ class _ChatPageState extends State<ChatPage> {
                   : VariableState.empty(),
               onOpenMemoryManager: _openMemoryManager,
               onOpenVariablePage: _openVariableManager,
+              panelConfig: _viewModel.variablePanelConfig,
+              declaredVariableNames: _viewModel.cardVariableNames,
             ),
           ),
         ),

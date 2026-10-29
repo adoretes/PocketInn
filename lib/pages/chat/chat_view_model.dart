@@ -9,7 +9,9 @@ import '../../data/app_settings.dart';
 import '../../data/mock_user_settings.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
+import '../../models/chat_variables.dart';
 import '../../models/preset.dart';
+import '../../models/variable_panel.dart';
 import '../../models/world_book.dart';
 import '../../services/api_config_service.dart';
 import '../../services/app_settings_service.dart';
@@ -75,6 +77,12 @@ class ChatViewModel extends ChangeNotifier {
   // --- 业务状态字段 ---
   ChatSession? _activeSession;
   ResolvedChatCharacter? _activeCharacter;
+
+  /// 角色卡声明的变量面板布局；null 表示按变量自动生成默认布局。
+  VariablePanelConfig? _variablePanelConfig;
+
+  /// 角色卡声明的变量名，用于区分「作者隐藏」与「聊天中新出现」。
+  List<String> _cardVariableNames = const [];
   List<ChatMessage> _messages = [];
   List<WorldBook> _worldBooks = [];
   List<PresetSummary> _presets = [];
@@ -143,6 +151,12 @@ class ChatViewModel extends ChangeNotifier {
   // --- 状态读取器 ---
   ChatSession? get activeSession => _activeSession;
   ResolvedChatCharacter? get activeCharacter => _activeCharacter;
+
+  /// 变量面板布局；null 时由侧边栏按当前变量自动生成默认布局。
+  VariablePanelConfig? get variablePanelConfig => _variablePanelConfig;
+
+  /// 角色卡声明的变量名；运行期新增变量据此追加到面板末尾。
+  List<String> get cardVariableNames => _cardVariableNames;
   List<ChatMessage> get messages => _messages;
   List<WorldBook> get worldBooks => _worldBooks;
   List<PresetSummary> get presets => _presets;
@@ -399,6 +413,8 @@ class ChatViewModel extends ChangeNotifier {
     if (resolvedCharacter == null) {
       _activeSession = null;
       _activeCharacter = null;
+      _variablePanelConfig = null;
+      _cardVariableNames = const [];
       _messages = [];
       _isDraftSession = false;
       _draftOpeningAssistantMessages = const [];
@@ -434,6 +450,8 @@ class ChatViewModel extends ChangeNotifier {
       updatedAt: now,
     );
     _activeCharacter = resolvedCharacter;
+    _variablePanelConfig = decodeVariablePanelConfig(resolvedCharacter.cardJson);
+    _cardVariableNames = _declaredVariableNamesOf(resolvedCharacter.cardJson);
     _draftOpeningMessageIndex = 0;
     _messages = _buildDraftOpeningMessages(openingMessages);
     _selectedUserSettingId = draftSelectedUserSettingId;
@@ -519,6 +537,8 @@ class ChatViewModel extends ChangeNotifier {
       // 库中没有任何会话：回到空状态。
       _activeSession = null;
       _activeCharacter = null;
+      _variablePanelConfig = null;
+      _cardVariableNames = const [];
       _messages = [];
       _selectedUserSettingId = null;
       _selectedPresetId = null;
@@ -545,6 +565,12 @@ class ChatViewModel extends ChangeNotifier {
 
     _activeSession = bundle.session;
     _activeCharacter = resolvedCharacter;
+    _variablePanelConfig = resolvedCharacter == null
+        ? null
+        : decodeVariablePanelConfig(resolvedCharacter.cardJson);
+    _cardVariableNames = resolvedCharacter == null
+        ? const []
+        : _declaredVariableNamesOf(resolvedCharacter.cardJson);
     _messages = bundle.activeMessages;
     _selectedUserSettingId = bundle.session.selectedUserSettingId;
     _selectedPresetId = bundle.session.selectedPresetId;
@@ -1624,6 +1650,15 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 角色卡声明的变量名（保持声明顺序）。
+  static List<String> _declaredVariableNamesOf(
+    Map<String, dynamic> cardJson,
+  ) {
+    return decodeCardVariables(
+      cardJson,
+    ).map((variable) => variable.name).toList(growable: false);
+  }
+
   // --- 测试辅助 ---
 
   /// 仅供测试使用：批量覆盖内部状态，便于在不依赖 service 的前提下
@@ -1647,7 +1682,13 @@ class ChatViewModel extends ChangeNotifier {
     String? selectedPresetId,
   }) {
     if (activeSession != null) _activeSession = activeSession;
-    if (activeCharacter != null) _activeCharacter = activeCharacter;
+    if (activeCharacter != null) {
+      _activeCharacter = activeCharacter;
+      _variablePanelConfig = decodeVariablePanelConfig(
+        activeCharacter.cardJson,
+      );
+      _cardVariableNames = _declaredVariableNamesOf(activeCharacter.cardJson);
+    }
     if (messages != null) _messages = messages;
     if (isLoading != null) _isLoading = isLoading;
     if (isSending != null) _isSending = isSending;

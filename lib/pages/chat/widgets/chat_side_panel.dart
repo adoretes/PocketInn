@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../models/chat_variables.dart';
+import '../../../models/variable_panel.dart';
 import '../../../services/chat_database_service.dart';
 import '../../../services/variable_state_service.dart';
-import 'chat_variable_list.dart';
+import '../../../widgets/variable_panel_detail_sheet.dart';
+import '../../../widgets/variable_panel_grid.dart';
 
 /// 聊天页侧边栏：长期记忆入口 + 状态变量实时显示。
 ///
@@ -25,6 +27,8 @@ class ChatSidePanel extends StatefulWidget {
     required this.draftState,
     required this.onOpenMemoryManager,
     required this.onOpenVariablePage,
+    this.panelConfig,
+    this.declaredVariableNames = const <String>[],
   });
 
   /// 当前会话 id；null 表示没有可用会话。
@@ -48,6 +52,12 @@ class ChatSidePanel extends StatefulWidget {
 
   /// 打开状态变量整页（初始变量声明说明、提取配置、宏用法）。
   final VoidCallback onOpenVariablePage;
+
+  /// 角色卡声明的变量面板布局；null 时按变量自动生成默认布局。
+  final VariablePanelConfig? panelConfig;
+
+  /// 角色卡声明的变量名；用于区分作者隐藏与聊天中新出现的变量。
+  final List<String> declaredVariableNames;
 
   @override
   State<ChatSidePanel> createState() => _ChatSidePanelState();
@@ -205,6 +215,8 @@ class _ChatSidePanelState extends State<ChatSidePanel> {
       onRefresh: _reload,
       onOpenMemoryManager: widget.onOpenMemoryManager,
       onOpenVariablePage: widget.onOpenVariablePage,
+      panelConfig: widget.panelConfig,
+      declaredVariableNames: widget.declaredVariableNames,
     );
   }
 }
@@ -225,6 +237,8 @@ class ChatSidePanelContent extends StatelessWidget {
     required this.onRefresh,
     required this.onOpenMemoryManager,
     required this.onOpenVariablePage,
+    this.panelConfig,
+    this.declaredVariableNames = const <String>[],
   });
 
   final String? sessionTitle;
@@ -244,6 +258,12 @@ class ChatSidePanelContent extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onOpenMemoryManager;
   final VoidCallback onOpenVariablePage;
+
+  /// 角色卡声明的变量面板布局；null 时按当前变量自动生成默认布局。
+  final VariablePanelConfig? panelConfig;
+
+  /// 角色卡声明的变量名；用于区分作者隐藏与聊天中新出现的变量。
+  final List<String> declaredVariableNames;
 
   /// 记忆/变量都是会话级内容，草稿会话尚未落库，相关入口统一禁用。
   bool get _sessionContentAvailable => hasSession && !isDraftSession;
@@ -399,23 +419,59 @@ class ChatSidePanelContent extends StatelessWidget {
     if (isDraftSession) {
       return [
         _hint(context, '草稿会话：以下为角色卡声明的初始变量，正式开始聊天后生效。'),
-        const SizedBox(height: 4),
-        ChatVariableList(
-          state: draftState,
-          emptyHint: '角色卡未声明初始状态变量，状态系统未启用。',
+        const SizedBox(height: 8),
+        _buildPanelForState(
+          context,
+          draftState,
+          '角色卡未声明初始状态变量，状态系统未启用。',
         ),
       ];
     }
 
     return [
-      ChatVariableList(
-        state: currentState,
-        emptyHint: initDeclared
+      _buildPanelForState(
+        context,
+        currentState,
+        initDeclared
             ? '暂无变量（初始变量尚未发生任何变化）。'
             : '角色卡未声明初始状态变量，状态系统未启用。'
                   '请在角色卡编辑页的「初始状态变量」中声明。',
       ),
     ];
+  }
+
+  /// 有变量时交给网格面板；变量为空或作者显式清空面板时展示提示。
+  Widget _buildPanelForState(
+    BuildContext context,
+    VariableState state,
+    String emptyHint,
+  ) {
+    final theme = Theme.of(context);
+    final hintStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    if (state.isEmpty) {
+      return Text(emptyHint, style: hintStyle);
+    }
+
+    final config = resolveVariablePanelConfig(panelConfig, state.variables);
+    if (config.isEmpty) {
+      return Text(
+        '变量面板未配置组件，请在角色卡编辑页的「变量面板布局」中添加。',
+        style: hintStyle,
+      );
+    }
+    return VariablePanelGrid(
+      state: state,
+      config: config,
+      declaredVariableNames: declaredVariableNames,
+      onItemTap: (item, variable) => showVariablePanelDetail(
+        context,
+        item: item,
+        variable: variable,
+      ),
+    );
   }
 
   Widget _hint(BuildContext context, String text) {

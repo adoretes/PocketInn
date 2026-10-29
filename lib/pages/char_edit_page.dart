@@ -5,12 +5,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/chat_variables.dart';
+import '../models/variable_panel.dart';
 import '../models/world_book.dart';
 import '../services/prompt_assembler.dart';
 import '../services/world_book_service.dart';
-import '../widgets/expanded_text_editor_field.dart';
 import '../widgets/dialog_text_controller_builder.dart';
+import '../widgets/expanded_text_editor_field.dart';
 import '../widgets/variable_edit_dialog.dart';
+import '../widgets/variable_panel_detail_sheet.dart';
+import '../widgets/variable_panel_grid.dart';
+import 'variable_panel_editor_page.dart';
 import 'world_book_edit_page.dart';
 
 class RoleEditPage extends StatefulWidget {
@@ -51,6 +55,9 @@ class _RoleEditPageState extends State<RoleEditPage> {
   int _currentGreetingIndex = 0;
   late List<String> tags;
   List<ChatVariable> _variables = [];
+
+  /// 变量面板布局；null 表示未配置，聊天侧边栏按变量自动生成默认布局。
+  VariablePanelConfig? _panelConfig;
 
   final TextEditingController _newTagController = TextEditingController();
   final FocusNode _nameFocusNode = FocusNode();
@@ -104,6 +111,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
     // decodeCardVariables 无声明时返回不可变空表，这里复制为可变列表，
     // 供「添加变量」直接增删。
     _variables = List<ChatVariable>.from(decodeCardVariables({'data': data}));
+    _panelConfig = decodeVariablePanelConfig({'data': data});
     _selectedWorldBookId = widget.initialWorldBookId;
     _initialBackgroundImage = _imageProviderForPath(widget.imagePath);
     _nameFocusNode.addListener(_onNameFocusChange);
@@ -181,10 +189,25 @@ class _RoleEditPageState extends State<RoleEditPage> {
     );
     if (normalizedVariables.isEmpty) {
       extensions.remove(kCardVariablesExtensionKey);
+      extensions.remove(kCardVariablePanelExtensionKey);
     } else {
       extensions[kCardVariablesExtensionKey] = encodeCardVariables(
         normalizedVariables,
       );
+    }
+
+    // 布局只在用户配置过时写卡；null 保持「自动布局」语义。
+    VariablePanelConfig? normalizedPanel;
+    if (normalizedVariables.isNotEmpty) {
+      final panel = _panelConfig;
+      if (panel == null) {
+        extensions.remove(kCardVariablePanelExtensionKey);
+      } else {
+        normalizedPanel = panel.withoutMissingVariables(normalizedVariables);
+        extensions[kCardVariablePanelExtensionKey] = encodeVariablePanelConfig(
+          normalizedPanel,
+        );
+      }
     }
 
     final updatedData = {
@@ -227,6 +250,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
     setState(() {
       data = Map<String, dynamic>.from(updatedData);
       _variables = normalizedVariables;
+      _panelConfig = normalizedPanel;
       _showValidationError = false;
     });
 
@@ -455,6 +479,100 @@ class _RoleEditPageState extends State<RoleEditPage> {
     ];
   }
 
+  /// 变量区块底部的面板布局摘要与实时预览。
+  Widget _buildVariablePanelSection(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final config = resolveVariablePanelConfig(_panelConfig, _variables);
+    final summary = _panelConfig == null
+        ? '自动布局 · ${config.length} 个组件'
+        : '自定义布局 · ${config.length} 个组件';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '变量面板布局',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _variables.isEmpty ? null : _editPanelLayout,
+              icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+              label: const Text('编辑布局'),
+            ),
+          ],
+        ),
+        Text(
+          '聊天侧边栏用方形网格展示状态变量；组件只读消费变量，不写回。',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          summary,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 304, maxHeight: 280),
+              child: _variables.isEmpty
+                  ? Text(
+                      '先添加变量后即可编辑面板布局。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    )
+                  : config.isEmpty
+                  ? Text(
+                      '面板为空：聊天侧边栏不会展示组件。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        // 与聊天抽屉内宽（304 - 16 * 2）一致，保证预览尺寸。
+                        width: 272,
+                        child: SingleChildScrollView(
+                          child: VariablePanelGrid(
+                            state: VariableState.fromCardVariables(_variables),
+                            config: config,
+                            declaredVariableNames: [
+                              for (final variable in _variables) variable.name,
+                            ],
+                            onItemTap: (item, variable) =>
+                                showVariablePanelDetail(
+                                  context,
+                                  item: item,
+                                  variable: variable,
+                                ),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _editVariable([ChatVariable? existing]) async {
     final result = await showVariableEditDialog(context, initial: existing);
     if (result == null) {
@@ -470,6 +588,12 @@ class _RoleEditPageState extends State<RoleEditPage> {
           if (item.name != replacedName) item,
         result,
       ];
+      // 面板布局存在时同步绑定：新增追加默认组件、改名更新引用、
+      // 改类型替换不兼容组件。自动布局（null）无需处理。
+      _panelConfig = _panelConfig?.afterVariableUpdated(
+        previous: existing,
+        current: result,
+      );
     });
   }
 
@@ -479,7 +603,26 @@ class _RoleEditPageState extends State<RoleEditPage> {
         for (final item in _variables)
           if (item.name != name) item,
       ];
+      _panelConfig = _panelConfig?.afterVariableRemoved(name);
     });
+  }
+
+  Future<void> _editPanelLayout() async {
+    if (_variables.isEmpty) {
+      return;
+    }
+    final result = await Navigator.of(context).push<VariablePanelConfig>(
+      MaterialPageRoute(
+        builder: (_) => VariablePanelEditorPage(
+          variables: List<ChatVariable>.from(_variables),
+          initialConfig: _panelConfig,
+        ),
+      ),
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+    setState(() => _panelConfig = result);
   }
 
   @override
@@ -996,6 +1139,8 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                   },
                                 ),
                             ],
+                            const SizedBox(height: 16),
+                            _buildVariablePanelSection(context),
                           ],
                         ),
                       ),

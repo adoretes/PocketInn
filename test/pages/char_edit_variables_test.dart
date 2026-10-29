@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pocket_inn/models/chat_variables.dart';
+import 'package:pocket_inn/models/variable_panel.dart';
 import 'package:pocket_inn/pages/char_edit_page.dart';
 import 'package:pocket_inn/services/storage_service.dart';
 import 'package:pocket_inn/services/world_book_service.dart';
@@ -79,7 +80,11 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
     await tester.pumpAndSettle();
 
-    expect(find.text('好感度'), findsOneWidget, reason: '变量应显示在列表中');
+    expect(
+      find.text('好感度'),
+      findsWidgets,
+      reason: '变量应显示在列表与面板预览中',
+    );
 
     // 保存整卡（AppBar 保存按钮）。注：不要用 tapAt 盲点收起键盘——
     // 命中「选择世界书」会弹出底部选择器，其模态遮罩会挡住保存按钮。
@@ -319,5 +324,131 @@ void main() {
       reason: '长文本值应被截断而非撑满整行触发断言',
     );
     expect(find.widgetWithText(ListTile, '心情'), findsOneWidget);
+  });
+
+  testWidgets('保存角色卡时写入变量面板布局扩展', (tester) async {
+    final card = minimalCard();
+    (card['data'] as Map<String, dynamic>)['extensions'] = {
+      'variables': encodeCardVariables([
+        const ChatVariable(
+          name: '好感度',
+          type: ChatVariableType.number,
+          value: '10',
+          metadata: ChatVariableMetadata(minValue: 0, maxValue: 100),
+        ),
+      ]),
+      'variablePanel': VariablePanelConfig(
+        items: const [
+          VariablePanelItem(
+            id: 'p1',
+            type: VariablePanelComponentType.progress,
+            width: 2,
+            height: 1,
+            variableName: '好感度',
+          ),
+        ],
+      ).toJson(),
+    };
+
+    RoleEditSavePayload? savedPayload;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RoleEditPage(
+          characterData: card,
+          onSave: (payload) async {
+            savedPayload = payload;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('高级设置'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('高级设置'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, '保存'));
+    await tester.pumpAndSettle();
+
+    final panel = decodeVariablePanelConfig(savedPayload!.cardJson);
+    expect(panel, isNotNull);
+    expect(panel!.items.single.variableName, '好感度');
+    expect(panel.items.single.type, VariablePanelComponentType.progress);
+    expect(panel.items.single.width, 2);
+    expect(panel.items.single.height, 1);
+  });
+
+  testWidgets('变量改名后面板布局绑定同步更新', (tester) async {
+    final card = minimalCard();
+    (card['data'] as Map<String, dynamic>)['extensions'] = {
+      'variables': encodeCardVariables([
+        const ChatVariable(
+          name: '好感度',
+          type: ChatVariableType.number,
+          value: '10',
+        ),
+      ]),
+      'variablePanel': VariablePanelConfig(
+        items: const [
+          VariablePanelItem(
+            id: 'p1',
+            type: VariablePanelComponentType.text,
+            variableName: '好感度',
+          ),
+        ],
+      ).toJson(),
+    };
+
+    RoleEditSavePayload? savedPayload;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RoleEditPage(
+          characterData: card,
+          onSave: (payload) async {
+            savedPayload = payload;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('高级设置'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('高级设置'));
+    await tester.pumpAndSettle();
+
+    final editButton = find.descendant(
+      of: find.widgetWithText(ListTile, '好感度'),
+      matching: find.byTooltip('编辑'),
+    );
+    await tester.scrollUntilVisible(
+      editButton,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(editButton);
+    await tester.pumpAndSettle();
+
+    final dialogFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dialogFields.at(0), '亲密度');
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, '保存'));
+    await tester.pumpAndSettle();
+
+    final panel = decodeVariablePanelConfig(savedPayload!.cardJson);
+    expect(panel, isNotNull);
+    expect(panel!.items.single.variableName, '亲密度');
   });
 }
