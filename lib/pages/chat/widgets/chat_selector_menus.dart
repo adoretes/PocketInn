@@ -426,7 +426,14 @@ class _CapsuleChip extends StatelessWidget {
               if (onEditTap != null) ...[
                 const SizedBox(width: 2),
                 _CapsuleEditButton(onTap: onEditTap!),
-              ],
+              ] else
+                // 无编辑按钮时补一个等高透明占位，避免胶囊高度比带按钮的
+                // 选项（如内置默认预设）矮一截，保证同一列表高度一致。
+                // 宽度取 0，不影响无按钮胶囊原本对称的左右内边距。
+                const SizedBox(
+                  width: 0,
+                  height: _CapsuleEditButton.size,
+                ),
             ],
           ),
         ),
@@ -438,6 +445,10 @@ class _CapsuleChip extends StatelessWidget {
 /// 胶囊尾部的编辑按钮，独立于胶囊主体的点击区域。
 class _CapsuleEditButton extends StatelessWidget {
   const _CapsuleEditButton({required this.onTap});
+
+  /// 按钮整体尺寸（内边距 4 + 图标 16 + 内边距 4），
+  /// 供无按钮占位复用，统一胶囊高度。
+  static const double size = 24;
 
   final VoidCallback onTap;
 
