@@ -40,7 +40,7 @@ class _RegexRuleGroupPageState extends State<RegexRuleGroupPage> {
       updatedAt: DateTime.now(),
     );
 
-    final saved = await Navigator.push<bool>(
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (context) =>
@@ -48,7 +48,7 @@ class _RegexRuleGroupPageState extends State<RegexRuleGroupPage> {
       ),
     );
 
-    if (saved == true && mounted) {
+    if (mounted) {
       await _refresh();
     }
   }
@@ -75,14 +75,14 @@ class _RegexRuleGroupPageState extends State<RegexRuleGroupPage> {
     final group = await RegexRuleGroupService.instance.loadById(summary.id);
     if (group == null || !mounted) return;
 
-    final saved = await Navigator.push<bool>(
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (context) => RegexRuleGroupEditPage(group: group),
       ),
     );
 
-    if (saved == true && mounted) {
+    if (mounted) {
       await _refresh();
     }
   }

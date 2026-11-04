@@ -69,7 +69,6 @@ class _RegexRuleGroupEditPageState extends State<RegexRuleGroupEditPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('规则组已保存')));
-    Navigator.pop(context, true);
   }
 
   void _addNewRule() {
