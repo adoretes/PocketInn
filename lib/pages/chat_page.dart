@@ -47,6 +47,7 @@ class ChatPage extends StatefulWidget {
   final String? draftSelectedUserSettingId;
   final String? draftSelectedPresetId;
   final List<String> draftSelectedWorldBookIds;
+  final List<String> draftSelectedRegexRuleGroupIds;
   final List<String> draftOpeningAssistantMessages;
 
   const ChatPage({super.key, this.sessionId})
@@ -55,6 +56,7 @@ class ChatPage extends StatefulWidget {
       draftSelectedUserSettingId = null,
       draftSelectedPresetId = null,
       draftSelectedWorldBookIds = const [],
+      draftSelectedRegexRuleGroupIds = const [],
       draftOpeningAssistantMessages = const [];
 
   const ChatPage.draft({
@@ -64,6 +66,7 @@ class ChatPage extends StatefulWidget {
     String? selectedUserSettingId,
     String? selectedPresetId,
     List<String> selectedWorldBookIds = const [],
+    List<String> selectedRegexRuleGroupIds = const [],
     List<String> openingAssistantMessages = const [],
   }) : sessionId = null,
        draftCharacterId = characterId,
@@ -71,6 +74,7 @@ class ChatPage extends StatefulWidget {
        draftSelectedUserSettingId = selectedUserSettingId,
        draftSelectedPresetId = selectedPresetId,
        draftSelectedWorldBookIds = selectedWorldBookIds,
+       draftSelectedRegexRuleGroupIds = selectedRegexRuleGroupIds,
        draftOpeningAssistantMessages = openingAssistantMessages;
 
   @override
@@ -107,6 +111,7 @@ class _ChatPageState extends State<ChatPage> {
       draftSelectedUserSettingId: widget.draftSelectedUserSettingId,
       draftSelectedPresetId: widget.draftSelectedPresetId,
       draftSelectedWorldBookIds: widget.draftSelectedWorldBookIds,
+      draftSelectedRegexRuleGroupIds: widget.draftSelectedRegexRuleGroupIds,
       initialDraftOpeningMessages: widget.draftOpeningAssistantMessages,
     );
     _textController.addListener(_onTextChanged);

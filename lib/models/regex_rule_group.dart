@@ -8,6 +8,10 @@ class RegexRule {
     this.enabled = true,
     this.findRegex = '',
     this.replaceString = '',
+    this.caseSensitive = true,
+    this.multiLine = false,
+    this.dotAll = false,
+    this.unicode = false,
     this.applyToUser = true,
     this.applyToAssistant = true,
     this.minDepth,
@@ -23,6 +27,10 @@ class RegexRule {
   final bool enabled;
   final String findRegex;
   final String replaceString;
+  final bool caseSensitive;
+  final bool multiLine;
+  final bool dotAll;
+  final bool unicode;
   final bool applyToUser;
   final bool applyToAssistant;
 
@@ -56,6 +64,10 @@ class RegexRule {
     bool? enabled,
     String? findRegex,
     String? replaceString,
+    bool? caseSensitive,
+    bool? multiLine,
+    bool? dotAll,
+    bool? unicode,
     bool? applyToUser,
     bool? applyToAssistant,
     int? minDepth,
@@ -73,6 +85,10 @@ class RegexRule {
       enabled: enabled ?? this.enabled,
       findRegex: findRegex ?? this.findRegex,
       replaceString: replaceString ?? this.replaceString,
+      caseSensitive: caseSensitive ?? this.caseSensitive,
+      multiLine: multiLine ?? this.multiLine,
+      dotAll: dotAll ?? this.dotAll,
+      unicode: unicode ?? this.unicode,
       applyToUser: applyToUser ?? this.applyToUser,
       applyToAssistant: applyToAssistant ?? this.applyToAssistant,
       minDepth: clearMinDepth ? null : (minDepth ?? this.minDepth),
@@ -92,6 +108,10 @@ class RegexRule {
       'enabled': enabled,
       'find_regex': findRegex,
       'replace_string': replaceString,
+      'case_sensitive': caseSensitive,
+      'multi_line': multiLine,
+      'dot_all': dotAll,
+      'unicode': unicode,
       'apply_to_user': applyToUser,
       'apply_to_assistant': applyToAssistant,
       'min_depth': minDepth,
@@ -114,6 +134,10 @@ class RegexRule {
       enabled: _readBool(map, 'enabled', fallback: true),
       findRegex: _readString(map, 'find_regex') ?? '',
       replaceString: _readString(map, 'replace_string') ?? '',
+      caseSensitive: _readBool(map, 'case_sensitive', fallback: true),
+      multiLine: _readBool(map, 'multi_line', fallback: false),
+      dotAll: _readBool(map, 'dot_all', fallback: false),
+      unicode: _readBool(map, 'unicode', fallback: false),
       applyToUser: _readBool(map, 'apply_to_user', fallback: true),
       applyToAssistant: _readBool(map, 'apply_to_assistant', fallback: true),
       minDepth: _readNullableInt(map, 'min_depth'),
@@ -151,13 +175,24 @@ class RegexRule {
 
     final markdownOnly = _readBool(map, 'markdownOnly', fallback: false);
     final promptOnly = _readBool(map, 'promptOnly', fallback: false);
+    final parsedRegex = _parseSillyTavernRegex(
+      _readString(map, 'findRegex') ?? '',
+    );
+    final extra = _extractExtra(map);
+    if (parsedRegex.unsupportedFlags.isNotEmpty) {
+      extra['unsupportedRegexFlags'] = parsedRegex.unsupportedFlags;
+    }
 
     return RegexRule(
       id: id ?? _readString(map, 'id') ?? _generateId(),
       name: _readString(map, 'scriptName') ?? '未命名规则',
       enabled: _readBool(map, 'enabled', fallback: !_readBool(map, 'disabled', fallback: false)),
-      findRegex: _readString(map, 'findRegex') ?? '',
+      findRegex: parsedRegex.pattern,
       replaceString: _readString(map, 'replaceString') ?? '',
+      caseSensitive: parsedRegex.caseSensitive,
+      multiLine: parsedRegex.multiLine,
+      dotAll: parsedRegex.dotAll,
+      unicode: parsedRegex.unicode,
       applyToUser: applyToUser,
       applyToAssistant: applyToAssistant,
       minDepth: _readNullableInt(map, 'minDepth'),
@@ -165,7 +200,7 @@ class RegexRule {
       applyOnWrite: !markdownOnly && !promptOnly,
       applyOnSend: promptOnly,
       applyOnDisplay: markdownOnly,
-      extra: _extractExtra(map),
+      extra: extra,
     );
   }
 
@@ -175,7 +210,13 @@ class RegexRule {
       return '查找正则不能为空';
     }
     try {
-      RegExp(findRegex);
+      RegExp(
+        findRegex,
+        caseSensitive: caseSensitive,
+        multiLine: multiLine,
+        dotAll: dotAll,
+        unicode: unicode,
+      );
       return null;
     } catch (e) {
       return '正则无效：$e';
@@ -205,6 +246,47 @@ class RegexRule {
     return extra;
   }
 
+  static _SillyTavernRegex _parseSillyTavernRegex(String source) {
+    if (!source.startsWith('/')) {
+      return _SillyTavernRegex(pattern: source);
+    }
+
+    var closingSlash = -1;
+    var precedingBackslashes = 0;
+    for (var i = 1; i < source.length; i++) {
+      final char = source[i];
+      if (char == '/' && precedingBackslashes.isEven) {
+        closingSlash = i;
+      }
+      if (char == r'\') {
+        precedingBackslashes++;
+      } else {
+        precedingBackslashes = 0;
+      }
+    }
+    if (closingSlash <= 0) {
+      return _SillyTavernRegex(pattern: source);
+    }
+
+    final flags = source.substring(closingSlash + 1);
+    if (!RegExp(r'^[dgimsuvy]*$').hasMatch(flags)) {
+      return _SillyTavernRegex(pattern: source);
+    }
+
+    final unsupportedFlags = <String>[
+      for (final flag in flags.split(''))
+        if (!'gimsu'.contains(flag)) flag,
+    ];
+    return _SillyTavernRegex(
+      pattern: source.substring(1, closingSlash).replaceAll(r'\/', '/'),
+      caseSensitive: !flags.contains('i'),
+      multiLine: flags.contains('m'),
+      dotAll: flags.contains('s'),
+      unicode: flags.contains('u'),
+      unsupportedFlags: unsupportedFlags,
+    );
+  }
+
   static String? _readString(Map<String, dynamic> map, String key) {
     final value = map[key];
     return value is String ? value : null;
@@ -229,6 +311,24 @@ class RegexRule {
 
   static String _generateId() =>
       'rule-${DateTime.now().millisecondsSinceEpoch}';
+}
+
+class _SillyTavernRegex {
+  const _SillyTavernRegex({
+    required this.pattern,
+    this.caseSensitive = true,
+    this.multiLine = false,
+    this.dotAll = false,
+    this.unicode = false,
+    this.unsupportedFlags = const [],
+  });
+
+  final String pattern;
+  final bool caseSensitive;
+  final bool multiLine;
+  final bool dotAll;
+  final bool unicode;
+  final List<String> unsupportedFlags;
 }
 
 /// 正则替换规则组。

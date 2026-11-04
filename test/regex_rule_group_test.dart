@@ -209,6 +209,32 @@ void main() {
       expect(normal.applyOnDisplay, isFalse);
     });
 
+    test('兼容 /pattern/flags 并映射常用 JS 标志', () {
+      final rule = RegexRule.fromSillyTavernJson({
+        ..._sampleStRule,
+        'findRegex': r'/a.b/imgsu',
+        'markdownOnly': false,
+        'promptOnly': false,
+      });
+
+      expect(rule.findRegex, 'a.b');
+      expect(rule.caseSensitive, isFalse);
+      expect(rule.multiLine, isTrue);
+      expect(rule.dotAll, isTrue);
+      expect(rule.unicode, isTrue);
+      expect(rule.extra.containsKey('unsupportedRegexFlags'), isFalse);
+    });
+
+    test('普通正则不会被误判为分隔符写法', () {
+      final rule = RegexRule.fromSillyTavernJson({
+        ..._sampleStRule,
+        'findRegex': r'https?://example\.com/path',
+      });
+
+      expect(rule.findRegex, r'https?://example\.com/path');
+      expect(rule.caseSensitive, isTrue);
+    });
+
     test('无效正则保留但可被校验识别', () {
       final rule = RegexRule(
         id: 'rule-1',
@@ -536,6 +562,26 @@ void main() {
         depth: 0,
       );
       expect(result.text, 'merged');
+    });
+
+    test('大小写与点号标志参与匹配', () {
+      final result = service.applyToMessage(
+        text: 'A\nB',
+        groups: groupsFor([
+          RegexRule(
+            id: 'r1',
+            name: '标志',
+            findRegex: 'a.b',
+            replaceString: 'ok',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+        ]),
+        isUserMessage: true,
+        depth: 0,
+      );
+
+      expect(result.text, 'ok');
     });
 
     test(r"JS 风格替换语义：$$、$&、$`、$'、命名组", () {

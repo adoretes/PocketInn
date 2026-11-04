@@ -46,12 +46,19 @@ class _CharListPageState extends State<CharListPage> {
       if (result == null || !mounted) return;
       await _refresh();
       if (!mounted) return;
-      final message = result.merged
+      final actionMessage = result.merged
           ? '已合并到已有角色：${result.record.name}'
           : '已导入角色：${result.record.name}';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      final regexMessage = result.importedRegexRuleCount > 0
+          ? '\n已提取 ${result.importedRegexRuleCount} 条角色卡正则'
+                '${result.regexRuleGroupName == null ? '' : '，规则组：${result.regexRuleGroupName}'}'
+          : '';
+      final warningMessage = result.regexWarning == null
+          ? ''
+          : '\n${result.regexWarning}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$actionMessage$regexMessage$warningMessage')),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -230,6 +237,12 @@ class _CharListPageState extends State<CharListPage> {
     final worldBookIds = record.worldBookId != null
         ? [record.worldBookId!]
         : const <String>[];
+    final regexSync = await CharacterService.instance.syncCardRegexRules(
+      record,
+    );
+    final regexRuleGroupIds = regexSync.group == null
+        ? const <String>[]
+        : <String>[regexSync.group!.id];
     if (!mounted) {
       return;
     }
@@ -241,6 +254,7 @@ class _CharListPageState extends State<CharListPage> {
           selectedUserSettingId: selectedUserSettingIdNotifier.value,
           selectedPresetId: selectedPresetIdNotifier.value,
           selectedWorldBookIds: worldBookIds,
+          selectedRegexRuleGroupIds: regexRuleGroupIds,
           openingAssistantMessages: openingMessages,
         ),
       ),

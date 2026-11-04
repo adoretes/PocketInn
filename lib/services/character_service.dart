@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
 import '../models/character_card.dart';
+import '../models/regex_rule_group.dart';
 import '../models/world_book.dart';
 import 'chat_database_service.dart';
 import 'png_character_card_codec.dart';
+import 'regex_rule_group_service.dart';
 import 'storage_service.dart';
 import 'world_book_service.dart';
 
@@ -21,6 +23,8 @@ class CharacterService {
   static const String _indexFilename = 'characters_index.json';
   static const String _charactersDir = 'characters';
   static const int _dataVersion = 1;
+  static const String cardRegexRuleGroupExtensionKey =
+      'pocketinn_regex_rule_group_id';
 
   late String _charactersPath;
   late String _dataPath;
@@ -252,9 +256,14 @@ class CharacterService {
     );
 
     await save(record);
-    return record.copyWith(
-      originalImagePath: _resolvePath(record.originalImagePath),
-      thumbnailPath: _resolvePath(record.thumbnailPath),
+    final regexSync = await syncCardRegexRules(
+      record,
+      refreshExisting: true,
+      preferredGroupId: 'group-$id-card-regex',
+    );
+    return regexSync.record.copyWith(
+      originalImagePath: _resolvePath(regexSync.record.originalImagePath),
+      thumbnailPath: _resolvePath(regexSync.record.thumbnailPath),
     );
   }
 
@@ -434,7 +443,13 @@ class CharacterService {
             cardJson: cardJson,
             imageSourcePath: originalImageBytes == null ? null : sourcePath,
           );
-          return CharacterImportResult(record: merged, merged: true);
+          return CharacterImportResult(
+            record: merged.record,
+            merged: true,
+            importedRegexRuleCount: merged.group?.rules.length ?? 0,
+            regexRuleGroupName: merged.group?.name,
+            regexWarning: merged.warningText,
+          );
         }
       }
     }
@@ -464,11 +479,19 @@ class CharacterService {
     );
 
     await save(record);
+    final regexSync = await syncCardRegexRules(
+      record,
+      refreshExisting: true,
+      preferredGroupId: 'group-$id-card-regex',
+    );
     return CharacterImportResult(
-      record: record.copyWith(
-        originalImagePath: _resolvePath(record.originalImagePath),
-        thumbnailPath: _resolvePath(record.thumbnailPath),
+      record: regexSync.record.copyWith(
+        originalImagePath: _resolvePath(regexSync.record.originalImagePath),
+        thumbnailPath: _resolvePath(regexSync.record.thumbnailPath),
       ),
+      importedRegexRuleCount: regexSync.group?.rules.length ?? 0,
+      regexRuleGroupName: regexSync.group?.name,
+      regexWarning: regexSync.warningText,
     );
   }
 
@@ -582,7 +605,7 @@ class CharacterService {
     return '';
   }
 
-  Future<CharacterCardRecord> _mergeImportedCard({
+  Future<CharacterCardRegexSyncResult> _mergeImportedCard({
     required CharacterSummary existing,
     required Map<String, dynamic> cardJson,
     required String? imageSourcePath,
@@ -616,8 +639,84 @@ class CharacterService {
     );
     await save(merged);
 
-    final stored = await loadById(current.id);
-    return stored ?? merged;
+    final regexSync = await syncCardRegexRules(
+      merged,
+      refreshExisting: true,
+      preferredGroupId: _cardRegexRuleGroupId(current.cardJson),
+    );
+    return CharacterCardRegexSyncResult(
+      record: await loadById(current.id) ?? regexSync.record,
+      group: regexSync.group,
+      warnings: regexSync.warnings,
+      errorMessage: regexSync.errorMessage,
+    );
+  }
+
+  /// 提取角色卡内嵌正则。已有绑定且 [refreshExisting] 为 false 时直接复用。
+  ///
+  /// 提取失败不会阻断角色导入；失败信息通过
+  /// [CharacterCardRegexSyncResult.warningText] 返回。
+  Future<CharacterCardRegexSyncResult> syncCardRegexRules(
+    CharacterCardRecord record, {
+    bool refreshExisting = false,
+    String? preferredGroupId,
+  }) async {
+    _checkInitialized();
+
+    final boundGroupId = preferredGroupId?.trim().isNotEmpty == true
+        ? preferredGroupId!.trim()
+        : _cardRegexRuleGroupId(record.cardJson);
+
+    try {
+      await RegexRuleGroupService.instance.initialize();
+      if (!refreshExisting && boundGroupId != null) {
+        final existing = await RegexRuleGroupService.instance.loadById(
+          boundGroupId,
+        );
+        if (existing != null) {
+          return CharacterCardRegexSyncResult(record: record, group: existing);
+        }
+      }
+
+      final imported = await RegexRuleGroupService.instance
+          .importFromCharacterCard(
+            characterId: record.id,
+            cardJson: record.cardJson,
+            groupId: boundGroupId ?? 'group-${record.id}-card-regex',
+            refreshExisting: refreshExisting,
+          );
+      if (imported == null) {
+        final existing = boundGroupId == null
+            ? null
+            : await RegexRuleGroupService.instance.loadById(boundGroupId);
+        return CharacterCardRegexSyncResult(record: record, group: existing);
+      }
+
+      final updatedRecord = record.copyWith(cardJson: imported.cardJson);
+      if (jsonEncode(record.cardJson) != jsonEncode(imported.cardJson)) {
+        await save(updatedRecord);
+      }
+      return CharacterCardRegexSyncResult(
+        record: updatedRecord,
+        group: imported.group,
+        warnings: imported.warnings,
+      );
+    } catch (error) {
+      return CharacterCardRegexSyncResult(
+        record: record,
+        errorMessage: '角色卡中的正则提取失败：$error',
+      );
+    }
+  }
+
+  String? _cardRegexRuleGroupId(Map<String, dynamic> cardJson) {
+    final data = cardJson['data'];
+    if (data is! Map) return null;
+    final extensions = data['extensions'];
+    if (extensions is! Map) return null;
+    final value = extensions[cardRegexRuleGroupExtensionKey];
+    final id = value is String ? value.trim() : '';
+    return id.isEmpty ? null : id;
   }
 
   Future<void> _saveSummaries(List<CharacterSummary> summaries) async {
@@ -1054,10 +1153,38 @@ class CharacterImportException implements Exception {
 }
 
 class CharacterImportResult {
-  const CharacterImportResult({required this.record, this.merged = false});
+  const CharacterImportResult({
+    required this.record,
+    this.merged = false,
+    this.importedRegexRuleCount = 0,
+    this.regexRuleGroupName,
+    this.regexWarning,
+  });
 
   final CharacterCardRecord record;
   final bool merged;
+  final int importedRegexRuleCount;
+  final String? regexRuleGroupName;
+  final String? regexWarning;
+}
+
+class CharacterCardRegexSyncResult {
+  const CharacterCardRegexSyncResult({
+    required this.record,
+    this.group,
+    this.warnings = const [],
+    this.errorMessage,
+  });
+
+  final CharacterCardRecord record;
+  final RegexRuleGroup? group;
+  final List<String> warnings;
+  final String? errorMessage;
+
+  String? get warningText {
+    final messages = <String>[?errorMessage, ...warnings];
+    return messages.isEmpty ? null : messages.join('；');
+  }
 }
 
 enum CharacterImportConflictChoice { createNew, merge, cancel }

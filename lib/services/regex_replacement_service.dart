@@ -41,13 +41,22 @@ class RegexReplacementService {
   static final Map<String, RegExp?> _regexCache = <String, RegExp?>{};
   static const int _maxCachedRegexCount = 256;
 
-  static RegExp? _compiledRegex(String pattern) {
-    if (_regexCache.containsKey(pattern)) {
-      return _regexCache[pattern];
+  static RegExp? _compiledRegex(RegexRule rule) {
+    final cacheKey =
+        '${rule.caseSensitive}|${rule.multiLine}|${rule.dotAll}|'
+        '${rule.unicode}|${rule.findRegex}';
+    if (_regexCache.containsKey(cacheKey)) {
+      return _regexCache[cacheKey];
     }
     RegExp? regex;
     try {
-      regex = RegExp(pattern);
+      regex = RegExp(
+        rule.findRegex,
+        caseSensitive: rule.caseSensitive,
+        multiLine: rule.multiLine,
+        dotAll: rule.dotAll,
+        unicode: rule.unicode,
+      );
     } catch (_) {
       // 无效正则跳过，不阻断其他规则。
       regex = null;
@@ -55,7 +64,7 @@ class RegexReplacementService {
     if (_regexCache.length >= _maxCachedRegexCount) {
       _regexCache.clear();
     }
-    _regexCache[pattern] = regex;
+    _regexCache[cacheKey] = regex;
     return regex;
   }
 
@@ -77,7 +86,7 @@ class RegexReplacementService {
         if (!_matchesMode(rule, mode)) continue;
         if (rule.findRegex.isEmpty) continue;
 
-        final regex = _compiledRegex(rule.findRegex);
+        final regex = _compiledRegex(rule);
         if (regex == null) continue;
 
         compiled.add(

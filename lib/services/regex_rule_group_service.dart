@@ -383,6 +383,73 @@ class RegexRuleGroupService {
     return StRulesImportResult(rules: rules, warnings: warnings);
   }
 
+  /// 将角色卡 `data.extensions.regex_scripts` 提取为独立规则组。
+  ///
+  /// 返回的 [CharacterCardRegexImportResult.cardJson] 会写入规则组绑定信息，
+  /// 原始 `regex_scripts` 不会被移除，角色卡再次导出时仍可保留完整数据。
+  Future<CharacterCardRegexImportResult?> importFromCharacterCard({
+    required String characterId,
+    required Map<String, dynamic> cardJson,
+    required String groupId,
+    bool refreshExisting = true,
+  }) async {
+    _checkInitialized();
+
+    final data = cardJson['data'];
+    if (data is! Map) return null;
+    final extensions = data['extensions'];
+    if (extensions is! Map) return null;
+    final rawScripts = extensions['regex_scripts'];
+    if (rawScripts is! List || rawScripts.isEmpty) return null;
+
+    final parsed = parseStRulesFromJson(jsonEncode(rawScripts));
+    if (parsed.rules.isEmpty) return null;
+
+    final existing = await loadById(groupId);
+    if (existing != null && !refreshExisting) {
+      return CharacterCardRegexImportResult(
+        cardJson: _cardJsonWithRegexGroupId(cardJson, groupId),
+        group: existing,
+        warnings: parsed.warnings,
+      );
+    }
+
+    final cardName = (data['name'] as String? ?? '').trim();
+    final group = RegexRuleGroup(
+      id: groupId,
+      name: existing?.name ?? '${cardName.isEmpty ? '角色卡' : cardName} - 正则',
+      rules: parsed.rules,
+      updatedAt: DateTime.now(),
+      extra: {
+        ...?existing?.extra,
+        'source': 'character_card',
+        'character_id': characterId,
+      },
+    );
+    await save(group);
+
+    return CharacterCardRegexImportResult(
+      cardJson: _cardJsonWithRegexGroupId(cardJson, group.id),
+      group: group,
+      warnings: parsed.warnings,
+    );
+  }
+
+  Map<String, dynamic> _cardJsonWithRegexGroupId(
+    Map<String, dynamic> cardJson,
+    String groupId,
+  ) {
+    final updatedCard = Map<String, dynamic>.from(cardJson);
+    final data = Map<String, dynamic>.from(updatedCard['data'] as Map);
+    final extensions = data['extensions'] is Map
+        ? Map<String, dynamic>.from(data['extensions'] as Map)
+        : <String, dynamic>{};
+    extensions['pocketinn_regex_rule_group_id'] = groupId;
+    data['extensions'] = extensions;
+    updatedCard['data'] = data;
+    return updatedCard;
+  }
+
   Future<void> resetToDefaults() async {
     _checkInitialized();
 
@@ -465,4 +532,16 @@ class StRulesImportResult {
   final List<String> warnings;
 
   String get warningText => warnings.join('；');
+}
+
+class CharacterCardRegexImportResult {
+  const CharacterCardRegexImportResult({
+    required this.cardJson,
+    required this.group,
+    required this.warnings,
+  });
+
+  final Map<String, dynamic> cardJson;
+  final RegexRuleGroup group;
+  final List<String> warnings;
 }

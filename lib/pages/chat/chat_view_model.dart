@@ -48,6 +48,7 @@ class ChatViewModel extends ChangeNotifier {
     this.draftSelectedUserSettingId,
     this.draftSelectedPresetId,
     this.draftSelectedWorldBookIds = const [],
+    this.draftSelectedRegexRuleGroupIds = const [],
     List<String> initialDraftOpeningMessages = const [],
   }) : _initialDraftOpeningMessages = initialDraftOpeningMessages {
     // 缓存 notifier 引用，避免 dispose 时再次查找 getIt（DI 容器可能已重置）。
@@ -68,6 +69,7 @@ class ChatViewModel extends ChangeNotifier {
   final String? draftSelectedUserSettingId;
   final String? draftSelectedPresetId;
   final List<String> draftSelectedWorldBookIds;
+  final List<String> draftSelectedRegexRuleGroupIds;
   final List<String> _initialDraftOpeningMessages;
 
   /// 缓存构造时获取的 notifier，用于 dispose 时安全移除监听。
@@ -434,13 +436,16 @@ class ChatViewModel extends ChangeNotifier {
         : resolvedCharacter.name;
 
     final initialWorldBookIds = List<String>.from(draftSelectedWorldBookIds);
+    final initialRegexRuleGroupIds = List<String>.from(
+      draftSelectedRegexRuleGroupIds,
+    );
     _activeSession = ChatSession(
       id: '__draft_chat__${resolvedCharacter.id}',
       title: title,
       characterId: resolvedCharacter.id,
       selectedUserSettingId: draftSelectedUserSettingId,
       selectedWorldBookIds: initialWorldBookIds,
-      selectedRegexRuleGroupIds: const [],
+      selectedRegexRuleGroupIds: initialRegexRuleGroupIds,
       selectedPresetId: draftSelectedPresetId,
       currentLeafMessageId: null,
       lastMessagePreview: openingMessages.isNotEmpty
@@ -459,7 +464,9 @@ class ChatViewModel extends ChangeNotifier {
     _selectedWorldBookIds
       ..clear()
       ..addAll(initialWorldBookIds);
-    _selectedRegexRuleGroupIds.clear();
+    _selectedRegexRuleGroupIds
+      ..clear()
+      ..addAll(initialRegexRuleGroupIds);
     _galModeEnabled = false;
     _galBrowsingIndex = null;
     _clearGalChoices();
