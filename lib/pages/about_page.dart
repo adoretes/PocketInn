@@ -72,14 +72,13 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.7.0',
-                  date: '2026-10-29',
+                  version: 'v1.7.1',
+                  date: '2026-11-06',
                   changes: [
-                    '增加侧边栏变量简易可视化',
-                    '优化变量面板布局，增加未保存改动确认提示',
-                    '文本类型变量支持多行输入',
-                    '为变量名空值添加字段级错误提示',
-                    '修复长文本变量值撑满 ListTile 触发宽度断言的问题',
+                    '导入角色卡时自动提取内嵌正则并创建规则组',
+                    'API 配置支持启用开关，停用后从模型选择器隐藏',
+                    'gal 选项支持长按填入输入框',
+                    '修复聊天选择器胶囊高度不一致',
                   ],
                 ),
               ],
