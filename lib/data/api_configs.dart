@@ -6,8 +6,8 @@ import '../services/api_config_service.dart';
 final ValueNotifier<List<ApiConfig>> apiConfigsNotifier =
     ValueNotifier<List<ApiConfig>>([]);
 
-/// 当前选中的模型 id（唯一选择状态）。不存"配置激活"，也不存"模型激活"——
-/// 只存"选了哪个模型"。空表示未选择任何模型。
+/// 当前选中的模型 id（唯一选择状态）。不另存"模型激活"——只存"选了哪个
+/// 模型"，空表示未选择任何模型；provider 是否启用由 `ApiConfig.enabled` 表示。
 final ValueNotifier<String?> selectedApiModelIdNotifier =
     ValueNotifier<String?>(null);
 
@@ -26,24 +26,30 @@ ResolvedApiConfig? get resolvedSelectedApi {
 
 /// 列出所有 (provider, model) 对，供选择器 UI 展示用。
 /// [configs] 缺省时取当前 [apiConfigsNotifier] 的值。
+/// 默认只返回已启用 provider 下的模型；[includeDisabled] 用于展示"已停用"等
+/// 需要保留原始条目的场景。
 List<({ApiConfig provider, ApiModel model})> flattenModelEntries([
   List<ApiConfig>? configs,
+  bool includeDisabled = false,
 ]) {
   final list = configs ?? apiConfigsNotifier.value;
   return [
     for (final c in list)
-      for (final m in c.models) (provider: c, model: m),
+      if (includeDisabled || c.enabled)
+        for (final m in c.models) (provider: c, model: m),
   ];
 }
 
 /// 按全局唯一的模型 id 查找 (provider, model) 对；找不到返回 null。
 /// 供选中态展示、失效 id 判定等 UI 逻辑与 [resolveApiByModelId] 复用。
+/// 默认忽略已停用的 provider。
 ({ApiConfig provider, ApiModel model})? findModelEntryById(
   String? modelId, [
   List<ApiConfig>? configs,
+  bool includeDisabled = false,
 ]) {
   if (modelId == null || modelId.isEmpty) return null;
-  for (final entry in flattenModelEntries(configs)) {
+  for (final entry in flattenModelEntries(configs, includeDisabled)) {
     if (entry.model.id == modelId) return entry;
   }
   return null;
@@ -71,7 +77,7 @@ Future<void> updateApiConfigs(List<ApiConfig> configs) async {
   );
   apiConfigsNotifier.value = nextConfigs;
 
-  // 若当前选中 model 已不存在于新列表（被删除等情况），自动清空选择。
+  // 若当前选中 model 已不可用（被删除、所在配置被停用等），自动清空选择。
   final currentSelected = selectedApiModelIdNotifier.value;
   final stillExists = _modelExists(nextConfigs, currentSelected);
   final newSelected = stillExists ? currentSelected : null;

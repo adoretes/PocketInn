@@ -144,8 +144,9 @@ abstract class ApiModel with _$ApiModel {
 
 /// API 提供方。持有 baseUrl / apiKey 与一组模型列表。
 ///
-/// 选择状态由全局 [lib/data/api_configs.dart] 中的
-/// `selectedApiModelIdNotifier` 维护，本类不持有任何"激活"标志。
+/// [enabled] 是配置级开关：停用后该提供方不会出现在模型选择器中，也不能
+/// 作为当前模型使用。当前选中了哪个模型仍由 [lib/data/api_configs.dart]
+/// 中的 `selectedApiModelIdNotifier` 维护。
 @freezed
 abstract class ApiConfig with _$ApiConfig {
   const ApiConfig._();
@@ -155,6 +156,7 @@ abstract class ApiConfig with _$ApiConfig {
     @JsonKey(defaultValue: '未命名配置') required String name,
     @JsonKey(defaultValue: '') required String baseUrl,
     @JsonKey(defaultValue: '') required String apiKey,
+    @JsonKey(defaultValue: true) @Default(true) bool enabled,
     @JsonKey(defaultValue: <ApiModel>[])
     @Default(<ApiModel>[])
     List<ApiModel> models,

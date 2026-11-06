@@ -49,6 +49,7 @@ class ApiConfigService {
             name: (raw['name'] as String?) ?? '未命名配置',
             baseUrl: (raw['baseUrl'] as String?) ?? '',
             apiKey: (raw['apiKey'] as String?) ?? '',
+            enabled: oldEnabled,
             models: [
               ApiModel(
                 id: modelId,
@@ -158,6 +159,7 @@ class ApiConfigService {
           name: 'DeepSeek',
           baseUrl: 'https://api.deepseek.com/v1',
           apiKey: '',
+          enabled: true,
           models: const [
             ApiModel(
               id: defaultModelId,

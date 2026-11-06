@@ -29,7 +29,6 @@ class _OpenAICompatibleConfigPageState
   final Map<String, List<_HeaderControllers>> _headerControllers = {};
   final Set<String> _testingIds = <String>{};
   final Set<String> _loadingModelIds = <String>{}; // provider ids 拉取中
-  bool _isSaving = false;
 
   @override
   void initState() {
@@ -139,22 +138,11 @@ class _OpenAICompatibleConfigPageState
   }
 
   Future<void> _persistConfigs({String? successMessage}) async {
-    setState(() {
-      _isSaving = true;
-    });
-    try {
-      await updateApiConfigs(_configItems);
-      if (!mounted || successMessage == null) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(successMessage)));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
-    }
+    await updateApiConfigs(_configItems);
+    if (!mounted || successMessage == null) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(successMessage)));
   }
 
   Future<void> _saveConfigItem(ApiConfig item) async {
@@ -412,6 +400,26 @@ class _OpenAICompatibleConfigPageState
     });
   }
 
+  Future<void> _toggleEnabled(ApiConfig item, bool value) async {
+    final index = _configItems.indexWhere((i) => i.id == item.id);
+    if (index < 0) return;
+    final disablingSelected =
+        !value && selectedApiModelTuple?.provider.id == item.id;
+    final updated = _configItems[index].copyWith(enabled: value);
+    setState(() {
+      _configItems[index] = updated;
+    });
+    final String message;
+    if (value) {
+      message = '已启用配置 "${updated.name}"';
+    } else if (disablingSelected) {
+      message = '已停用配置 "${updated.name}"，当前模型选择已取消';
+    } else {
+      message = '已停用配置 "${updated.name}"';
+    }
+    await _persistConfigs(successMessage: message);
+  }
+
   void _toggleExpanded(ApiConfig item) {
     setState(() {
       if (_expandedIds.contains(item.id)) {
@@ -459,17 +467,6 @@ class _OpenAICompatibleConfigPageState
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          if (_isSaving)
-            const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: _createNewConfig,
@@ -524,15 +521,20 @@ class _OpenAICompatibleConfigPageState
                         children: [
                           Text(
                             item.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
+                              color: item.enabled
+                                  ? null
+                                  : colorScheme.onSurfaceVariant,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '模型数：${item.models.length}',
+                            item.enabled
+                                ? '模型数：${item.models.length}'
+                                : '已停用 · 模型数：${item.models.length}',
                             style: TextStyle(
                               fontSize: 12,
                               color: colorScheme.onSurfaceVariant,
@@ -540,6 +542,10 @@ class _OpenAICompatibleConfigPageState
                           ),
                         ],
                       ),
+                    ),
+                    Switch(
+                      value: item.enabled,
+                      onChanged: (value) => _toggleEnabled(item, value),
                     ),
                     Icon(
                       isExpanded
@@ -609,18 +615,8 @@ class _OpenAICompatibleConfigPageState
                       ),
                       const SizedBox(width: 4),
                       FilledButton.icon(
-                        onPressed: _isSaving
-                            ? null
-                            : () => _saveConfigItem(item),
-                        icon: _isSaving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.save_outlined, size: 18),
+                        onPressed: () => _saveConfigItem(item),
+                        icon: const Icon(Icons.save_outlined, size: 18),
                         label: const Text('保存'),
                       ),
                     ],

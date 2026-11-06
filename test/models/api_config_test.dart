@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocket_inn/data/api_configs.dart';
 import 'package:pocket_inn/models/api_config.dart';
 
 void main() {
@@ -172,6 +173,36 @@ void main() {
     });
   });
 
+  group('启用状态筛选', () {
+    const configs = [
+      ApiConfig(
+        id: 'enabled',
+        name: 'enabled',
+        baseUrl: '',
+        apiKey: '',
+        models: [ApiModel(id: 'm1', modelId: 'model-1')],
+      ),
+      ApiConfig(
+        id: 'disabled',
+        name: 'disabled',
+        baseUrl: '',
+        apiKey: '',
+        enabled: false,
+        models: [ApiModel(id: 'm2', modelId: 'model-2')],
+      ),
+    ];
+
+    test('默认忽略已停用配置下的模型', () {
+      expect(flattenModelEntries(configs), hasLength(1));
+      expect(findModelEntryById('m2', configs), isNull);
+    });
+
+    test('显式包含停用项时可查询', () {
+      expect(flattenModelEntries(configs, true), hasLength(2));
+      expect(findModelEntryById('m2', configs, true), isNotNull);
+    });
+  });
+
   group('ApiConfig 序列化', () {
     test('customHeaders 可往返序列化', () {
       const config = ApiConfig(
@@ -188,6 +219,28 @@ void main() {
         jsonDecode(jsonEncode(config.toJson())) as Map<String, dynamic>,
       );
       expect(restored.customHeaders, config.customHeaders);
+    });
+
+    test('enabled 默认启用且可往返序列化', () {
+      final restored = ApiConfig.fromJson({
+        'id': 'provider',
+        'name': 'provider',
+        'baseUrl': 'https://example.com/v1',
+        'apiKey': '',
+      });
+      expect(restored.enabled, isTrue);
+
+      const disabled = ApiConfig(
+        id: 'provider',
+        name: 'provider',
+        baseUrl: 'https://example.com/v1',
+        apiKey: '',
+        enabled: false,
+      );
+      final roundTripped = ApiConfig.fromJson(
+        jsonDecode(jsonEncode(disabled.toJson())) as Map<String, dynamic>,
+      );
+      expect(roundTripped.enabled, isFalse);
     });
 
     test('缺少 customHeaders 字段时按空列表处理', () {

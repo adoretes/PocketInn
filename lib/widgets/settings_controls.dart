@@ -320,7 +320,9 @@ class ModelPickerTile extends StatelessWidget {
                           Navigator.of(sheetContext).pop();
                         },
                       ),
-                      for (final provider in configs) ...[
+                      for (final provider in configs.where(
+                        (p) => p.enabled,
+                      )) ...[
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                           child: Text(
@@ -364,15 +366,18 @@ class ModelPickerTile extends StatelessWidget {
     final currentLabel = ValueListenableBuilder<List<ApiConfig>>(
       valueListenable: apiConfigsNotifier,
       builder: (context, configs, _) {
-        // 已删除的模型 id 明确提示，避免被误认为「跟随当前选中模型」。
+        // 已删除或已停用的模型 id 明确提示，避免被误认为「跟随当前选中模型」。
         final entry = findModelEntryById(modelId, configs);
+        final disabledEntry = findModelEntryById(modelId, configs, true);
         final String label;
         final Color labelColor;
         if (entry != null) {
           label = '${entry.provider.name} · ${entry.model.modelId}';
           labelColor = colorScheme.onSurfaceVariant;
         } else if (modelId != null) {
-          label = '已选择的模型已被删除，将回退到当前选中模型';
+          label = disabledEntry != null
+              ? '所选模型所在配置已停用，将回退到当前选中模型'
+              : '已选择的模型已被删除，将回退到当前选中模型';
           labelColor = colorScheme.error;
         } else {
           label = '跟随当前选中模型';

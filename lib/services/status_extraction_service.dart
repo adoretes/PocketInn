@@ -161,6 +161,7 @@ class StatusExtractionService {
     if (extractionModelId != null && extractionModelId.isNotEmpty) {
       outer:
       for (final c in configs) {
+        if (!c.enabled) continue;
         for (final m in c.models) {
           if (m.id == extractionModelId) {
             provider = c;

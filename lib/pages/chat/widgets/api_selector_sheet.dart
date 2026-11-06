@@ -162,7 +162,11 @@ Future<void> showApiSelectorSheet({
                     final useStreaming = useStreamingProvider();
                     final isSending = isSendingProvider();
                     final tuple = selectedApiModelTuple;
-                    final hasAnyModel = configs.any(
+                    final enabledConfigs = configs
+                        .where((c) => c.enabled)
+                        .toList(growable: false);
+                    final hasAnyEnabledConfig = enabledConfigs.isNotEmpty;
+                    final hasAnyModel = enabledConfigs.any(
                       (c) => c.models.isNotEmpty,
                     );
                     return SizedBox(
@@ -218,11 +222,25 @@ Future<void> showApiSelectorSheet({
                                   child: const Text('去配置'),
                                 ),
                               )
+                            else if (!hasAnyEnabledConfig)
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.power_settings_new),
+                                title: const Text('所有 API 配置均已停用'),
+                                subtitle: const Text('请到配置页启用至少一个 Provider'),
+                                trailing: FilledButton.tonal(
+                                  onPressed: () async {
+                                    Navigator.of(sheetContext).pop();
+                                    await onOpenConfigPage();
+                                  },
+                                  child: const Text('去配置'),
+                                ),
+                              )
                             else if (!hasAnyModel)
                               ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 leading: const Icon(Icons.smart_toy_outlined),
-                                title: const Text('所有配置下都还没有模型'),
+                                title: const Text('已启用的配置下都还没有模型'),
                                 subtitle: const Text('请到配置页为某个 Provider 添加模型'),
                                 trailing: FilledButton.tonal(
                                   onPressed: () async {
@@ -236,7 +254,7 @@ Future<void> showApiSelectorSheet({
                               Expanded(
                                 child: ListView(
                                   children: [
-                                    for (final provider in configs) ...[
+                                    for (final provider in enabledConfigs) ...[
                                       if (provider.models.isNotEmpty) ...[
                                         Padding(
                                           padding: const EdgeInsets.only(
