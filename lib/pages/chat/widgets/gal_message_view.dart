@@ -35,6 +35,7 @@ class GalMessageView extends StatefulWidget {
     required this.galChoicesMessageId,
     required this.galChoicesError,
     required this.onPickGalChoice,
+    required this.onFillGalChoice,
     required this.onRefreshGalChoices,
   });
 
@@ -67,6 +68,9 @@ class GalMessageView extends StatefulWidget {
 
   /// 点击选项：以选项文本作为用户消息发送。
   final void Function(String choice) onPickGalChoice;
+
+  /// 长按选项：仅把选项文本填入输入框，不发送（便于修改后再发）。
+  final void Function(String choice) onFillGalChoice;
 
   /// 手动（重新）生成选项：供「生成选项」按钮与失败重试使用。
   final VoidCallback onRefreshGalChoices;
@@ -428,6 +432,16 @@ class _GalMessageViewState extends State<GalMessageView>
                       backgroundAlpha: 0.82,
                     ),
             ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '长按选项可填入输入框',
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -448,6 +462,7 @@ class _GalMessageViewState extends State<GalMessageView>
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => widget.onPickGalChoice(choice),
+        onLongPress: () => widget.onFillGalChoice(choice),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(

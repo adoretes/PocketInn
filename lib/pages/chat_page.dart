@@ -507,6 +507,15 @@ class _ChatPageState extends State<ChatPage> {
     await _sendText(text, replyToMessageIndex: replyToMessageIndex);
   }
 
+  /// 长按 gal 选项：把选项文本填入输入框并聚焦，但不发送，便于修改后再发。
+  void _onFillGalChoice(String choice) {
+    _textController.value = TextEditingValue(
+      text: choice,
+      selection: TextSelection.collapsed(offset: choice.length),
+    );
+    _inputFocusNode.requestFocus();
+  }
+
   void _onStopGeneratingPressed() {
     _viewModel.stopStreaming();
   }
@@ -957,6 +966,7 @@ class _ChatPageState extends State<ChatPage> {
                                     galChoicesError: _viewModel.galChoicesError,
                                     onPickGalChoice: (choice) =>
                                         _sendText(choice),
+                                    onFillGalChoice: _onFillGalChoice,
                                     onRefreshGalChoices:
                                         _viewModel.refreshGalChoices,
                                   );
