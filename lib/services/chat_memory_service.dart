@@ -82,6 +82,19 @@ class ChatMemoryService {
     return messages;
   }
 
+  /// 返回被 `recentRounds` 窗口裁掉、位于窗口之前的消息（保持原顺序）。
+  ///
+  /// 长期记忆召回只覆盖已滑出主对话窗口的历史，与提示词中的「最近 N 轮对话」
+  /// 互补而不重复；窗口包含全部历史（`recentRounds <= 0` 或历史不足）时返回空表。
+  static List<ChatMessage> messagesBeforeWindow(
+    List<ChatMessage> messages,
+    int recentRounds,
+  ) {
+    final window = truncateToRecentRounds(messages, recentRounds);
+    final cut = messages.length - window.length;
+    return cut <= 0 ? const <ChatMessage>[] : messages.sublist(0, cut);
+  }
+
   ResolvedApiConfig? get _extractionConfig {
     final configs = apiConfigsNotifier.value;
     final extractionModelId = memoryExtractionNotifier.value.extractionModelId;

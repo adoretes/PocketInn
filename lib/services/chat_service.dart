@@ -948,7 +948,13 @@ class ChatService {
     final memoryConfig = memoryExtractionNotifier.value;
     if (!memoryConfig.enabled) return const [];
 
-    final pathIds = chatMessages
+    // 长期记忆只覆盖被 `recentRounds` 窗口裁掉的历史（窗口之外），
+    // 与提示词中的「最近 N 轮对话」互补、不重复；窗口含全部历史时不注入记忆。
+    final beforeWindow = ChatMemoryService.messagesBeforeWindow(
+      chatMessages,
+      memoryConfig.recentRounds,
+    );
+    final pathIds = beforeWindow
         .where((m) => m.id != null)
         .map((m) => m.id!)
         .toList();

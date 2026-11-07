@@ -100,6 +100,49 @@ void main() {
     });
   });
 
+  group('ChatMemoryService.messagesBeforeWindow', () {
+    test('recentRounds <= 0（无限制）返回空表', () {
+      final messages = [
+        _user('u1'),
+        _assistant('a1'),
+        _user('u2'),
+        _assistant('a2'),
+      ];
+      expect(ChatMemoryService.messagesBeforeWindow(messages, 0), isEmpty);
+      expect(ChatMemoryService.messagesBeforeWindow(messages, -1), isEmpty);
+    });
+
+    test('历史不足以截断时返回空表', () {
+      final messages = [_user('u1'), _assistant('a1')];
+      expect(ChatMemoryService.messagesBeforeWindow(messages, 2), isEmpty);
+    });
+
+    test('返回被裁掉的窗口之前消息', () {
+      final messages = [
+        _user('u1'),
+        _assistant('a1'),
+        _user('u2'),
+        _assistant('a2'),
+        _user('u3'),
+        _assistant('a3'),
+      ];
+      final result = ChatMemoryService.messagesBeforeWindow(messages, 2);
+      expect(result.map((m) => m.text), ['u1', 'a1']);
+    });
+
+    test('末尾用户消息未获回复时也正确切分', () {
+      final messages = [
+        _user('u1'),
+        _assistant('a1'),
+        _user('u2'),
+        _assistant('a2'),
+        _user('u3'),
+      ];
+      final result = ChatMemoryService.messagesBeforeWindow(messages, 1);
+      expect(result.map((m) => m.text), ['u1', 'a1']);
+    });
+  });
+
   group('ChatMemoryService.parseMemoryPoints', () {
     test('空字符串返回空列表', () {
       expect(ChatMemoryService.parseMemoryPoints(''), isEmpty);
