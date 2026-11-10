@@ -177,6 +177,7 @@ abstract class Preset with _$Preset {
     @Default(0.0) double minP,
     @Default(1.0) double repetitionPenalty,
     @Default(131072) int openaiMaxContext,
+    // 0 表示不限制 / 请求中不携带 max_tokens；正数才会写入请求。
     @Default(32768) int openaiMaxTokens,
     @Default([]) List<PresetPrompt> prompts,
     @Default([]) List<PresetPromptOrderGroup> promptOrderGroups,

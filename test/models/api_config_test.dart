@@ -63,7 +63,21 @@ void main() {
       expect(body['temperature'], 0.5);
       expect(body['model'], 'demo-model');
       expect(body['stream'], isTrue);
-      expect(body['include_usage'], isTrue);
+      expect(
+        body['stream_options'],
+        containsPair('include_usage', true),
+      );
+    });
+
+    test('非流式请求不注入 stream_options', () {
+      final body = config('{"temperature":0.5}').buildRequestBody(
+        messages: const [
+          {'role': 'user', 'content': 'hi'},
+        ],
+        defaults: const {'stream': false},
+      );
+      expect(body.containsKey('stream_options'), isFalse);
+      expect(body.containsKey('include_usage'), isFalse);
     });
 
     test('自定义 messages 追加到系统消息之后', () {

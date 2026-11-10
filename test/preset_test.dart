@@ -137,4 +137,19 @@ void main() {
       ]);
     });
   });
+
+  group('openaiMaxTokens', () {
+    test('0（不传）可往返 storage 与 export', () {
+      final preset = Preset(
+        id: 'preset-1',
+        name: '测试预设',
+        openaiMaxTokens: 0,
+        updatedAt: DateTime(2026),
+      );
+
+      final restored = Preset.fromStorageJson(preset.toStorageJson());
+      expect(restored.openaiMaxTokens, 0);
+      expect(restored.toSillyTavernJson()['openai_max_tokens'], 0);
+    });
+  });
 }

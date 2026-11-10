@@ -46,8 +46,11 @@ class _PresetEditPageState extends State<PresetEditPage> {
     _contextController = TextEditingController(
       text: _preset.openaiMaxContext.toString(),
     );
+    // 0 表示“不传 max_tokens”，对应输入框留空。
     _maxTokensController = TextEditingController(
-      text: _preset.openaiMaxTokens.toString(),
+      text: _preset.openaiMaxTokens > 0
+          ? _preset.openaiMaxTokens.toString()
+          : '',
     );
     _continueNudgeController = TextEditingController(
       text:
@@ -108,8 +111,8 @@ class _PresetEditPageState extends State<PresetEditPage> {
           : (double.tryParse(_temperatureController.text) ?? _preset.temperature),
       openaiMaxContext:
           int.tryParse(_contextController.text) ?? _preset.openaiMaxContext,
-      openaiMaxTokens:
-          int.tryParse(_maxTokensController.text) ?? _preset.openaiMaxTokens,
+      // 留空（无法解析出数字）视为 0，即请求中不携带 max_tokens。
+      openaiMaxTokens: int.tryParse(_maxTokensController.text.trim()) ?? 0,
       extra: {
         ..._preset.extra,
         'continue_nudge_prompt': _continueNudgeController.text,

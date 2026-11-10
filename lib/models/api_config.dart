@@ -9,13 +9,15 @@ part 'api_config.g.dart';
 ///
 /// - `model`：由所选模型决定；
 /// - `stream`：由调用方（流式 / 非流式接口）决定，用户覆盖会破坏响应解析；
-/// - `include_usage`：始终由应用强制注入。
+/// - `include_usage`：始终由应用强制注入；
+/// - `stream_options`：由应用注入，用来承载 `include_usage`。
 ///
 /// 用户在自定义 body 中填写这些字段时会直接报错，而不是被静默忽略。
 const Set<String> kReservedCustomBodyKeys = <String>{
   'model',
   'stream',
   'include_usage',
+  'stream_options',
 };
 
 /// 由应用内部管理、禁止在自定义请求头中出现的名称（大小写不敏感）。
@@ -231,8 +233,16 @@ abstract class ResolvedApiConfig with _$ResolvedApiConfig {
       ];
     }
     body.addAll(customBody);
-    // 始终请求返回 token 用量，供请求日志展示。
-    body['include_usage'] = true;
+    // OpenAI 兼容接口要求 include_usage 位于 stream_options 对象内，
+    // 且仅在流式请求时生效；用于让最后一个 chunk 携带 token 用量，
+    // 供请求日志展示。
+    if (body['stream'] == true) {
+      final existing = body['stream_options'];
+      body['stream_options'] = <String, dynamic>{
+        if (existing is Map<String, dynamic>) ...existing,
+        'include_usage': true,
+      };
+    }
     return body;
   }
 }
