@@ -80,13 +80,13 @@ class _AboutPageState extends State<AboutPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _UpdateLogItem(
-                  version: 'v1.7.1',
-                  date: '2026-11-06',
+                  version: 'v1.7.2',
+                  date: '2026-11-10',
                   changes: [
-                    '导入角色卡时自动提取内嵌正则并创建规则组',
-                    'API 配置支持启用开关，停用后从模型选择器隐藏',
-                    'gal 选项支持长按填入输入框',
-                    '修复聊天选择器胶囊高度不一致',
+                    '关于页面支持检查更新，可获取最新版本并跳转下载',
+                    '流式请求改用 stream_options 传递 include_usage',
+                    '预设 max_tokens 留空时不再写入请求',
+                    '长期记忆仅召回对话窗口之外的历史节点',
                   ],
                 ),
               ],
