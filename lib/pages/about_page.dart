@@ -3,6 +3,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/error_handler.dart';
+import '../core/errors.dart';
+import '../services/update_service.dart';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
@@ -17,6 +19,8 @@ class _AboutPageState extends State<AboutPage> {
   );
 
   late final Future<PackageInfo> _packageInfoFuture;
+
+  bool _checkingUpdate = false;
 
   @override
   void initState() {
@@ -38,29 +42,33 @@ class _AboutPageState extends State<AboutPage> {
           const SizedBox(height: 16),
 
           // 版本信息
-          _SectionCard(
-            title: '版本信息',
-            subtitle: '当前应用版本详情',
-            child: FutureBuilder<PackageInfo>(
-              future: _packageInfoFuture,
-              builder: (context, snapshot) {
-                final packageInfo = snapshot.data;
+          FutureBuilder<PackageInfo>(
+            future: _packageInfoFuture,
+            builder: (context, snapshot) {
+              final packageInfo = snapshot.data;
+              final version = packageInfo?.version;
 
-                return Column(
+              return _SectionCard(
+                title: '版本信息',
+                subtitle: '当前应用版本详情',
+                trailing: _CheckUpdateButton(
+                  busy: _checkingUpdate,
+                  onTap: version == null
+                      ? null
+                      : () => _checkForUpdate(version),
+                ),
+                child: Column(
                   children: [
-                    _InfoRow(
-                      label: '版本号',
-                      value: packageInfo?.version ?? '读取中...',
-                    ),
+                    _InfoRow(label: '版本号', value: version ?? '读取中...'),
                     const SizedBox(height: 8),
                     _InfoRow(
                       label: '构建号',
                       value: packageInfo?.buildNumber ?? '读取中...',
                     ),
                   ],
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 16),
 
@@ -165,13 +173,17 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   Future<void> _openGitHub() async {
+    await _openExternalUri(_githubUri, failureMessage: '无法打开 GitHub 链接');
+  }
+
+  Future<void> _openExternalUri(
+    Uri uri, {
+    required String failureMessage,
+  }) async {
     var launched = false;
 
     try {
-      launched = await launchUrl(
-        _githubUri,
-        mode: LaunchMode.externalApplication,
-      );
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     } on Object catch (error) {
       debugPrint('about_page: launchUrl failed: $error');
       launched = false;
@@ -182,10 +194,126 @@ class _AboutPageState extends State<AboutPage> {
         context,
         toAppException(
           StateError('launchUrl returned false'),
-          fallbackMessage: '无法打开 GitHub 链接',
+          fallbackMessage: failureMessage,
         ),
       );
     }
+  }
+
+  Future<void> _checkForUpdate(String currentVersion) async {
+    if (_checkingUpdate) {
+      return;
+    }
+    setState(() => _checkingUpdate = true);
+
+    try {
+      final result = await UpdateService.instance.checkForUpdate(
+        currentVersion: currentVersion,
+      );
+      if (!mounted) {
+        return;
+      }
+      await _showUpdateResultDialog(result);
+    } on AppException catch (error) {
+      if (mounted) {
+        handleAppException(context, error);
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        handleAppException(
+          context,
+          toAppException(error, fallbackMessage: '检查更新失败，请稍后重试'),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _checkingUpdate = false);
+      }
+    }
+  }
+
+  Future<void> _showUpdateResultDialog(UpdateCheckResult result) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        final hasUpdate = result.hasUpdate;
+        final releaseUrl = result.releaseUrl;
+        final notes = result.releaseNotes;
+
+        return AlertDialog(
+          icon: Icon(
+            hasUpdate
+                ? Icons.system_update_alt_rounded
+                : Icons.check_circle_rounded,
+            size: 36,
+            color: colorScheme.primary,
+          ),
+          title: Text(hasUpdate ? '发现新版本' : '已是最新版本'),
+          content: hasUpdate
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${result.currentVersion}  →  ${result.latestVersion}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (notes != null && notes.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        '更新内容',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 220),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            notes,
+                            style: const TextStyle(fontSize: 13, height: 1.5),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '当前版本 ${result.currentVersion}',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('关闭'),
+            ),
+            if (hasUpdate && releaseUrl != null)
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _openExternalUri(
+                    Uri.parse(releaseUrl),
+                    failureMessage: '无法打开下载页面',
+                  );
+                },
+                child: const Text('前往下载'),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -251,11 +379,15 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.trailing,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
+
+  /// 标题行右侧的操作区（可选），例如「检查更新」按钮。
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -267,18 +399,34 @@ class _SectionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+              ],
             ),
             const SizedBox(height: 16),
             child,
@@ -311,6 +459,35 @@ class _InfoRow extends StatelessWidget {
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ],
+    );
+  }
+}
+
+/// 「检查更新」按钮：位于版本信息卡标题行右侧，点击触发一次手动检查。
+class _CheckUpdateButton extends StatelessWidget {
+  const _CheckUpdateButton({required this.busy, required this.onTap});
+
+  final bool busy;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null && !busy;
+
+    return IconButton(
+      onPressed: enabled ? onTap : null,
+      tooltip: '检查更新',
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      iconSize: 24,
+      icon: busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.update_outlined),
     );
   }
 }

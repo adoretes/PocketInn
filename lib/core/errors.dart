@@ -66,6 +66,15 @@ class TlsHandshakeException extends AppException {
   });
 }
 
+/// 检查更新相关的异常（网络、解析、接口返回异常等）。
+class UpdateCheckException extends AppException {
+  const UpdateCheckException(
+    super.message, {
+    super.errorCode,
+    super.originalError,
+  });
+}
+
 /// JSON/响应体解析失败异常。
 class ParseException extends AppException {
   const ParseException(super.message, {super.errorCode, super.originalError});
