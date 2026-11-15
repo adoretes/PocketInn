@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../models/chat_variables.dart';
 import '../../../models/variable_panel.dart';
 import '../../../services/chat_database_service.dart';
+import '../../../services/chat_memory_service.dart';
 import '../../../services/variable_state_service.dart';
 import '../../../widgets/variable_panel_detail_sheet.dart';
 import '../../../widgets/variable_panel_grid.dart';
@@ -175,15 +176,21 @@ class _ChatSidePanelState extends State<ChatSidePanel> {
         sessionId: sessionId,
         messageId: widget.leafMessageId,
       );
-      final memories = await ChatDatabaseService.instance
-          .loadAllSessionMemories(sessionId);
+      // 只统计当前活跃分支上仍有效的记忆（应用了分支 diff 后的结果），
+      // 而不是整个会话的原始记忆行数。
+      final effectiveMemories = widget.leafMessageId == null
+          ? const <ResolvedMemory>[]
+          : await ChatMemoryService.instance.resolveMemoriesAtMessage(
+              sessionId: sessionId,
+              messageId: widget.leafMessageId!,
+            );
       if (!mounted || generation != _loadGeneration) {
         return;
       }
       setState(() {
         _initState = init;
         _leafState = leaf;
-        _memoryCount = memories.length;
+        _memoryCount = effectiveMemories.length;
         _loadedSessionId = sessionId;
         _loadedLeafMessageId = widget.leafMessageId;
         _isLoading = false;

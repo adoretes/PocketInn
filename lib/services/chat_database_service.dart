@@ -25,7 +25,7 @@ class ChatDatabaseService {
   /// 精确信号的界面（如聊天侧边栏的记忆计数）监听这里。
   final ValueNotifier<int> memoryChangeNotifier = ValueNotifier<int>(0);
 
-  static const int _dbVersion = 6;
+  static const int _dbVersion = 8;
   static const String _dbName = 'pocket_inn_chat.db';
 
   Database? _database;
@@ -69,6 +69,8 @@ class ChatDatabaseService {
     _idSequence = 0;
     await initialize();
     _notifyChanged();
+    // 数据库被整体重建，记忆求值缓存必须失效（否则会读到旧结果）。
+    memoryChangeNotifier.value++;
   }
 
   Future<void> close() async {
@@ -113,6 +115,9 @@ class ChatDatabaseService {
         content TEXT NOT NULL,
         source_message_ids TEXT NOT NULL DEFAULT '[]',
         is_user_edited INTEGER NOT NULL DEFAULT 0,
+        importance INTEGER NOT NULL DEFAULT 3,
+        type TEXT NOT NULL DEFAULT 'other',
+        is_pinned INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
@@ -125,6 +130,60 @@ class ChatDatabaseService {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_chat_memories_created '
       'ON chat_memories(session_id, created_at DESC)',
+    );
+    await _createMemoryDiffSchema(db);
+  }
+
+  /// v7：记忆差量与提取运行记录。
+  Future<void> _createMemoryDiffSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_memory_diffs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        branch_leaf_id TEXT NOT NULL,
+        target_memory_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        content TEXT,
+        importance INTEGER,
+        type TEXT,
+        is_pinned INTEGER,
+        is_user_edited INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (branch_leaf_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+        FOREIGN KEY (target_memory_id) REFERENCES chat_memories(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chat_memory_diffs_session_branch '
+      'ON chat_memory_diffs(session_id, branch_leaf_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chat_memory_diffs_target '
+      'ON chat_memory_diffs(target_memory_id)',
+    );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_memory_extraction_runs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        branch_leaf_id TEXT NOT NULL,
+        processed_message_ids TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL,
+        added_count INTEGER NOT NULL DEFAULT 0,
+        updated_count INTEGER NOT NULL DEFAULT 0,
+        invalidated_count INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT NOT NULL DEFAULT '',
+        character_name TEXT NOT NULL DEFAULT '',
+        user_name TEXT NOT NULL DEFAULT '',
+        current_input TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (branch_leaf_id) REFERENCES chat_messages(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_memory_runs_anchor '
+      'ON chat_memory_extraction_runs(branch_leaf_id)',
     );
   }
 
@@ -168,6 +227,50 @@ class ChatDatabaseService {
       // chat_variable_init 存会话初始变量；chat_variable_diffs 把变量差量
       // 挂在产生它的助手消息上，随消息删除级联清理，随分支各归各路。
       await _createVariableSchema(db);
+    }
+    if (oldVersion < 7 && newVersion >= 7) {
+      // v7: 记忆升级为「原始记忆 + 分支差量 + 提取运行记录」。
+      // 先补 importance 列（旧库无此列），再建 diff / run 表。列存在性检查
+      // 使迁移可安全重入。
+      final columns = await db.rawQuery('PRAGMA table_info(chat_memories)');
+      final hasImportance = columns.any(
+        (row) => row['name'] == 'importance',
+      );
+      if (!hasImportance) {
+        await db.execute(
+          'ALTER TABLE chat_memories ADD COLUMN importance INTEGER NOT NULL DEFAULT 3',
+        );
+      }
+      await _createMemoryDiffSchema(db);
+    }
+    if (oldVersion < 8 && newVersion >= 8) {
+      // v8: 记忆引入类型与常驻标记。列存在性检查保证迁移可重入。
+      final memoryColumns = await db.rawQuery(
+        'PRAGMA table_info(chat_memories)',
+      );
+      if (!memoryColumns.any((row) => row['name'] == 'type')) {
+        await db.execute(
+          "ALTER TABLE chat_memories ADD COLUMN type TEXT NOT NULL DEFAULT 'other'",
+        );
+      }
+      if (!memoryColumns.any((row) => row['name'] == 'is_pinned')) {
+        await db.execute(
+          'ALTER TABLE chat_memories ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0',
+        );
+      }
+      final diffColumns = await db.rawQuery(
+        'PRAGMA table_info(chat_memory_diffs)',
+      );
+      if (!diffColumns.any((row) => row['name'] == 'type')) {
+        await db.execute(
+          'ALTER TABLE chat_memory_diffs ADD COLUMN type TEXT',
+        );
+      }
+      if (!diffColumns.any((row) => row['name'] == 'is_pinned')) {
+        await db.execute(
+          'ALTER TABLE chat_memory_diffs ADD COLUMN is_pinned INTEGER',
+        );
+      }
     }
   }
 
@@ -809,6 +912,19 @@ class ChatDatabaseService {
           whereArgs: [...chunk, ...chunk],
         );
 
+        // 记忆差量与提取记录挂在消息分支上，随子树一并清理；显式删除
+        // 避免依赖外键级联在不同运行环境下的行为差异。
+        await tx.delete(
+          'chat_memory_extraction_runs',
+          where: 'branch_leaf_id IN ($placeholders)',
+          whereArgs: chunk,
+        );
+        await tx.delete(
+          'chat_memory_diffs',
+          where: 'branch_leaf_id IN ($placeholders)',
+          whereArgs: chunk,
+        );
+
         await tx.delete(
           'chat_memories',
           where: 'branch_leaf_id IN ($placeholders)',
@@ -1086,6 +1202,31 @@ class ChatDatabaseService {
     return memories;
   }
 
+  /// 只读取指定分支路径上的记忆差量（按创建时间升序）。
+  ///
+  /// 与 [loadBranchMemories] 配套：求值某条路径时只取该路径上的记忆与差量，
+  /// 避免把其它兄弟分支的整表数据也拉进内存。分批查询避免撑爆 SQLite
+  /// 变量上限；分批后补一次全局 created_at 升序排序。
+  Future<List<MemoryDiff>> loadBranchMemoryDiffs(
+    String sessionId,
+    List<String> branchLeafIds,
+  ) async {
+    if (branchLeafIds.isEmpty) return const [];
+    final diffs = <MemoryDiff>[];
+    for (final chunk in _chunked(branchLeafIds, _sqlInChunkSize)) {
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await _db.query(
+        'chat_memory_diffs',
+        where: 'session_id = ? AND branch_leaf_id IN ($placeholders)',
+        whereArgs: [sessionId, ...chunk],
+        orderBy: 'created_at ASC',
+      );
+      diffs.addAll(rows.map(_memoryDiffFromMap));
+    }
+    diffs.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return diffs;
+  }
+
   Future<List<MemoryNode>> loadAllSessionMemories(String sessionId) async {
     final rows = await _db.query(
       'chat_memories',
@@ -1094,6 +1235,42 @@ class ChatDatabaseService {
       orderBy: 'created_at DESC',
     );
     return rows.map(_memoryFromMap).toList();
+  }
+
+  /// 按 id 读取单条原始记忆；不存在返回 null。
+  Future<MemoryNode?> loadMemoryById(String memoryId) async {
+    final rows = await _db.query(
+      'chat_memories',
+      where: 'id = ?',
+      whereArgs: [memoryId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return _memoryFromMap(rows.first);
+  }
+
+  /// 读取会话内全部记忆差量（按创建时间升序）。
+  Future<List<MemoryDiff>> loadAllSessionMemoryDiffs(String sessionId) async {
+    final rows = await _db.query(
+      'chat_memory_diffs',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(_memoryDiffFromMap).toList();
+  }
+
+  /// 读取会话内全部提取运行记录（按创建时间升序）。
+  Future<List<MemoryExtractionRun>> loadAllSessionExtractionRuns(
+    String sessionId,
+  ) async {
+    final rows = await _db.query(
+      'chat_memory_extraction_runs',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(_extractionRunFromMap).toList();
   }
 
   Future<List<ChatNode>> loadAllSessionNodes(String sessionId) async {
@@ -1132,22 +1309,230 @@ class ChatDatabaseService {
     notifyMemoryChanged();
   }
 
-  Future<void> replaceBranchMemoriesInTx({
+  /// 更新原始记忆的内容 / 重要度（仅来源节点使用）。
+  Future<void> updateMemoryRow({
+    required String memoryId,
+    required String content,
+    required int importance,
+    MemoryType? type,
+    bool? isPinned,
+  }) async {
+    await _db.update(
+      'chat_memories',
+      {
+        'content': content,
+        'importance': importance,
+        if (type != null) 'type': type.name,
+        if (isPinned != null) 'is_pinned': isPinned ? 1 : 0,
+        'is_user_edited': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [memoryId],
+    );
+    notifyMemoryChanged();
+  }
+
+  /// 物理删除原始记忆（其差量由外键级联清理）。
+  Future<void> deleteMemoryById(String memoryId) async {
+    await _db.delete('chat_memories', where: 'id = ?', whereArgs: [memoryId]);
+    notifyMemoryChanged();
+  }
+
+  /// 写入一条记忆差量。
+  Future<void> insertMemoryDiff(MemoryDiff diff) async {
+    await _db.insert('chat_memory_diffs', _memoryDiffToMap(diff));
+    notifyMemoryChanged();
+  }
+
+  /// 读取某节点上产生过差量的目标记忆 id（用于判断“本节点是否有改动”）。
+  Future<Set<String>> loadMemoryDiffTargetsAtNode({
     required String sessionId,
     required String branchLeafId,
-    required List<MemoryNode> memories,
+  }) async {
+    final rows = await _db.query(
+      'chat_memory_diffs',
+      columns: ['target_memory_id'],
+      where: 'session_id = ? AND branch_leaf_id = ?',
+      whereArgs: [sessionId, branchLeafId],
+    );
+    return {
+      for (final row in rows) row['target_memory_id'] as String,
+    };
+  }
+
+  /// 删除某节点上针对指定记忆的全部差量，使其回退到祖先节点的状态。
+  ///
+  /// 只动该节点自己的差量，不影响祖先或其它分支。
+  Future<int> deleteMemoryDiffsAtNode({
+    required String sessionId,
+    required String branchLeafId,
+    required String targetMemoryId,
+  }) async {
+    final deleted = await _db.delete(
+      'chat_memory_diffs',
+      where: 'session_id = ? AND branch_leaf_id = ? AND target_memory_id = ?',
+      whereArgs: [sessionId, branchLeafId, targetMemoryId],
+    );
+    if (deleted > 0) {
+      notifyMemoryChanged();
+    }
+    return deleted;
+  }
+
+  /// 写入（或覆盖）一次提取运行记录（按锚点消息唯一）。
+  Future<void> upsertExtractionRun(MemoryExtractionRun run) async {
+    await _db.insert(
+      'chat_memory_extraction_runs',
+      _extractionRunToMap(run),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    notifyMemoryChanged();
+  }
+
+  /// 删除锚点消息上的提取运行记录。
+  Future<void> deleteExtractionRun(String branchLeafId) async {
+    await _db.delete(
+      'chat_memory_extraction_runs',
+      where: 'branch_leaf_id = ?',
+      whereArgs: [branchLeafId],
+    );
+    notifyMemoryChanged();
+  }
+
+  /// 原子地应用一次自动提取：先校验目标记忆快照未被并发修改，再写入新增
+  /// 记忆、差量与运行记录。任一目标内容/重要度与 [expectedSnapshot] 不一致
+  /// 时抛出 [MemoryExtractionConflict] 并整体回滚，避免后台结果覆盖用户编辑。
+  Future<void> applyMemoryExtractionTx({
+    required List<MemoryNode> newMemories,
+    required List<MemoryDiff> diffs,
+    required MemoryExtractionRun run,
+    required Map<String, MemorySnapshotEntry> expectedSnapshot,
   }) async {
     await _db.transaction((tx) async {
-      await tx.delete(
-        'chat_memories',
-        where: 'session_id = ? AND branch_leaf_id = ?',
-        whereArgs: [sessionId, branchLeafId],
-      );
-      for (final m in memories) {
+      for (final entry in expectedSnapshot.entries) {
+        final rows = await tx.query(
+          'chat_memories',
+          columns: ['content', 'importance', 'type', 'is_pinned'],
+          where: 'id = ?',
+          whereArgs: [entry.key],
+          limit: 1,
+        );
+        if (rows.isEmpty) {
+          throw const MemoryExtractionConflict('目标记忆已不存在');
+        }
+        final row = rows.first;
+        final content = row['content'] as String? ?? '';
+        final importance = (row['importance'] as int?) ?? 3;
+        final type = MemoryType.fromName(row['type'] as String?);
+        final isPinned = ((row['is_pinned'] as int?) ?? 0) == 1;
+        // 内容 / 重要度 / 类型 / 常驻，任一被并发修改都判为冲突，
+        // 避免后台提取结果覆盖用户编辑（包括仅改类型或常驻的场景）。
+        if (content != entry.value.content ||
+            importance != entry.value.importance ||
+            type != entry.value.type ||
+            isPinned != entry.value.isPinned) {
+          throw const MemoryExtractionConflict('目标记忆在提取期间被修改');
+        }
+      }
+      for (final m in newMemories) {
         await tx.insert('chat_memories', _memoryToMap(m));
+      }
+      for (final d in diffs) {
+        await tx.insert('chat_memory_diffs', _memoryDiffToMap(d));
+      }
+      await tx.insert(
+        'chat_memory_extraction_runs',
+        _extractionRunToMap(run),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+    notifyMemoryChanged();
+  }
+
+  /// 原子地应用一批用户手动编辑（新增 / 更新 / 失效 / 恢复 / 还原 / 删除）。
+  ///
+  /// 编辑弹窗的保存通过这里统一落库：所有改动在同一事务内完成，任一失败整体
+  /// 回滚，避免出现「前几条已写入、后一条报错」的半提交状态，也避免用户再次
+  /// 保存时把已新增的条目重复插入。
+  Future<void> applyMemoryEditsTx({
+    required String sessionId,
+    required List<MemoryNode> newMemories,
+    required List<MemoryDiff> newDiffs,
+    required List<String> deleteMemoryIds,
+    required List<MemoryRowUpdate> rowUpdates,
+    required List<DiffClearTarget> clearDiffTargets,
+  }) async {
+    if (newMemories.isEmpty &&
+        newDiffs.isEmpty &&
+        deleteMemoryIds.isEmpty &&
+        rowUpdates.isEmpty &&
+        clearDiffTargets.isEmpty) {
+      return;
+    }
+    await _db.transaction((tx) async {
+      // 先清除「还原」要丢弃的旧差量，再写入新差量：同一目标若同时被还原并
+      // 重新编辑（clear + update），保证新的 update 落在清理之后而不被误删。
+      for (final target in clearDiffTargets) {
+        await tx.delete(
+          'chat_memory_diffs',
+          where:
+              'session_id = ? AND branch_leaf_id = ? AND target_memory_id = ?',
+          whereArgs: [sessionId, target.branchLeafId, target.targetMemoryId],
+        );
+      }
+      for (final id in deleteMemoryIds) {
+        await tx.delete('chat_memories', where: 'id = ?', whereArgs: [id]);
+      }
+      final nowIso = DateTime.now().toIso8601String();
+      for (final update in rowUpdates) {
+        await tx.update(
+          'chat_memories',
+          {
+            'content': update.content,
+            'importance': update.importance,
+            'type': update.type.name,
+            'is_pinned': update.isPinned ? 1 : 0,
+            'is_user_edited': 1,
+            'updated_at': nowIso,
+          },
+          where: 'id = ?',
+          whereArgs: [update.memoryId],
+        );
+      }
+      for (final memory in newMemories) {
+        await tx.insert('chat_memories', _memoryToMap(memory));
+      }
+      for (final diff in newDiffs) {
+        await tx.insert('chat_memory_diffs', _memoryDiffToMap(diff));
       }
     });
     notifyMemoryChanged();
+  }
+
+  /// 按 id 顺序读取消息（用于失败重试时还原对话上下文）。
+  Future<List<ChatMessage>> loadMessagesByIds(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    final byId = <String, ChatMessage>{};
+    for (final chunk in _chunked(ids, _sqlInChunkSize)) {
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await _db.query(
+        'chat_messages',
+        where: 'id IN ($placeholders)',
+        whereArgs: chunk,
+      );
+      for (final row in rows) {
+        final node = _nodeFromMap(row);
+        byId[node.id] = ChatMessage(
+          id: node.id,
+          sessionId: node.sessionId,
+          parentId: node.parentId,
+          text: node.text,
+          isMe: node.role == ChatNodeRole.user,
+        );
+      }
+    }
+    return [for (final id in ids) if (byId[id] != null) byId[id]!];
   }
 
   // ==================== 状态变量（事件溯源） ====================
@@ -1687,6 +2072,9 @@ class ChatDatabaseService {
       'content': memory.content,
       'source_message_ids': _sourceMessageIdsToJson(memory.sourceMessageIds),
       'is_user_edited': memory.isUserEdited ? 1 : 0,
+      'importance': memory.importance,
+      'type': memory.type.name,
+      'is_pinned': memory.isPinned ? 1 : 0,
       'created_at': memory.createdAt.toIso8601String(),
       'updated_at': memory.updatedAt.toIso8601String(),
     };
@@ -1702,11 +2090,126 @@ class ChatDatabaseService {
         map['source_message_ids'] as String? ?? '[]',
       ),
       isUserEdited: (map['is_user_edited'] as int? ?? 0) == 1,
+      importance: (map['importance'] as int?) ?? 3,
+      type: MemoryType.fromName(map['type'] as String?),
+      isPinned: (map['is_pinned'] as int? ?? 0) == 1,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
     );
   }
+
+  Map<String, Object?> _memoryDiffToMap(MemoryDiff diff) {
+    return {
+      'id': diff.id,
+      'session_id': diff.sessionId,
+      'branch_leaf_id': diff.branchLeafId,
+      'target_memory_id': diff.targetMemoryId,
+      'kind': diff.kind.name,
+      'content': diff.content,
+      'importance': diff.importance,
+      'type': diff.type?.name,
+      'is_pinned': diff.isPinned == null ? null : (diff.isPinned! ? 1 : 0),
+      'is_user_edited': diff.isUserEdited ? 1 : 0,
+      'created_at': diff.createdAt.toIso8601String(),
+    };
+  }
+
+  MemoryDiff _memoryDiffFromMap(Map<String, Object?> map) {
+    return MemoryDiff(
+      id: map['id'] as String,
+      sessionId: map['session_id'] as String,
+      branchLeafId: map['branch_leaf_id'] as String,
+      targetMemoryId: map['target_memory_id'] as String,
+      kind: MemoryDiffKind.values.firstWhere(
+        (kind) => kind.name == (map['kind'] as String?),
+        orElse: () => MemoryDiffKind.update,
+      ),
+      content: map['content'] as String?,
+      importance: map['importance'] as int?,
+      type: map['type'] == null
+          ? null
+          : MemoryType.fromName(map['type'] as String?),
+      isPinned: map['is_pinned'] == null
+          ? null
+          : (map['is_pinned'] as int?) == 1,
+      isUserEdited: (map['is_user_edited'] as int? ?? 0) == 1,
+      createdAt: DateTime.parse(map['created_at'] as String),
+    );
+  }
+
+  Map<String, Object?> _extractionRunToMap(MemoryExtractionRun run) {
+    return {
+      'id': run.id,
+      'session_id': run.sessionId,
+      'branch_leaf_id': run.branchLeafId,
+      'processed_message_ids': _sourceMessageIdsToJson(run.processedMessageIds),
+      'status': run.status.name,
+      'added_count': run.addedCount,
+      'updated_count': run.updatedCount,
+      'invalidated_count': run.invalidatedCount,
+      'error_message': run.errorMessage,
+      'character_name': run.characterName,
+      'user_name': run.userName,
+      'current_input': run.currentInput,
+      'created_at': run.createdAt.toIso8601String(),
+    };
+  }
+
+  MemoryExtractionRun _extractionRunFromMap(Map<String, Object?> map) {
+    return MemoryExtractionRun(
+      id: map['id'] as String,
+      sessionId: map['session_id'] as String,
+      branchLeafId: map['branch_leaf_id'] as String,
+      processedMessageIds: _sourceMessageIdsFromJson(
+        map['processed_message_ids'] as String? ?? '[]',
+      ),
+      status: MemoryExtractionStatus.values.firstWhere(
+        (status) => status.name == (map['status'] as String?),
+        orElse: () => MemoryExtractionStatus.failed,
+      ),
+      addedCount: (map['added_count'] as int?) ?? 0,
+      updatedCount: (map['updated_count'] as int?) ?? 0,
+      invalidatedCount: (map['invalidated_count'] as int?) ?? 0,
+      errorMessage: map['error_message'] as String? ?? '',
+      characterName: map['character_name'] as String? ?? '',
+      userName: map['user_name'] as String? ?? '',
+      currentInput: map['current_input'] as String? ?? '',
+      createdAt: DateTime.parse(map['created_at'] as String),
+    );
+  }
 }
+
+/// 提取落库时目标记忆与快照不一致（并发编辑）抛出的异常。
+class MemoryExtractionConflict implements Exception {
+  const MemoryExtractionConflict(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// 自动提取使用的目标记忆快照项：内容 + 重要度 + 类型 + 常驻。
+///
+/// 四者任一与提取开始时不一致即视为并发修改，避免后台提取覆盖用户的编辑。
+typedef MemorySnapshotEntry = ({
+  String content,
+  int importance,
+  MemoryType type,
+  bool isPinned,
+});
+
+/// 直接改写原始记忆行时的一项更新（仅来源节点允许）。
+typedef MemoryRowUpdate = ({
+  String memoryId,
+  String content,
+  int importance,
+  MemoryType type,
+  bool isPinned,
+});
+
+/// 清除某节点上针对一条记忆的全部差量（「还原本节点改动」）。
+typedef DiffClearTarget = ({String branchLeafId, String targetMemoryId});
 
 String _sourceMessageIdsToJson(List<String> ids) => jsonEncode(ids);
 List<String> _sourceMessageIdsFromJson(String json) {

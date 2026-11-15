@@ -102,6 +102,7 @@ class ChatService {
     final memoryContext = await _buildMemoryContext(
       sessionId: session.id,
       chatMessages: chatMessages,
+      query: storedInput,
     );
 
     final truncatedChatMessages = _truncateChatMessages(chatMessages);
@@ -259,6 +260,7 @@ class ChatService {
     final memoryContext = await _buildMemoryContext(
       sessionId: session.id,
       chatMessages: historyBeforeUserMessage,
+      query: userMessage.text,
     );
 
     final truncatedHistory = _truncateChatMessages(historyBeforeUserMessage);
@@ -944,28 +946,51 @@ class ChatService {
   Future<List<String>> _buildMemoryContext({
     required String sessionId,
     required List<ChatMessage> chatMessages,
+    String query = '',
   }) async {
     final memoryConfig = memoryExtractionNotifier.value;
     if (!memoryConfig.enabled) return const [];
 
-    // 长期记忆只覆盖被 `recentRounds` 窗口裁掉的历史（窗口之外），
-    // 与提示词中的「最近 N 轮对话」互补、不重复；窗口含全部历史时不注入记忆。
+    // 在完整路径上折叠 diff，让最近窗口内产生的 update/invalidate 也能
+    // 修正窗口之外的旧记忆；但只召回来源位于窗口之前的记忆，避免与
+    // 「最近 N 轮对话」重复注入。
+    final allPathIds = chatMessages
+        .where((m) => m.id != null)
+        .map((m) => m.id!)
+        .toList(growable: false);
     final beforeWindow = ChatMemoryService.messagesBeforeWindow(
       chatMessages,
       memoryConfig.recentRounds,
     );
-    final pathIds = beforeWindow
+    final windowPathIds = beforeWindow
         .where((m) => m.id != null)
         .map((m) => m.id!)
-        .toList();
-    if (pathIds.isEmpty) return const [];
+        .toList(growable: false);
+    if (windowPathIds.isEmpty) return const [];
 
-    final memories = await ChatMemoryService.instance.getRecentBranchMemories(
+    final effectiveQuery = query.trim().isNotEmpty
+        ? query
+        : _latestUserText(chatMessages);
+    final memories = await ChatMemoryService.instance.getRecallMemories(
       sessionId: sessionId,
-      pathMessageIds: pathIds,
+      allPathIds: allPathIds,
+      windowPathIds: windowPathIds,
+      query: effectiveQuery,
       count: memoryConfig.recallCount,
     );
-    return memories.map((m) => m.content).toList();
+    return memories
+        .map(
+          (m) => '[${m.type.label}${m.isPinned ? '·常驻' : ''}] ${m.content}',
+        )
+        .toList();
+  }
+
+  /// 最近一条用户消息文本；无用户消息时回退到最后一条消息。
+  String _latestUserText(List<ChatMessage> messages) {
+    for (var i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].isMe) return messages[i].text;
+    }
+    return messages.isNotEmpty ? messages.last.text : '';
   }
 
   /// 经后台调度器排队执行记忆提取；消息文本与捕获时不一致则丢弃。
@@ -1053,13 +1078,19 @@ class ChatService {
     required List<ChatMessage> allMessages,
     required List<String> pathIds,
   }) async {
+    // 水位优先取提取运行记录（含「无新增 / 失败」批次），旧数据回退到记忆来源。
+    final runs = await ChatMemoryService.instance.getExtractionRuns(
+      sessionId: sessionId,
+      pathMessageIds: pathIds,
+    );
     final memories = await ChatMemoryService.instance.getBranchMemories(
       sessionId: sessionId,
       pathMessageIds: pathIds,
     );
     return ChatMemoryService.countNewAssistantMessages(
       allMessages: allMessages,
-      branchMemories: memories,
+      runs: runs,
+      memories: memories,
     );
   }
 

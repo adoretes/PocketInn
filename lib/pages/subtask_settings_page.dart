@@ -139,13 +139,13 @@ class _MemoryExtractionSection extends StatelessWidget {
             ),
             flatSectionDivider(context),
             SettingsSliderTile(
-              title: '记忆节点数',
-              subtitle: '拼入提示词的窗口外历史记忆节点数量',
+              title: '记忆召回条数',
+              subtitle: '按相关性、重要度与新近度综合排序后注入的记忆条数',
               value: memoryConfig.recallCount.toDouble(),
               min: 0,
               max: 50,
               divisions: 50,
-              displayValue: (v) => v.toInt() == 0 ? '无限制' : '${v.toInt()} 个',
+              displayValue: (v) => v.toInt() == 0 ? '无限制' : '${v.toInt()} 条',
               onChanged: (value) =>
                   updateMemoryExtractionConfig(recallCount: value.toInt()),
               flat: true,
