@@ -1628,6 +1628,9 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
   late final List<_MemoryEditItem> _items;
   bool _saving = false;
 
+  /// 记忆条目列表的滚动控制器：新增条目后需自动滚到底部，保证其可见。
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -1652,6 +1655,7 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
     for (final item in _items) {
       item.dispose();
     }
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1664,6 +1668,17 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
           content: '',
           importance: 3,
         ),
+      );
+    });
+    // 新增条目追加在列表末尾。已有较多记忆时列表不在底部，
+    // 新条目会落在可视区外，用户看不到刚“添加的记忆”。
+    // 在新条目完成布局后自动滚动到底部，让它出现在画面内。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOut,
       );
     });
   }
@@ -1956,6 +1971,7 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
                         ),
                       )
                     : ListView.separated(
+                        controller: _scrollController,
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: _items.length,
                         separatorBuilder: (_, _) =>
