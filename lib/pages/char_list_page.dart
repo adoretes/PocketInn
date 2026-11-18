@@ -2,13 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../data/mock_user_settings.dart';
-import '../data/preset_selection.dart';
 import '../models/character_card.dart';
-import '../services/chat_opening_message_builder.dart';
 import '../services/character_service.dart';
-import 'chat_page.dart';
 import 'char_edit_page.dart';
+import 'chat/widgets/new_chat_flow.dart';
 
 class CharListPage extends StatefulWidget {
   const CharListPage({super.key});
@@ -224,58 +221,20 @@ class _CharListPageState extends State<CharListPage> {
   }
 
   Future<void> _onCreateChat(CharacterSummary summary) async {
-    final record = await CharacterService.instance.loadById(summary.id);
-    if (record == null) {
-      return;
-    }
-    final userName = _selectedUserName();
-    final openingMessages = ChatOpeningMessageBuilder.build(
-      characterCardData: record.cardJson,
-      characterName: summary.name,
-      userName: userName,
-    );
-    final worldBookIds = record.worldBookId != null
-        ? [record.worldBookId!]
-        : const <String>[];
-    final regexSync = await CharacterService.instance.syncCardRegexRules(
-      record,
-    );
-    final regexRuleGroupIds = regexSync.group == null
-        ? const <String>[]
-        : <String>[regexSync.group!.id];
+    final page = await buildNewChatDraftPage(summary);
     if (!mounted) {
       return;
     }
+    if (page == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('角色不存在或加载失败')));
+      return;
+    }
     await Navigator.of(context).pushAndRemoveUntil<void>(
-      MaterialPageRoute(
-        builder: (context) => ChatPage.draft(
-          characterId: summary.id,
-          title: summary.name,
-          selectedUserSettingId: selectedUserSettingIdNotifier.value,
-          selectedPresetId: selectedPresetIdNotifier.value,
-          selectedWorldBookIds: worldBookIds,
-          selectedRegexRuleGroupIds: regexRuleGroupIds,
-          openingAssistantMessages: openingMessages,
-        ),
-      ),
+      MaterialPageRoute(builder: (context) => page),
       (_) => false,
     );
-  }
-
-  String _selectedUserName() {
-    final settings = userSettingsNotifier.value;
-    if (settings.isEmpty) {
-      return '默认用户';
-    }
-    final targetId = selectedUserSettingIdNotifier.value;
-    if (targetId != null) {
-      for (final item in settings) {
-        if (item.id == targetId) {
-          return item.name;
-        }
-      }
-    }
-    return settings.first.name;
   }
 
   Color _fallbackSummaryColor(CharacterSummary summary) {

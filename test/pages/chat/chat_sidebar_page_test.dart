@@ -158,4 +158,31 @@ void main() {
     expect(find.text('Alice 的会话'), findsOneWidget);
     expect(find.text('Bob 的会话'), findsNothing);
   });
+
+  testWidgets('用户设定入口旁有新建聊天按钮，点击触发回调', (tester) async {
+    var invoked = 0;
+
+    // initialRoute 会同时压入 '/' 与 '/sidebar'，点击后 pop 回 '/'，
+    // 无需额外包一层 Builder 来构造可 pop 的路由栈。
+    await tester.pumpWidget(
+      MaterialApp(
+        initialRoute: '/sidebar',
+        routes: {
+          '/': (_) => const Scaffold(body: SizedBox.shrink()),
+          '/sidebar': (_) => Scaffold(
+            body: ChatSidebarPage(onNewChatRequested: () => invoked++),
+          ),
+        },
+      ),
+    );
+    await _settle(tester);
+
+    // 按钮位于抽屉顶部、用户设定卡片右侧。
+    expect(find.byTooltip('新建聊天'), findsOneWidget);
+    expect(find.byIcon(Icons.add), findsOneWidget);
+
+    await tester.tap(find.byTooltip('新建聊天'));
+    await _settle(tester);
+    expect(invoked, 1);
+  });
 }

@@ -10,16 +10,26 @@ import '../services/character_service.dart';
 import '../widgets/role_avatar.dart';
 import 'char_edit_page.dart';
 import 'char_list_page.dart';
+import 'chat/widgets/new_chat_flow.dart';
 import 'chat/widgets/role_filter_menu.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
 import 'user_settings_page.dart';
 
 class ChatSidebarPage extends StatefulWidget {
-  const ChatSidebarPage({super.key, this.activeSessionId, this.onChatSelected});
+  const ChatSidebarPage({
+    super.key,
+    this.activeSessionId,
+    this.onChatSelected,
+    this.onNewChatRequested,
+  });
 
   final String? activeSessionId;
   final ValueChanged<ChatSessionSummary>? onChatSelected;
+
+  /// 新建聊天回调。作为抽屉使用时由聊天页提供，先关闭抽屉再由聊天页处理；
+  /// 为空时（独立使用）由本页自行弹角色选择并进入聊天。
+  final VoidCallback? onNewChatRequested;
 
   @override
   State<ChatSidebarPage> createState() => _ChatSidebarPageState();
@@ -87,6 +97,20 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// 新建聊天。
+  ///
+  /// 作为抽屉使用时先关闭抽屉，再交由聊天页弹出角色选择并进入草稿聊天；
+  /// 独立使用时本页直接处理（替换为草稿聊天页）。
+  Future<void> _onNewChatTap() async {
+    final onNewChatRequested = widget.onNewChatRequested;
+    if (onNewChatRequested != null) {
+      Navigator.of(context).pop();
+      onNewChatRequested();
+      return;
+    }
+    await startNewChatFlow(context);
   }
 
   Future<void> _onChatItemTap(ChatSessionSummary item) async {
@@ -232,90 +256,100 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
 
           return Column(
             children: [
-              ValueListenableBuilder<List<UserSetting>>(
-                valueListenable: userSettingsNotifier,
-                builder: (context, settings, _) {
-                  if (settings.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return ValueListenableBuilder<String?>(
-                    valueListenable: selectedUserSettingIdNotifier,
-                    builder: (context, selectedId, _) {
-                      final selectedUserSetting = settings.firstWhere(
-                        (item) => item.id == selectedId,
-                        orElse: () => settings.first,
-                      );
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ValueListenableBuilder<List<UserSetting>>(
+                        valueListenable: userSettingsNotifier,
+                        builder: (context, settings, _) {
+                          if (settings.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return ValueListenableBuilder<String?>(
+                            valueListenable: selectedUserSettingIdNotifier,
+                            builder: (context, selectedId, _) {
+                              final selectedUserSetting = settings.firstWhere(
+                                (item) => item.id == selectedId,
+                                orElse: () => settings.first,
+                              );
 
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: InkWell(
-                          onTap: _onUserSettingsTap,
-                          borderRadius: BorderRadius.circular(18),
-                          child: Ink(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: selectedUserSetting.color.withValues(
-                                alpha: 0.10,
-                              ),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 52,
-                                  height: 52,
+                              return InkWell(
+                                onTap: _onUserSettingsTap,
+                                borderRadius: BorderRadius.circular(18),
+                                child: Ink(
+                                  padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: selectedUserSetting.color,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    selectedUserSetting.avatarText,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                                    color: selectedUserSetting.color.withValues(
+                                      alpha: 0.10,
                                     ),
+                                    borderRadius: BorderRadius.circular(18),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                  child: Row(
                                     children: [
-                                      Text(
-                                        selectedUserSetting.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
+                                      Container(
+                                        width: 52,
+                                        height: 52,
+                                        decoration: BoxDecoration(
+                                          color: selectedUserSetting.color,
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          selectedUserSetting.avatarText,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        selectedUserSetting.prompt,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey.shade700,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              selectedUserSetting.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              selectedUserSetting.prompt,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.grey.shade700,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.chevron_right),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.chevron_right),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _NewChatButton(onTap: _onNewChatTap),
+                  ],
+                ),
               ),
               Expanded(
                 child: filteredChats.isEmpty
@@ -467,6 +501,60 @@ class _ChatSidebarPageState extends State<ChatSidebarPage> {
       return weekdays[time.weekday - 1];
     }
     return '${time.month}/${time.day}';
+  }
+}
+
+/// 抽屉顶部「新建聊天」按钮，紧挨用户设定入口放置。
+///
+/// 做成紧凑的圆形图标按钮：与用户设定卡片垂直居中，只保留一个「加号」
+/// 图标（提示文字见 Tooltip），避免图标加文字挤成窄方块显得突兀。
+/// 底色与图标取当前用户设定的主色，和左侧卡片同色系；没有用户设定时
+/// 回退到主题主色，因此也能单独显示。
+class _NewChatButton extends StatelessWidget {
+  const _NewChatButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<List<UserSetting>>(
+      valueListenable: userSettingsNotifier,
+      builder: (context, settings, _) {
+        return ValueListenableBuilder<String?>(
+          valueListenable: selectedUserSettingIdNotifier,
+          builder: (context, selectedId, _) {
+            var accent = colorScheme.primary;
+            if (settings.isNotEmpty) {
+              accent = settings
+                  .firstWhere(
+                    (item) => item.id == selectedId,
+                    orElse: () => settings.first,
+                  )
+                  .color;
+            }
+            const shape = CircleBorder();
+            return Tooltip(
+              message: '新建聊天',
+              child: Material(
+                color: accent.withValues(alpha: 0.16),
+                shape: shape,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onTap,
+                  customBorder: shape,
+                  child: SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Icon(Icons.add, size: 26, color: accent),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }
 

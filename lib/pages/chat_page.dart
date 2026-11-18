@@ -22,6 +22,7 @@ import '../pages/chat/widgets/gal_message_view.dart';
 import '../pages/chat/widgets/memory_tree_page.dart';
 import '../pages/chat/widgets/message_edit_dialog.dart';
 import '../pages/chat/widgets/message_view_params.dart';
+import '../pages/chat/widgets/new_chat_flow.dart';
 import '../pages/chat/widgets/variable_debug_page.dart';
 import '../pages/chat_sidebar_page.dart';
 import '../pages/preset_edit_page.dart';
@@ -201,6 +202,22 @@ class _ChatPageState extends State<ChatPage> {
     if (started) {
       _textController.clear();
     }
+  }
+
+  /// 新建聊天：先选择角色，再以草稿会话进入聊天页。
+  ///
+  /// 生成进行中不允许新建，避免打断正在进行的回复。
+  Future<void> _onNewChatPressed() async {
+    if (_viewModel.isSending ||
+        _viewModel.isImpersonating ||
+        _viewModel.isSwitchingSession) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('回复生成中，稍后再新建聊天')));
+      return;
+    }
+    _dismissInputKeyboard();
+    await startNewChatFlow(context);
   }
 
   // --- API 状态 / 配置 ---
@@ -747,6 +764,7 @@ class _ChatPageState extends State<ChatPage> {
             child: ChatSidebarPage(
               activeSessionId: _viewModel.activeSession?.id,
               onChatSelected: _selectSessionFromSidebar,
+              onNewChatRequested: _onNewChatPressed,
             ),
           ),
         ),
@@ -822,6 +840,11 @@ class _ChatPageState extends State<ChatPage> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_rounded),
+            tooltip: '新建聊天',
+            onPressed: _onNewChatPressed,
+          ),
           if (isDesktopPlatform)
             IconButton(
               icon: const Icon(Icons.view_sidebar_outlined),
