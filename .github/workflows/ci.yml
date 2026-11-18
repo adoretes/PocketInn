@@ -24,7 +24,8 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # Keep CI on the same Flutter version as local development.
+          flutter-version: "3.41.7"
           cache: true
 
       - name: Install dependencies
