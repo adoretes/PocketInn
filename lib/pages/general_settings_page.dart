@@ -17,25 +17,45 @@ class GeneralSettingsPage extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _ColorModeDropdownTile(
-                value: settings.colorMode,
-                onChanged: (mode) => updateAppSettings(colorMode: mode),
-              ),
-              const SizedBox(height: 16),
-              _ThemePresetDropdownTile(
-                settings: settings,
-                onChanged: (preset) => updateAppSettings(themePreset: preset),
-              ),
-              const SizedBox(height: 16),
-              _NavigationSectionCard(
-                title: '主题配置',
-                subtitle: '编辑当前主题的颜色、引号、阴影、文本样式',
-                icon: Icons.palette_outlined,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const CustomThemePage()),
-                  );
-                },
+              // 颜色模式 / 预设主题 / 主题配置（合并为一张卡片，保留三个小标题）
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 6,
+                  ),
+                  child: Column(
+                    children: [
+                      _ColorModeDropdownTile(
+                        value: settings.colorMode,
+                        onChanged: (mode) =>
+                            updateAppSettings(colorMode: mode),
+                        flat: true,
+                      ),
+                      flatSectionDivider(context),
+                      _ThemePresetDropdownTile(
+                        settings: settings,
+                        onChanged: (preset) =>
+                            updateAppSettings(themePreset: preset),
+                        flat: true,
+                      ),
+                      flatSectionDivider(context),
+                      _NavigationSectionCard(
+                        title: '主题配置',
+                        subtitle: '编辑当前主题的颜色、文本样式等',
+                        icon: Icons.palette_outlined,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const CustomThemePage(),
+                            ),
+                          );
+                        },
+                        flat: true,
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               SettingsSectionCard(
@@ -177,14 +197,93 @@ class SettingsPlaceholderPage extends StatelessWidget {
 }
 
 class _ColorModeDropdownTile extends StatelessWidget {
-  const _ColorModeDropdownTile({required this.value, required this.onChanged});
+  const _ColorModeDropdownTile({
+    required this.value,
+    required this.onChanged,
+    this.flat = false,
+  });
 
   final AppColorMode value;
   final ValueChanged<AppColorMode> onChanged;
 
+  /// 为 true 时去掉外层卡片装饰，作为合并卡片内的扁平行使用。
+  final bool flat;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    final content = Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '颜色模式',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '切换应用的亮暗外观',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 120, maxWidth: 140),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<AppColorMode>(
+              value: value,
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(16),
+              focusColor: Colors.transparent,
+              dropdownColor: colorScheme.surface,
+              iconEnabledColor: colorScheme.onSurfaceVariant,
+              items: AppColorMode.values.map((mode) {
+                return DropdownMenuItem<AppColorMode>(
+                  value: mode,
+                  child: Row(
+                    children: [
+                      Icon(
+                        switch (mode) {
+                          AppColorMode.system =>
+                            Icons.brightness_auto_outlined,
+                          AppColorMode.dark => Icons.dark_mode_outlined,
+                          AppColorMode.light => Icons.light_mode_outlined,
+                        },
+                        size: 18,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(mode.label),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (mode) {
+                if (mode != null) {
+                  onChanged(mode);
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (flat) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: content,
+      );
+    }
 
     return Material(
       color: colorScheme.surfaceContainerLow,
@@ -195,70 +294,7 @@ class _ColorModeDropdownTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: colorScheme.outlineVariant),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '颜色模式',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '切换应用的亮暗外观',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 120, maxWidth: 140),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<AppColorMode>(
-                  value: value,
-                  isExpanded: true,
-                  borderRadius: BorderRadius.circular(16),
-                  focusColor: Colors.transparent,
-                  dropdownColor: colorScheme.surface,
-                  iconEnabledColor: colorScheme.onSurfaceVariant,
-                  items: AppColorMode.values.map((mode) {
-                    return DropdownMenuItem<AppColorMode>(
-                      value: mode,
-                      child: Row(
-                        children: [
-                          Icon(
-                            switch (mode) {
-                              AppColorMode.system =>
-                                Icons.brightness_auto_outlined,
-                              AppColorMode.dark => Icons.dark_mode_outlined,
-                              AppColorMode.light => Icons.light_mode_outlined,
-                            },
-                            size: 18,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(mode.label),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (mode) {
-                    if (mode != null) {
-                      onChanged(mode);
-                    }
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }
@@ -268,14 +304,102 @@ class _ThemePresetDropdownTile extends StatelessWidget {
   const _ThemePresetDropdownTile({
     required this.settings,
     required this.onChanged,
+    this.flat = false,
   });
 
   final AppSettings settings;
   final ValueChanged<AppThemePreset> onChanged;
 
+  /// 为 true 时去掉外层卡片装饰，作为合并卡片内的扁平行使用。
+  final bool flat;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    final content = Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '预设主题',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '切换使用的主题配置',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 120, maxWidth: 140),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<AppThemePreset>(
+              value: settings.themePreset,
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(16),
+              focusColor: Colors.transparent,
+              dropdownColor: colorScheme.surface,
+              iconEnabledColor: colorScheme.onSurfaceVariant,
+              items: AppThemePreset.values.map((preset) {
+                final swatchColor = resolveThemeColor(
+                  settings,
+                  preset: preset,
+                );
+                return DropdownMenuItem<AppThemePreset>(
+                  value: preset,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              swatchColor.withValues(alpha: 0.95),
+                              swatchColor.withValues(alpha: 0.62),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: swatchColor.withValues(alpha: 0.24),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(preset.label),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (preset) {
+                if (preset != null) {
+                  onChanged(preset);
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (flat) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: content,
+      );
+    }
 
     return Material(
       color: colorScheme.surfaceContainerLow,
@@ -286,82 +410,7 @@ class _ThemePresetDropdownTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: colorScheme.outlineVariant),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '预设主题',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '切换当前使用的主题配置',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 120, maxWidth: 140),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<AppThemePreset>(
-                  value: settings.themePreset,
-                  isExpanded: true,
-                  borderRadius: BorderRadius.circular(16),
-                  focusColor: Colors.transparent,
-                  dropdownColor: colorScheme.surface,
-                  iconEnabledColor: colorScheme.onSurfaceVariant,
-                  items: AppThemePreset.values.map((preset) {
-                    final swatchColor = resolveThemeColor(
-                      settings,
-                      preset: preset,
-                    );
-                    return DropdownMenuItem<AppThemePreset>(
-                      value: preset,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 18,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  swatchColor.withValues(alpha: 0.95),
-                                  swatchColor.withValues(alpha: 0.62),
-                                ],
-                              ),
-                              border: Border.all(
-                                color: swatchColor.withValues(alpha: 0.24),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(preset.label),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (preset) {
-                    if (preset != null) {
-                      onChanged(preset);
-                    }
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }
@@ -373,6 +422,7 @@ class _NavigationSectionCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.onTap,
+    this.flat = false,
   });
 
   final String title;
@@ -380,9 +430,65 @@ class _NavigationSectionCard extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
+  /// 为 true 时去掉外层卡片装饰，作为合并卡片内的扁平行使用。
+  final bool flat;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    final content = Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, color: colorScheme.primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Icon(
+          Icons.chevron_right_rounded,
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ],
+    );
+
+    if (flat) {
+      return InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: content,
+        ),
+      );
+    }
 
     return Material(
       color: colorScheme.surfaceContainerLow,
@@ -396,48 +502,7 @@ class _NavigationSectionCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colorScheme.outlineVariant),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: Icon(icon, color: colorScheme.primary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.4,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
+          child: content,
         ),
       ),
     );

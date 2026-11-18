@@ -41,7 +41,7 @@ class _AboutPageState extends State<AboutPage> {
           _AppInfoCard(colorScheme: colorScheme),
           const SizedBox(height: 16),
 
-          // 版本信息
+          // 版本信息 + 更新日志（合并为一张卡片，保留两个小标题）
           FutureBuilder<PackageInfo>(
             future: _packageInfoFuture,
             builder: (context, snapshot) {
@@ -58,6 +58,7 @@ class _AboutPageState extends State<AboutPage> {
                       : () => _checkForUpdate(version),
                 ),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _InfoRow(label: '版本号', value: version ?? '读取中...'),
                     const SizedBox(height: 8),
@@ -65,32 +66,39 @@ class _AboutPageState extends State<AboutPage> {
                       label: '构建号',
                       value: packageInfo?.buildNumber ?? '读取中...',
                     ),
+                    const Divider(height: 32),
+                    // 更新日志小标题
+                    Text(
+                      '更新日志',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '最近更新内容',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _UpdateLogItem(
+                      version: 'v1.7.2',
+                      date: '2026-11-10',
+                      changes: [
+                        '关于页面支持检查更新，可获取最新版本并跳转下载',
+                        '流式请求改用 stream_options 传递 include_usage',
+                        '预设 max_tokens 留空时不再写入请求',
+                        '长期记忆仅召回对话窗口之外的历史节点',
+                      ],
+                    ),
                   ],
                 ),
               );
             },
-          ),
-          const SizedBox(height: 16),
-
-          // 更新日志
-          _SectionCard(
-            title: '更新日志',
-            subtitle: '最近更新内容',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _UpdateLogItem(
-                  version: 'v1.7.2',
-                  date: '2026-11-10',
-                  changes: [
-                    '关于页面支持检查更新，可获取最新版本并跳转下载',
-                    '流式请求改用 stream_options 传递 include_usage',
-                    '预设 max_tokens 留空时不再写入请求',
-                    '长期记忆仅召回对话窗口之外的历史节点',
-                  ],
-                ),
-              ],
-            ),
           ),
           const SizedBox(height: 16),
 
