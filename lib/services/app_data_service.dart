@@ -34,11 +34,15 @@ class AppDataService {
 
     ChatDatabaseService.instance.resetIdSequence();
     await ChatDatabaseService.instance.initialize();
-    ChatDatabaseService.instance.notifyDataChanged();
 
     await reloadAppState();
   }
 
+  /// 重新从磁盘加载全部应用状态。
+  ///
+  /// 恢复备份等操作会直接替换磁盘上的数据库与文件，内存里的服务缓存
+  /// （聊天列表快照、当前会话、记忆求值缓存等）不会随之失效，因此这里
+  /// 在重载完成后广播一次变更信号，通知各界面重新拉取数据。
   Future<void> reloadAppState() async {
     await ChatDatabaseService.instance.initialize();
     await initializeAppSettings();
@@ -47,5 +51,10 @@ class AppDataService {
     await initializeApiConfigs();
     await ApiRequestLogService.instance.reload();
     RegexRuleGroupService.instance.invalidateCache();
+
+    // 数据库被整体替换：广播会话与记忆数据变更，让左侧聊天列表、聊天页
+    // 及记忆面板丢弃旧缓存并重新加载（否则恢复备份后列表仍是旧快照）。
+    ChatDatabaseService.instance.notifyDataChanged();
+    ChatDatabaseService.instance.notifyMemoryChanged();
   }
 }
