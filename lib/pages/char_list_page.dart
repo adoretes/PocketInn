@@ -439,6 +439,8 @@ class _CharacterCard extends StatelessWidget {
                             children: [
                               Text(
                                 name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
