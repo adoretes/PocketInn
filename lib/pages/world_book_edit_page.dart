@@ -307,6 +307,17 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     });
   }
 
+  /// 拖拽调整条目顺序。注入顺序与导出顺序均以列表顺序为准。
+  void _onReorder(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) {
+        newIndex -= 1;
+      }
+      final entry = _entries.removeAt(oldIndex);
+      _entries.insert(newIndex, entry);
+    });
+  }
+
   Future<void> _onDeleteEntry(WorldBookEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -382,70 +393,88 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
             ),
         ],
       ),
-      body: ListView(
+      body: ReorderableListView.builder(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-        children: [
-          const _SectionHeader('基本信息'),
-          _SettingsGroup(
-            children: [
-              _TextFieldRow(
-                icon: Icons.menu_book_outlined,
-                controller: _nameController,
-                label: '名称',
-                hintText: '请输入世界书名称',
-                textInputAction: TextInputAction.next,
-              ),
-              _groupDivider(context),
-              _TextFieldRow(
-                icon: Icons.subject_outlined,
-                controller: _descriptionController,
-                label: '描述',
-                hintText: '请输入世界书描述',
-                maxLines: 3,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _SectionHeader(
-            '条目',
-            trailing: FilledButton.tonalIcon(
-              onPressed: _onCreateEntry,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('新建'),
-              style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-          if (_entries.isEmpty)
-            const _EmptyEntries()
-          else
-            Column(
+        buildDefaultDragHandles: false,
+        onReorder: _onReorder,
+        proxyDecorator: (child, index, animation) {
+          return AnimatedBuilder(
+            animation: animation,
+            builder: (context, child) {
+              return Material(
+                color: Colors.transparent,
+                shadowColor: Colors.transparent,
+                child: child,
+              );
+            },
+            child: child,
+          );
+        },
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _SectionHeader('基本信息'),
+            _SettingsGroup(
               children: [
-                for (var i = 0; i < _entries.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 8),
-                  Card(
-                    margin: EdgeInsets.zero,
-                    clipBehavior: Clip.antiAlias,
-                    child: _EntryRow(
-                      entry: _entries[i],
-                      onTap: () => _openEntryDialog(_entries[i]),
-                      onToggle: (value) => _onToggleEntry(_entries[i], value),
-                      onDelete: () => _onDeleteEntry(_entries[i]),
-                    ),
-                  ),
-                ],
+                _TextFieldRow(
+                  icon: Icons.menu_book_outlined,
+                  controller: _nameController,
+                  label: '名称',
+                  hintText: '请输入世界书名称',
+                  textInputAction: TextInputAction.next,
+                ),
+                _groupDivider(context),
+                _TextFieldRow(
+                  icon: Icons.subject_outlined,
+                  controller: _descriptionController,
+                  label: '描述',
+                  hintText: '请输入世界书描述',
+                  maxLines: 3,
+                ),
               ],
             ),
-        ],
+            const SizedBox(height: 12),
+            _SectionHeader(
+              '条目',
+              trailing: FilledButton.tonalIcon(
+                onPressed: _onCreateEntry,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('新建'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            if (_entries.isEmpty) const _EmptyEntries(),
+          ],
+        ),
+        itemCount: _entries.length,
+        itemBuilder: (context, index) {
+          final entry = _entries[index];
+          return Padding(
+            key: ValueKey(entry.id),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Card(
+              margin: EdgeInsets.zero,
+              clipBehavior: Clip.antiAlias,
+              child: _EntryRow(
+                index: index,
+                entry: entry,
+                onTap: () => _openEntryDialog(entry),
+                onToggle: (value) => _onToggleEntry(entry, value),
+                onDelete: () => _onDeleteEntry(entry),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -493,15 +522,17 @@ class _EmptyEntries extends StatelessWidget {
   }
 }
 
-/// 单条条目的列表行：图标徽标 + 标题/预览 + 启用开关 + 删除。
+/// 单条条目的列表行：拖拽手柄 + 标题/预览 + 启用开关 + 删除。
 class _EntryRow extends StatelessWidget {
   const _EntryRow({
+    required this.index,
     required this.entry,
     required this.onTap,
     required this.onToggle,
     required this.onDelete,
   });
 
+  final int index;
   final WorldBookEntry entry;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggle;
@@ -514,9 +545,21 @@ class _EntryRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        padding: const EdgeInsets.fromLTRB(2, 8, 8, 8),
         child: Row(
           children: [
+            // 拖拽手柄：仅此处按下才进入排序，避免与整行点击编辑冲突。
+            ReorderableDragStartListener(
+              index: index,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(
+                  Icons.drag_handle,
+                  size: 22,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+                ),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -554,7 +597,7 @@ class _EntryRow extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             Switch(value: entry.isEnabled, onChanged: onToggle),
             IconButton(
               onPressed: onDelete,

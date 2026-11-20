@@ -184,6 +184,36 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
+
+  testWidgets('拖拽手柄可调整条目顺序', (tester) async {
+    final book = WorldBook(
+      id: 'wb-reorder',
+      name: '排序测试',
+      description: '',
+      colorValue: 0xFF2E7D6B,
+      entries: [
+        WorldBookEntry(id: 'e1', key: const ['一'], content: '第一条内容', comment: '甲'),
+        WorldBookEntry(id: 'e2', key: const ['二'], content: '第二条内容', comment: '乙'),
+      ],
+    );
+    await _pumpBook(tester, book);
+
+    double topOf(String text) => tester.getTopLeft(find.text(text)).dy;
+    expect(topOf('第一条内容') < topOf('第二条内容'), isTrue);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.drag_handle).first),
+    );
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.moveBy(const Offset(0, 160));
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.moveBy(const Offset(0, 120));
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(topOf('第一条内容') > topOf('第二条内容'), isTrue);
+  });
 }
 
 Future<void> _pumpBook(WidgetTester tester, WorldBook book) async {
