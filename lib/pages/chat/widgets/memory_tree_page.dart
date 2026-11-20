@@ -84,6 +84,9 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   Set<String> _activePathIds = const {};
   final List<Size> _rootCanvasSizes = <Size>[];
   int _selectedRootIndex = 0;
+  final ValueNotifier<Set<String>> _retryingMessageIds = ValueNotifier(
+    <String>{},
+  );
 
   /// 记忆数据变化时的防抖刷新句柄，避免后台提取连续落库触发多次重载。
   Timer? _memoryReloadDebounce;
@@ -105,6 +108,7 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
       _handleMemoryChanged,
     );
     _memoryReloadDebounce?.cancel();
+    _retryingMessageIds.dispose();
     super.dispose();
   }
 
@@ -675,12 +679,30 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
                                   ),
                                   if (run.status ==
                                       MemoryExtractionStatus.failed)
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.of(ctx).pop();
-                                        _retryExtraction(n.id);
+                                    ValueListenableBuilder<Set<String>>(
+                                      valueListenable: _retryingMessageIds,
+                                      builder: (context, retryingIds, _) {
+                                        final isRetrying = retryingIds.contains(
+                                          n.id,
+                                        );
+                                        return TextButton(
+                                          onPressed: isRetrying
+                                              ? null
+                                              : () {
+                                                  if (_retryingMessageIds.value
+                                                      .contains(n.id)) {
+                                                    return;
+                                                  }
+                                                  Navigator.of(ctx).pop();
+                                                  unawaited(
+                                                    _retryExtraction(n.id),
+                                                  );
+                                                },
+                                          child: Text(
+                                            isRetrying ? '重试中…' : '重试',
+                                          ),
+                                        );
                                       },
-                                      child: const Text('重试'),
                                     ),
                                 ],
                               ),
@@ -839,17 +861,29 @@ class _MemoryTreePageState extends State<MemoryTreePage> {
   }
 
   Future<void> _retryExtraction(String messageId) async {
-    final ok = await ChatMemoryService.instance.retryExtraction(
-      sessionId: widget.sessionId,
-      anchorMessageId: messageId,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? '记忆提取已重试并更新' : '重试未产生新的记忆'),
-      ),
-    );
-    await _reload();
+    if (!mounted || _retryingMessageIds.value.contains(messageId)) return;
+    _retryingMessageIds.value = {..._retryingMessageIds.value, messageId};
+    try {
+      final ok = await ChatMemoryService.instance.retryExtraction(
+        sessionId: widget.sessionId,
+        anchorMessageId: messageId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(ok ? '记忆提取已重试并更新' : '重试未产生新的记忆')));
+      await _reload();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('重试记忆提取失败：$error')));
+    } finally {
+      if (mounted) {
+        _retryingMessageIds.value = {..._retryingMessageIds.value}
+          ..remove(messageId);
+      }
+    }
   }
 
   IconData _runIcon(MemoryExtractionRun run) {
@@ -1581,9 +1615,6 @@ class _MemoryEditItem {
   final bool hasLocalEdits;
   bool removed = false;
 
-  /// 用户点击「恢复」后需要写入 restore 差量。
-  bool needsRestore = false;
-
   /// 用户点击「还原」后，保存时删除本节点的全部改动。
   bool revertRequested = false;
 
@@ -1851,20 +1882,13 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
             ),
           );
         }
-        // 点过「恢复」，或原本失效但修改了内容/重要度，都视为恢复该记忆；
-        // 原本有效、本次被停用的，则写入失效差量。
-        if (item.needsRestore || (item.initiallyInvalidated && changedFields)) {
+        // 只比较最终状态与打开弹窗时的状态，切换次数或内容编辑不改变失效意图。
+        if (item.invalidated != item.initiallyInvalidated) {
           commands.add(
             MemoryEditCommand(
-              kind: MemoryEditKind.restore,
-              targetMemoryId: memoryId,
-              isOrigin: item.isOrigin,
-            ),
-          );
-        } else if (!item.initiallyInvalidated && item.invalidated) {
-          commands.add(
-            MemoryEditCommand(
-              kind: MemoryEditKind.invalidate,
+              kind: item.invalidated
+                  ? MemoryEditKind.invalidate
+                  : MemoryEditKind.restore,
               targetMemoryId: memoryId,
               isOrigin: item.isOrigin,
             ),
@@ -2039,7 +2063,6 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
     setState(() {
       item.revertRequested = true;
       item.removed = false;
-      item.needsRestore = false;
       if (inherited == null) {
         item.invalidated = false;
         return;
@@ -2086,12 +2109,7 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
         tooltip: '恢复（撤销失效）',
         onPressed: _saving
             ? null
-            : () => setState(() {
-                  item.invalidated = false;
-                  // 只有原本就失效的才需要写 restore；本次停用又取消的只是
-                  // 回到原状态，无需额外差量。
-                  item.needsRestore = item.initiallyInvalidated;
-                }),
+            : () => setState(() => item.invalidated = false),
         icon: Icon(Icons.restore, size: 18, color: scheme.primary),
       );
     }

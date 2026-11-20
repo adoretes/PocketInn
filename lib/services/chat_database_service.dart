@@ -1185,11 +1185,19 @@ class ChatDatabaseService {
     List<String> branchLeafIds,
   ) async {
     if (branchLeafIds.isEmpty) return const [];
+    return _loadBranchMemories(_db, sessionId, branchLeafIds);
+  }
+
+  Future<List<MemoryNode>> _loadBranchMemories(
+    DatabaseExecutor executor,
+    String sessionId,
+    List<String> branchLeafIds,
+  ) async {
     // 分批查询：长分支的路径 id 可能上千，避免撑爆 SQLite 的变量上限。
     final memories = <MemoryNode>[];
     for (final chunk in _chunked(branchLeafIds, _sqlInChunkSize)) {
       final placeholders = List.filled(chunk.length, '?').join(',');
-      final rows = await _db.query(
+      final rows = await executor.query(
         'chat_memories',
         where: 'session_id = ? AND branch_leaf_id IN ($placeholders)',
         whereArgs: [sessionId, ...chunk],
@@ -1212,10 +1220,18 @@ class ChatDatabaseService {
     List<String> branchLeafIds,
   ) async {
     if (branchLeafIds.isEmpty) return const [];
+    return _loadBranchMemoryDiffs(_db, sessionId, branchLeafIds);
+  }
+
+  Future<List<MemoryDiff>> _loadBranchMemoryDiffs(
+    DatabaseExecutor executor,
+    String sessionId,
+    List<String> branchLeafIds,
+  ) async {
     final diffs = <MemoryDiff>[];
     for (final chunk in _chunked(branchLeafIds, _sqlInChunkSize)) {
       final placeholders = List.filled(chunk.length, '?').join(',');
-      final rows = await _db.query(
+      final rows = await executor.query(
         'chat_memory_diffs',
         where: 'session_id = ? AND branch_leaf_id IN ($placeholders)',
         whereArgs: [sessionId, ...chunk],
@@ -1225,6 +1241,23 @@ class ChatDatabaseService {
     }
     diffs.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return diffs;
+  }
+
+  /// 在同一只读事务内读取提取所需的原始记忆与分支差量，避免混用两个时刻。
+  Future<MemoryExtractionSnapshot> loadMemoryExtractionSnapshot({
+    required String sessionId,
+    required List<String> pathMessageIds,
+  }) async {
+    final path = List<String>.unmodifiable(pathMessageIds);
+    return _db.transaction((tx) async {
+      final memories = await _loadBranchMemories(tx, sessionId, path);
+      final diffs = await _loadBranchMemoryDiffs(tx, sessionId, path);
+      return MemoryExtractionSnapshot(
+        memories: memories,
+        diffs: diffs,
+        pathMessageIds: path,
+      );
+    }, exclusive: false);
   }
 
   Future<List<MemoryNode>> loadAllSessionMemories(String sessionId) async {
@@ -1400,16 +1433,38 @@ class ChatDatabaseService {
     notifyMemoryChanged();
   }
 
-  /// 原子地应用一次自动提取：先校验目标记忆快照未被并发修改，再写入新增
-  /// 记忆、差量与运行记录。任一目标内容/重要度与 [expectedSnapshot] 不一致
-  /// 时抛出 [MemoryExtractionConflict] 并整体回滚，避免后台结果覆盖用户编辑。
+  /// 原子地应用一次提取结果（包括无变化与失败）：先检查锚点仍允许本次提交，
+  /// 再校验原始行与相关分支差量，最后一起写入记忆、差量与运行记录。
+  ///
+  /// [expectedRunId] 为空时要求锚点尚无记录；否则只允许替换该 id 的失败记录。
+  /// 前置条件失效抛出 [MemoryExtractionSuperseded]，不可用迟到结果覆盖新记录。
+  /// 原始行或 [branchSnapshot] 路径内相关目标的差量变化时抛出
+  /// [MemoryExtractionConflict]，整体回滚以保护请求期间的用户编辑。
   Future<void> applyMemoryExtractionTx({
     required List<MemoryNode> newMemories,
     required List<MemoryDiff> diffs,
     required MemoryExtractionRun run,
     required Map<String, MemorySnapshotEntry> expectedSnapshot,
+    MemoryExtractionSnapshot? branchSnapshot,
+    String? expectedRunId,
   }) async {
     await _db.transaction((tx) async {
+      final existingRuns = await tx.query(
+        'chat_memory_extraction_runs',
+        columns: ['id', 'status'],
+        where: 'branch_leaf_id = ?',
+        whereArgs: [run.branchLeafId],
+        limit: 1,
+      );
+      final existingRun = existingRuns.isEmpty ? null : existingRuns.first;
+      if (expectedRunId == null
+          ? existingRun != null
+          : existingRun == null ||
+                existingRun['id'] != expectedRunId ||
+                existingRun['status'] != MemoryExtractionStatus.failed.name) {
+        throw const MemoryExtractionSuperseded('提取运行记录已变化，本次结果已过期');
+      }
+
       for (final entry in expectedSnapshot.entries) {
         final rows = await tx.query(
           'chat_memories',
@@ -1433,6 +1488,31 @@ class ChatDatabaseService {
             type != entry.value.type ||
             isPinned != entry.value.isPinned) {
           throw const MemoryExtractionConflict('目标记忆在提取期间被修改');
+        }
+      }
+      if (branchSnapshot != null && expectedSnapshot.isNotEmpty) {
+        final targetIds = expectedSnapshot.keys.toSet();
+        final pathIds = branchSnapshot.pathMessageIds.toSet();
+        final expectedDiffIds = branchSnapshot.diffs
+            .where(
+              (diff) =>
+                  diff.sessionId == run.sessionId &&
+                  pathIds.contains(diff.branchLeafId) &&
+                  targetIds.contains(diff.targetMemoryId),
+            )
+            .map((diff) => diff.id)
+            .toSet();
+        final currentDiffs = await _loadBranchMemoryDiffs(
+          tx,
+          run.sessionId,
+          branchSnapshot.pathMessageIds,
+        );
+        final currentDiffIds = currentDiffs
+            .where((diff) => targetIds.contains(diff.targetMemoryId))
+            .map((diff) => diff.id)
+            .toSet();
+        if (!setEquals(expectedDiffIds, currentDiffIds)) {
+          throw const MemoryExtractionConflict('目标记忆的分支差量在提取期间被修改');
         }
       }
       for (final m in newMemories) {
@@ -2187,6 +2267,32 @@ class MemoryExtractionConflict implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// 提取结果所属的锚点记录已变化，迟到或重复提交应直接丢弃。
+class MemoryExtractionSuperseded implements Exception {
+  const MemoryExtractionSuperseded(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// 同一时刻读取的提取上下文；列表防御拷贝，避免请求期间被调用方修改。
+@immutable
+class MemoryExtractionSnapshot {
+  MemoryExtractionSnapshot({
+    required List<MemoryNode> memories,
+    required List<MemoryDiff> diffs,
+    required List<String> pathMessageIds,
+  }) : memories = List<MemoryNode>.unmodifiable(memories),
+       diffs = List<MemoryDiff>.unmodifiable(diffs),
+       pathMessageIds = List<String>.unmodifiable(pathMessageIds);
+
+  final List<MemoryNode> memories;
+  final List<MemoryDiff> diffs;
+  final List<String> pathMessageIds;
 }
 
 /// 自动提取使用的目标记忆快照项：内容 + 重要度 + 类型 + 常驻。

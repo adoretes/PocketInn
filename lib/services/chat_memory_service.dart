@@ -126,6 +126,27 @@ class ChatMemoryService {
 
   static final ChatMemoryService instance = ChatMemoryService._();
 
+  /// 自动提取与手动重试共用同一锚点锁，避免等待网络时重复请求和落库。
+  final Set<String> _extractingAnchors = <String>{};
+  static const Duration _extractionTimeout = Duration(minutes: 3);
+
+  Future<bool> _withExtractionLock(
+    String sessionId,
+    String anchorMessageId,
+    Future<bool> Function() action,
+  ) async {
+    final key = '$sessionId\u0000$anchorMessageId';
+    if (!_extractingAnchors.add(key)) return false;
+    try {
+      return await action();
+    } on MemoryExtractionSuperseded {
+      // 锚点已由另一批结果提交，过期结果不能覆盖运行记录或再次新增记忆。
+      return false;
+    } finally {
+      _extractingAnchors.remove(key);
+    }
+  }
+
   /// 求值结果缓存：key 为「会话 + 路径末端消息 + 是否含失效 + 记忆数据版本」。
   ///
   /// 同一路径在无记忆写入时可重复命中（侧栏刷新、打开编辑弹窗的两次求值等），
@@ -177,8 +198,8 @@ isPinned=true 表示“常驻记忆”：每次对话都注入，除非用户明
 type 可选：fact/preference/event/relationship/commitment/setting/other；isPinned=true 表示常驻记忆。
 没有需要记录或修改的内容时输出 {"ops": []}。''';
 
-  String _resolveExtractionPrompt() {
-    final custom = memoryExtractionNotifier.value.customExtractionPrompt.trim();
+  String _resolveExtractionPrompt(MemoryExtractionConfig settings) {
+    final custom = settings.customExtractionPrompt.trim();
     if (custom.isEmpty) return memoryExtractionPrompt;
     var prompt = custom;
     if (!prompt.contains('{{memory}}')) {
@@ -254,9 +275,9 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
     return cut <= 0 ? const <ChatMessage>[] : messages.sublist(0, cut);
   }
 
-  ResolvedApiConfig? get _extractionConfig {
+  ResolvedApiConfig? _resolveExtractionConfig(MemoryExtractionConfig settings) {
     final configs = apiConfigsNotifier.value;
-    final extractionModelId = memoryExtractionNotifier.value.extractionModelId;
+    final extractionModelId = settings.extractionModelId;
     ApiConfig? provider;
     ApiModel? model;
     if (extractionModelId != null && extractionModelId.isNotEmpty) {
@@ -289,13 +310,15 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
     List<ResolvedMemory> existingMemories = const [],
     String currentInput = '',
     Map<String, String> cardData = const {},
+    MemoryExtractionConfig? extractionSettings,
   }) async {
     if (messages.isEmpty) return null;
 
-    final config = _extractionConfig?.copyWith();
+    final settings = extractionSettings ?? memoryExtractionNotifier.value;
+    final config = _resolveExtractionConfig(settings)?.copyWith();
     if (config == null) return null;
 
-    final rawPrompt = _resolveExtractionPrompt();
+    final rawPrompt = _resolveExtractionPrompt(settings);
     final lastUser = messages.reversed.cast<ChatMessage?>().firstWhere(
       (m) => m?.isMe == true,
       orElse: () => null,
@@ -322,14 +345,9 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
       state: macroState,
     );
 
-    // 提取窗口刻意使用 interval（提取频率）：每次触发时送给提取模型的
-    // 就是这一批新增对话。recentRounds 仅服务主聊天提示词的历史窗口，
-    // 与提取无关，勿混用。
-    final truncated = truncateToRecentRounds(
-      messages,
-      memoryExtractionNotifier.value.interval,
-    );
-    final chatLog = truncated
+    // 调用方已经按开始时的配置固定本批消息，不能在这里再次截断，
+    // 否则失败重试或设置变动会让实际请求与处理水位不一致。
+    final chatLog = messages
         .map((m) => '${m.isMe ? userName : characterName}: ${m.text}')
         .join('\n');
 
@@ -339,9 +357,21 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
     ];
 
     final stopwatch = Stopwatch()..start();
+    final cancellationToken = ChatCompletionCancelToken();
     try {
       final result = await OpenAICompatibleApiService.instance
-          .createChatCompletion(config, messages: requestMessages);
+          .createChatCompletion(
+            config,
+            messages: requestMessages,
+            cancellationToken: cancellationToken,
+          )
+          .timeout(
+            _extractionTimeout,
+            onTimeout: () {
+              cancellationToken.cancel();
+              throw TimeoutException('记忆提取请求超时', _extractionTimeout);
+            },
+          );
       stopwatch.stop();
       return result.text.trim();
     } catch (error, stack) {
@@ -950,26 +980,85 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
   /// 旧数据（v7 之前无运行记录）的水位回退：记忆来源并集。
   @visibleForTesting
   static Set<String> legacyProcessedMessageIds(List<MemoryNode> memories) {
-    return <String>{
-      for (final memory in memories) ...memory.sourceMessageIds,
+    return <String>{for (final memory in memories) ...memory.sourceMessageIds};
+  }
+
+  /// 合并运行记录水位与升级前的来源水位。
+  ///
+  /// 首次运行之前创建的记忆继续提供旧水位；这样无需把未发送的旧来源 id
+  /// 塞进新批次，也不会在有第一条运行记录后把旧历史重新当作积压。
+  static Set<String> _processedIdsForExtraction({
+    required List<MemoryExtractionRun> runs,
+    required List<MemoryNode> memories,
+  }) {
+    DateTime? firstRunAt;
+    for (final run in runs) {
+      if (firstRunAt == null || run.createdAt.isBefore(firstRunAt)) {
+        firstRunAt = run.createdAt;
+      }
+    }
+    final legacyMemories = firstRunAt == null
+        ? memories
+        : memories
+              .where((memory) => memory.createdAt.isBefore(firstRunAt!))
+              .toList(growable: false);
+    return {
+      ...legacyProcessedMessageIds(legacyMemories),
+      ...processedMessageIds(runs),
     };
   }
 
   /// 统计 [allMessages] 中尚未被提取水位覆盖的角色消息数量。
-  ///
-  /// 优先使用运行记录水位；尚无任何运行记录时回退到旧记忆来源并集，
-  /// 保证升级后不会把历史消息全部当作新增。
   static int countNewAssistantMessages({
     required List<ChatMessage> allMessages,
     required List<MemoryExtractionRun> runs,
     List<MemoryNode> memories = const [],
   }) {
-    final processed = runs.isEmpty
-        ? legacyProcessedMessageIds(memories)
-        : processedMessageIds(runs);
+    final processed = _processedIdsForExtraction(
+      runs: runs,
+      memories: memories,
+    );
     return allMessages
         .where((m) => !m.isMe && m.id != null && !processed.contains(m.id))
         .length;
+  }
+
+  /// 找出尚未处理的消息，保持路径顺序，供固定批次和处理水位共用。
+  static List<ChatMessage> pendingExtractionMessages({
+    required List<ChatMessage> allMessages,
+    required List<MemoryExtractionRun> runs,
+    List<MemoryNode> memories = const [],
+  }) {
+    final processed = _processedIdsForExtraction(
+      runs: runs,
+      memories: memories,
+    );
+    return List<ChatMessage>.unmodifiable(
+      allMessages.where((m) => m.id != null && !processed.contains(m.id)),
+    );
+  }
+
+  /// 批大小在开始时固定；旧积压按历史顺序逐批处理，避免一次发送无限历史。
+  static List<List<ChatMessage>> _extractionBatches(
+    List<ChatMessage> messages,
+    int interval,
+  ) {
+    final roundsPerBatch = interval.clamp(1, 20);
+    final batches = <List<ChatMessage>>[];
+    var batch = <ChatMessage>[];
+    var assistantCount = 0;
+    for (final message in messages) {
+      batch.add(message);
+      if (!message.isMe && ++assistantCount >= roundsPerBatch) {
+        batches.add(List<ChatMessage>.unmodifiable(batch));
+        batch = <ChatMessage>[];
+        assistantCount = 0;
+      }
+    }
+    if (batch.any((message) => !message.isMe)) {
+      batches.add(List<ChatMessage>.unmodifiable(batch));
+    }
+    return batches;
   }
 
   Future<bool> tryExtractAndSave({
@@ -981,76 +1070,113 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
     String currentInput = '',
     Map<String, String> cardData = const {},
     Future<void> Function()? beforeCommit,
-  }) async {
-    final pathIds = messages
+  }) => _withExtractionLock(sessionId, branchLeafId, () async {
+    final settings = memoryExtractionNotifier.value;
+    final startedAt = DateTime.now();
+    final pathMessages = List<ChatMessage>.unmodifiable(messages);
+    final pathIds = pathMessages
         .where((m) => m.id != null)
         .map((m) => m.id!)
         .toList(growable: false);
     if (pathIds.isEmpty) return false;
 
-    final resolved = await resolveMemories(
-      sessionId: sessionId,
-      pathMessageIds: pathIds,
-    );
-
-    final extracted = await extractMemories(
-      messages: messages,
-      characterName: characterName,
-      userName: userName,
-      existingMemories: resolved,
-      currentInput: currentInput,
-      cardData: cardData,
-    );
-
-    final windowMessages = truncateToRecentRounds(
-      messages,
-      memoryExtractionNotifier.value.interval,
-    );
-    final processedIds = windowMessages
-        .where((m) => m.id != null)
-        .map((m) => m.id!)
-        .toList(growable: false);
-
-    // 首次运行（该分支尚无运行记录）时，把旧记忆来源并集并入水位，
-    // 避免升级后把历史消息全部重提一遍。
     final existingRuns = await getExtractionRuns(
       sessionId: sessionId,
       pathMessageIds: pathIds,
     );
-    if (existingRuns.isEmpty) {
-      final pathSet = pathIds.toSet();
-      final legacy = legacyProcessedMessageIds(
-        resolved.map((m) => m.origin).toList(growable: false),
-      );
-      for (final id in legacy) {
-        if (pathSet.contains(id) && !processedIds.contains(id)) {
-          processedIds.add(id);
+    // 自动调度不重复处理同一锚点；失败批次只由显式重试重新请求。
+    if (existingRuns.any((run) => run.branchLeafId == branchLeafId)) {
+      return false;
+    }
+    final initialSnapshot = await ChatDatabaseService.instance
+        .loadMemoryExtractionSnapshot(
+          sessionId: sessionId,
+          pathMessageIds: pathIds,
+        );
+    final pending = pendingExtractionMessages(
+      allMessages: pathMessages,
+      runs: existingRuns,
+      memories: initialSnapshot.memories,
+    );
+    final batches = _extractionBatches(pending, settings.interval);
+    var applied = false;
+    for (final batch in batches) {
+      final batchAnchor = batch.lastWhere((message) => !message.isMe).id!;
+      final anchorIndex = pathIds.indexOf(batchAnchor);
+      final batchPath = pathIds.sublist(0, anchorIndex + 1);
+      var batchInput = batchAnchor == branchLeafId ? currentInput : '';
+      for (final message in batch.reversed) {
+        if (message.isMe) {
+          batchInput = message.text;
+          break;
         }
       }
+      MemoryExtractionStatus? status;
+
+      Future<bool> extractBatch() async {
+        final currentRuns = await getExtractionRuns(
+          sessionId: sessionId,
+          pathMessageIds: batchPath,
+        );
+        if (currentRuns.any((run) => run.branchLeafId == batchAnchor)) {
+          status = MemoryExtractionStatus.empty;
+          return false;
+        }
+        // 每批求值到自己的锚点，后续剧情和未来节点的编辑不会倒灌旧批次。
+        final snapshot = await ChatDatabaseService.instance
+            .loadMemoryExtractionSnapshot(
+              sessionId: sessionId,
+              pathMessageIds: batchPath,
+            );
+        final resolved = resolveFromData(
+          memories: snapshot.memories,
+          diffs: snapshot.diffs,
+          pathMessageIds: snapshot.pathMessageIds,
+        );
+        final extracted = await extractMemories(
+          messages: batch,
+          characterName: characterName,
+          userName: userName,
+          existingMemories: resolved,
+          currentInput: batchInput,
+          cardData: cardData,
+          extractionSettings: settings,
+        );
+        await beforeCommit?.call();
+        final outcome = await _applyExtracted(
+          sessionId: sessionId,
+          branchLeafId: batchAnchor,
+          extracted: extracted,
+          resolved: resolved,
+          processedIds: List<String>.unmodifiable(batch.map((m) => m.id!)),
+          characterName: characterName,
+          userName: userName,
+          currentInput: batchInput,
+          allowEmptyAsNone: settings.hasCustomExtractionPrompt,
+          branchSnapshot: snapshot,
+          expectedRunId: null,
+          runCreatedAt: startedAt,
+        );
+        status = outcome.status;
+        return outcome.status == MemoryExtractionStatus.applied;
+      }
+
+      final batchApplied = batchAnchor == branchLeafId
+          ? await extractBatch()
+          : await _withExtractionLock(sessionId, batchAnchor, extractBatch);
+      applied = applied || batchApplied;
+      // 网络/解析/冲突失败时留待显式重试；尚在其他请求中的旧批次也不能越过。
+      if (status == null || status == MemoryExtractionStatus.failed) break;
     }
+    return applied;
+  });
 
-    await beforeCommit?.call();
-    final outcome = await _applyExtracted(
-      sessionId: sessionId,
-      branchLeafId: branchLeafId,
-      extracted: extracted,
-      resolved: resolved,
-      processedIds: processedIds,
-      characterName: characterName,
-      userName: userName,
-      currentInput: currentInput,
-      allowEmptyAsNone: memoryExtractionNotifier
-          .value
-          .hasCustomExtractionPrompt,
-    );
-    return outcome.status == MemoryExtractionStatus.applied;
-  }
-
-  /// 重试一次失败的提取：使用运行记录保存的原消息集合与锚点重新请求。
+  /// 重试一次失败的提取：完整使用运行记录保存的批次，不受当前间隔影响。
   Future<bool> retryExtraction({
     required String sessionId,
     required String anchorMessageId,
-  }) async {
+  }) => _withExtractionLock(sessionId, anchorMessageId, () async {
+    final settings = memoryExtractionNotifier.value;
     final runs = await ChatDatabaseService.instance
         .loadAllSessionExtractionRuns(sessionId);
     MemoryExtractionRun? run;
@@ -1060,19 +1186,7 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
         break;
       }
     }
-    if (run == null) return false;
-
-    final messages = await ChatDatabaseService.instance.loadMessagesByIds(
-      run.processedMessageIds,
-    );
-    if (messages.isEmpty) {
-      await ChatDatabaseService.instance.upsertExtractionRun(
-        run.copyWith(
-          status: MemoryExtractionStatus.failed,
-          errorMessage: '原消息已不存在，无法重试',
-          createdAt: DateTime.now(),
-        ),
-      );
+    if (run == null || run.status != MemoryExtractionStatus.failed) {
       return false;
     }
 
@@ -1080,9 +1194,46 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
       anchorMessageId,
     );
     final pathIds = ancestors.reversed.toList(growable: false);
-    final resolved = await resolveMemories(
-      sessionId: sessionId,
-      pathMessageIds: pathIds,
+    final positions = {for (var i = 0; i < pathIds.length; i++) pathIds[i]: i};
+    var batchIds = run.processedMessageIds;
+    // 旧版首次失败记录把 legacy 来源追加在窗口之后。祖先位置第一次倒退
+    // 标识兼容尾巴；只重试此前实际发送的窗口，不能把新→旧历史混成新批次。
+    for (var i = 1; i < batchIds.length; i++) {
+      final previous = positions[batchIds[i - 1]];
+      final current = positions[batchIds[i]];
+      if (previous != null && current != null && current < previous) {
+        batchIds = List<String>.unmodifiable(batchIds.take(i));
+        break;
+      }
+    }
+    final messages = await ChatDatabaseService.instance.loadMessagesByIds(
+      batchIds,
+    );
+    if (messages.isEmpty || messages.length != batchIds.length) {
+      await _writeRun(
+        sessionId: sessionId,
+        branchLeafId: anchorMessageId,
+        processedIds: batchIds,
+        status: MemoryExtractionStatus.failed,
+        characterName: run.characterName,
+        userName: run.userName,
+        currentInput: run.currentInput,
+        errorMessage: '原消息已不存在，无法完整重试',
+        expectedRunId: run.id,
+        runCreatedAt: run.createdAt,
+      );
+      return false;
+    }
+
+    final snapshot = await ChatDatabaseService.instance
+        .loadMemoryExtractionSnapshot(
+          sessionId: sessionId,
+          pathMessageIds: pathIds,
+        );
+    final resolved = resolveFromData(
+      memories: snapshot.memories,
+      diffs: snapshot.diffs,
+      pathMessageIds: snapshot.pathMessageIds,
     );
 
     final extracted = await extractMemories(
@@ -1091,6 +1242,7 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
       userName: run.userName.isEmpty ? '用户' : run.userName,
       existingMemories: resolved,
       currentInput: run.currentInput,
+      extractionSettings: settings,
     );
 
     final outcome = await _applyExtracted(
@@ -1098,14 +1250,17 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
       branchLeafId: anchorMessageId,
       extracted: extracted,
       resolved: resolved,
-      processedIds: run.processedMessageIds,
+      processedIds: batchIds,
       characterName: run.characterName,
       userName: run.userName,
       currentInput: run.currentInput,
-      allowEmptyAsNone: true,
+      allowEmptyAsNone: settings.hasCustomExtractionPrompt,
+      branchSnapshot: snapshot,
+      expectedRunId: run.id,
+      runCreatedAt: run.createdAt,
     );
     return outcome.status == MemoryExtractionStatus.applied;
-  }
+  });
 
   /// 目标记忆在「提取开始时」的原始快照。
   ///
@@ -1132,23 +1287,22 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
     required String userName,
     required String currentInput,
     required bool allowEmptyAsNone,
+    required MemoryExtractionSnapshot branchSnapshot,
+    required String? expectedRunId,
+    DateTime? runCreatedAt,
   }) async {
-    Future<void> writeFailed(String message) async {
-      await ChatDatabaseService.instance.upsertExtractionRun(
-        MemoryExtractionRun(
-          id: _generateId('memrun'),
-          sessionId: sessionId,
-          branchLeafId: branchLeafId,
-          processedMessageIds: processedIds,
-          status: MemoryExtractionStatus.failed,
-          errorMessage: message,
-          characterName: characterName,
-          userName: userName,
-          currentInput: currentInput,
-          createdAt: DateTime.now(),
-        ),
-      );
-    }
+    Future<void> writeFailed(String message) => _writeRun(
+      sessionId: sessionId,
+      branchLeafId: branchLeafId,
+      processedIds: processedIds,
+      status: MemoryExtractionStatus.failed,
+      errorMessage: message,
+      characterName: characterName,
+      userName: userName,
+      currentInput: currentInput,
+      expectedRunId: expectedRunId,
+      runCreatedAt: runCreatedAt,
+    );
 
     if (extracted == null) {
       await writeFailed('提取请求失败');
@@ -1165,6 +1319,8 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
           characterName: characterName,
           userName: userName,
           currentInput: currentInput,
+          expectedRunId: expectedRunId,
+          runCreatedAt: runCreatedAt,
         );
         return const _ExtractionOutcome(MemoryExtractionStatus.empty);
       }
@@ -1225,10 +1381,11 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
               branchLeafId: branchLeafId,
               targetMemoryId: target.id,
               kind: MemoryDiffKind.update,
-              content: content ?? target.content,
-              importance: (op.importance ?? target.importance).clamp(1, 5),
-              type: op.type ?? target.type,
-              isPinned: op.isPinned ?? target.isPinned,
+              // 差量仅记录模型明确修改的字段，不回填请求前的整份旧状态。
+              content: content,
+              importance: op.importance?.clamp(1, 5),
+              type: op.type,
+              isPinned: op.isPinned,
               createdAt: now,
             ),
           );
@@ -1261,6 +1418,8 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
         characterName: characterName,
         userName: userName,
         currentInput: currentInput,
+        expectedRunId: expectedRunId,
+        runCreatedAt: runCreatedAt,
       );
       return const _ExtractionOutcome(MemoryExtractionStatus.empty);
     }
@@ -1285,9 +1444,11 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
           characterName: characterName,
           userName: userName,
           currentInput: currentInput,
-          createdAt: now,
+          createdAt: runCreatedAt ?? now,
         ),
         expectedSnapshot: expectedSnapshot,
+        branchSnapshot: branchSnapshot,
+        expectedRunId: expectedRunId,
       );
     } on MemoryExtractionConflict catch (error) {
       await writeFailed(error.message);
@@ -1313,10 +1474,17 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
     required String characterName,
     required String userName,
     required String currentInput,
+    required String? expectedRunId,
+    DateTime? runCreatedAt,
     String errorMessage = '',
   }) async {
-    await ChatDatabaseService.instance.upsertExtractionRun(
-      MemoryExtractionRun(
+    // 成功、无变化和失败都通过相同的锚点前置校验，迟到失败不能覆盖成功。
+    await ChatDatabaseService.instance.applyMemoryExtractionTx(
+      newMemories: const [],
+      diffs: const [],
+      expectedSnapshot: const {},
+      expectedRunId: expectedRunId,
+      run: MemoryExtractionRun(
         id: _generateId('memrun'),
         sessionId: sessionId,
         branchLeafId: branchLeafId,
@@ -1326,7 +1494,8 @@ type 可选：fact/preference/event/relationship/commitment/setting/other；isPi
         characterName: characterName,
         userName: userName,
         currentInput: currentInput,
-        createdAt: DateTime.now(),
+        // 重试保留首次创建时刻，避免 legacy 水位的时间边界后移。
+        createdAt: runCreatedAt ?? DateTime.now(),
       ),
     );
   }
