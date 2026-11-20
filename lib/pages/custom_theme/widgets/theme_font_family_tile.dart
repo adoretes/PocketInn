@@ -9,10 +9,14 @@ class ThemeFontFamilyConfigTile extends StatefulWidget {
     super.key,
     required this.fontFamily,
     required this.onChanged,
+    this.flat = false,
   });
 
   final String? fontFamily;
   final ValueChanged<String?> onChanged;
+
+  /// 为 true 时去掉外层卡片边框与背景，便于嵌入底部弹窗等容器。
+  final bool flat;
 
   @override
   State<ThemeFontFamilyConfigTile> createState() =>
@@ -71,7 +75,9 @@ class _ThemeFontFamilyConfigTileState extends State<ThemeFontFamilyConfigTile> {
     try {
       final fileName = result.files.single.name;
       final dotIndex = fileName.lastIndexOf('.');
-      final baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+      final baseName = dotIndex > 0
+          ? fileName.substring(0, dotIndex)
+          : fileName;
 
       await FontService.instance.removeCustomFont();
       final destPath = await FontService.instance.installFontFile(
@@ -102,6 +108,73 @@ class _ThemeFontFamilyConfigTileState extends State<ThemeFontFamilyConfigTile> {
     final colorScheme = Theme.of(context).colorScheme;
     final hasFont = widget.fontFamily != null && widget.fontFamily!.isNotEmpty;
 
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '自定义字体',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '输入字体族名称，或加载 .ttf/.otf 字体文件',
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.4,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _controller,
+          decoration: InputDecoration(
+            hintText: '字体族名称',
+            isDense: true,
+            border: const OutlineInputBorder(),
+            suffixIcon: _controller.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _controller.clear();
+                      widget.onChanged(null);
+                    },
+                  )
+                : null,
+          ),
+          onEditingComplete: _commitFontFamily,
+          onSubmitted: (_) => _commitFontFamily(),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _pickFontFile,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.file_open, size: 18),
+              label: Text(_loading ? '加载中...' : '加载字体文件'),
+            ),
+            if (hasFont) ...[
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _clearFont,
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('清除'),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+
+    if (widget.flat) {
+      return content;
+    }
+
     return Material(
       color: colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(20),
@@ -111,68 +184,7 @@ class _ThemeFontFamilyConfigTileState extends State<ThemeFontFamilyConfigTile> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: colorScheme.outlineVariant),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '自定义字体',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '输入字体族名称，或加载 .ttf/.otf 字体文件',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                hintText: '字体族名称',
-                isDense: true,
-                border: const OutlineInputBorder(),
-                suffixIcon: _controller.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _controller.clear();
-                          widget.onChanged(null);
-                        },
-                      )
-                    : null,
-              ),
-              onEditingComplete: _commitFontFamily,
-              onSubmitted: (_) => _commitFontFamily(),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _loading ? null : _pickFontFile,
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.file_open, size: 18),
-                  label: Text(_loading ? '加载中...' : '加载字体文件'),
-                ),
-                if (hasFont) ...[
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: _clearFont,
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('清除'),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }

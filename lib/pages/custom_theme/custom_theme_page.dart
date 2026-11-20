@@ -5,6 +5,11 @@ import '../../widgets/chat_markdown_body.dart';
 import 'widgets/theme_font_family_tile.dart';
 import 'widgets/theme_palette_picker.dart';
 
+/// 主题配置页。
+///
+/// 采用与「通用设置」一致的 Material 3 分组卡片布局：顶部常驻聊天实时预览，
+/// 下方按「主题外观 / 引号与阴影 / 文本样式」分组。宽屏（≥900）时预览固定在
+/// 右侧两栏排布，窄屏时预览置顶单列滚动。
 class CustomThemePage extends StatelessWidget {
   const CustomThemePage({super.key});
 
@@ -13,118 +18,167 @@ class CustomThemePage extends StatelessWidget {
     return ValueListenableBuilder<AppSettings>(
       valueListenable: appSettingsNotifier,
       builder: (context, settings, _) {
-        final themeConfig = resolveThemeConfig(settings);
-        final chatTextTheme = themeConfig.chatTextTheme;
-
         return Scaffold(
           appBar: AppBar(title: const Text('主题配置')),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _SectionCard(
-                title: '主题颜色',
-                child: Column(
-                  children: [
-                    ThemeFontFamilyConfigTile(
-                      fontFamily: themeConfig.customFontFamily,
-                      onChanged: (value) =>
-                          updateThemeConfig(customFontFamily: value),
-                    ),
-                    const SizedBox(height: 12),
-                    _ThemeColorPaletteTile(
-                      selectedIndex: resolveThemeColorPaletteIndex(settings),
-                      onChanged: (index) =>
-                          updateThemeConfig(themeColorIndex: index),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: '引号与阴影',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _QuoteStyleDropdownTile(
-                      value: chatTextTheme.quoteStyle,
-                      onChanged: (style) =>
-                          updateChatTextThemeSettings(quoteStyle: style),
-                    ),
-                    const SizedBox(height: 12),
-                    _SwitchTile(
-                      title: '聊天消息字体阴影',
-                      value: chatTextTheme.enableMessageTextShadow,
-                      onChanged: (value) => updateChatTextThemeSettings(
-                        enableMessageTextShadow: value,
+          body: SafeArea(
+            top: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 900;
+                if (isWide) {
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 6,
+                              child: ListView(
+                                padding: EdgeInsets.zero,
+                                children: _buildSettingsSections(
+                                  context,
+                                  settings,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              flex: 5,
+                              child: ListView(
+                                padding: EdgeInsets.zero,
+                                children: [
+                                  _LivePreviewCard(settings: settings),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: '文本样式',
-                child: Column(
+                  );
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                   children: [
-                    _BodyTextColorConfigTile(
-                      settings: settings,
-                      lightValue: chatTextTheme.bodyTextColorPaletteIndex,
-                      darkValue: chatTextTheme.bodyTextColorDarkPaletteIndex,
-                      onChanged: (light, dark) => updateChatTextThemeSettings(
-                        bodyTextColorPaletteIndex: light,
-                        bodyTextColorDarkPaletteIndex: dark,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _TextStyleConfigTile(
-                      settings: settings,
-                      title: '引号内容',
-                      value: chatTextTheme.quotedTextStyle,
-                      onChanged: (value) =>
-                          updateChatTextThemeSettings(quotedTextStyle: value),
-                    ),
-                    const SizedBox(height: 12),
-                    _TextStyleConfigTile(
-                      settings: settings,
-                      title: '括号内容',
-                      value: chatTextTheme.bracketTextStyle,
-                      onChanged: (value) =>
-                          updateChatTextThemeSettings(bracketTextStyle: value),
-                    ),
-                    const SizedBox(height: 12),
-                    _TextStyleConfigTile(
-                      settings: settings,
-                      title: 'Markdown 斜体',
-                      value: chatTextTheme.italicTextStyle,
-                      onChanged: (value) =>
-                          updateChatTextThemeSettings(italicTextStyle: value),
-                    ),
-                    const SizedBox(height: 12),
-                    _TextStyleConfigTile(
-                      settings: settings,
-                      title: 'Markdown 加粗',
-                      value: chatTextTheme.boldTextStyle,
-                      onChanged: (value) =>
-                          updateChatTextThemeSettings(boldTextStyle: value),
-                    ),
+                    _LivePreviewCard(settings: settings),
+                    const SizedBox(height: 8),
+                    ..._buildSettingsSections(context, settings),
                   ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: '效果预览',
-                child: _ThemePreviewCard(settings: settings),
-              ),
-            ],
+                );
+              },
+            ),
           ),
         );
       },
     );
   }
+
+  /// 构建设置区分组（窄屏嵌入主列表，宽屏放入左栏）。
+  List<Widget> _buildSettingsSections(
+    BuildContext context,
+    AppSettings settings,
+  ) {
+    final themeConfig = resolveThemeConfig(settings);
+    final chatTextTheme = themeConfig.chatTextTheme;
+
+    return <Widget>[
+      const _SectionHeader('主题外观'),
+      _SettingsGroup(
+        children: [
+          _ThemeColorRow(
+            selectedIndex: resolveThemeColorPaletteIndex(settings),
+            onChanged: (index) => updateThemeConfig(themeColorIndex: index),
+          ),
+          _groupDivider(context),
+          _FontFamilyRow(
+            fontFamily: themeConfig.customFontFamily,
+            onChanged: (value) => updateThemeConfig(customFontFamily: value),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      const _SectionHeader('引号与阴影'),
+      _SettingsGroup(
+        children: [
+          _QuoteStyleRow(
+            value: chatTextTheme.quoteStyle,
+            onChanged: (style) =>
+                updateChatTextThemeSettings(quoteStyle: style),
+          ),
+          _groupDivider(context),
+          _ShadowSwitchRow(
+            value: chatTextTheme.enableMessageTextShadow,
+            onChanged: (value) =>
+                updateChatTextThemeSettings(enableMessageTextShadow: value),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      const _SectionHeader('文本样式'),
+      _SettingsGroup(
+        children: [
+          _BodyTextColorRow(
+            settings: settings,
+            lightValue: chatTextTheme.bodyTextColorPaletteIndex,
+            darkValue: chatTextTheme.bodyTextColorDarkPaletteIndex,
+            onChanged: (light, dark) => updateChatTextThemeSettings(
+              bodyTextColorPaletteIndex: light,
+              bodyTextColorDarkPaletteIndex: dark,
+            ),
+          ),
+          _groupDivider(context),
+          _TextStyleRow(
+            settings: settings,
+            title: '引号内容',
+            icon: Icons.format_quote_rounded,
+            value: chatTextTheme.quotedTextStyle,
+            onChanged: (value) =>
+                updateChatTextThemeSettings(quotedTextStyle: value),
+          ),
+          _groupDivider(context),
+          _TextStyleRow(
+            settings: settings,
+            title: '括号内容',
+            icon: Icons.code_rounded,
+            value: chatTextTheme.bracketTextStyle,
+            onChanged: (value) =>
+                updateChatTextThemeSettings(bracketTextStyle: value),
+          ),
+          _groupDivider(context),
+          _TextStyleRow(
+            settings: settings,
+            title: 'Markdown 斜体',
+            icon: Icons.format_italic_rounded,
+            value: chatTextTheme.italicTextStyle,
+            onChanged: (value) =>
+                updateChatTextThemeSettings(italicTextStyle: value),
+          ),
+          _groupDivider(context),
+          _TextStyleRow(
+            settings: settings,
+            title: 'Markdown 加粗',
+            icon: Icons.format_bold_rounded,
+            value: chatTextTheme.boldTextStyle,
+            onChanged: (value) =>
+                updateChatTextThemeSettings(boldTextStyle: value),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+    ];
+  }
 }
 
-class _ThemePreviewCard extends StatelessWidget {
-  const _ThemePreviewCard({required this.settings});
+// ---------------------------------------------------------------------------
+// 实时预览
+// ---------------------------------------------------------------------------
+
+class _LivePreviewCard extends StatelessWidget {
+  const _LivePreviewCard({required this.settings});
 
   final AppSettings settings;
 
@@ -142,13 +196,77 @@ class _ThemePreviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colorScheme.primaryContainer.withValues(alpha: 0.45),
+            colorScheme.surfaceContainerLow,
+          ],
+        ),
         border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.visibility_outlined,
+                  size: 19,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '实时预览',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '下方设置会即时反映到示例对话中',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: resolveThemeColor(settings),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -166,13 +284,13 @@ class _ThemePreviewCard extends StatelessWidget {
               ),
               _PreviewChip(
                 label: themeConfig.customFontFamily != null
-                    ? '自定义字体: ${themeConfig.customFontFamily}'
+                    ? '字体: ${themeConfig.customFontFamily}'
                     : '系统字体',
                 color: colorScheme.primary,
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,13 +346,29 @@ class _ThemePreviewCard extends StatelessWidget {
                 const SizedBox(width: 12),
               ],
               Expanded(
-                child: ChatMarkdownBody(
-                  text: _characterPreviewText,
-                  settings: settings,
-                  textColor: colorScheme.onSurface,
-                  inlineCodeColor: colorScheme.surfaceContainerHigh,
-                  codeBlockColor: colorScheme.surfaceContainerLow,
-                  selectable: false,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(4),
+                      topRight: Radius.circular(18),
+                      bottomLeft: Radius.circular(18),
+                      bottomRight: Radius.circular(18),
+                    ),
+                    border: Border.all(color: colorScheme.outlineVariant),
+                  ),
+                  child: ChatMarkdownBody(
+                    text: _characterPreviewText,
+                    settings: settings,
+                    textColor: colorScheme.onSurface,
+                    inlineCodeColor: colorScheme.surfaceContainerHigh,
+                    codeBlockColor: colorScheme.surfaceContainerLow,
+                    selectable: false,
+                  ),
                 ),
               ),
             ],
@@ -245,123 +379,12 @@ class _ThemePreviewCard extends StatelessWidget {
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.child});
+// ---------------------------------------------------------------------------
+// 分区与行：颜色
+// ---------------------------------------------------------------------------
 
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuoteStyleDropdownTile extends StatelessWidget {
-  const _QuoteStyleDropdownTile({required this.value, required this.onChanged});
-
-  final AppQuoteStyle value;
-  final ValueChanged<AppQuoteStyle> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '引号',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '选择显示样式',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 50, maxWidth: 60),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<AppQuoteStyle>(
-                  alignment: AlignmentDirectional.center,
-                  value: value,
-                  isExpanded: true,
-                  borderRadius: BorderRadius.circular(16),
-                  focusColor: Colors.transparent,
-                  dropdownColor: colorScheme.surface,
-                  iconEnabledColor: colorScheme.onSurfaceVariant,
-                  items: AppQuoteStyle.selectableValues.map((style) {
-                    return DropdownMenuItem<AppQuoteStyle>(
-                      value: style,
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: Text(
-                          '${style.leading}${style.trailing}',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (style) {
-                    if (style != null) {
-                      onChanged(style);
-                    }
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ThemeColorPaletteTile extends StatelessWidget {
-  const _ThemeColorPaletteTile({
-    required this.selectedIndex,
-    required this.onChanged,
-  });
+class _ThemeColorRow extends StatelessWidget {
+  const _ThemeColorRow({required this.selectedIndex, required this.onChanged});
 
   final int selectedIndex;
   final ValueChanged<int> onChanged;
@@ -370,52 +393,216 @@ class _ThemeColorPaletteTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colorScheme.outlineVariant),
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: const _LeadingIcon(Icons.palette_outlined),
+      title: const Text(
+        '主题色',
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          '点击右侧色板选择主题主色',
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '当前颜色',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
+      trailing: PalettePickerButton(
+        selectedIndex: selectedIndex,
+        onChanged: onChanged,
+        swatchSize: 24,
+      ),
+    );
+  }
+}
+
+class _FontFamilyRow extends StatelessWidget {
+  const _FontFamilyRow({required this.fontFamily, required this.onChanged});
+
+  final String? fontFamily;
+  final ValueChanged<String?> onChanged;
+
+  void _showFontEditor(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '自定义字体',
+                  style: Theme.of(
+                    sheetContext,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '输入字体族名称，或加载 .ttf / .otf 字体文件',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '仅显示已选颜色，点击右侧展开完整色板',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                ),
+                const SizedBox(height: 16),
+                ThemeFontFamilyConfigTile(
+                  fontFamily: fontFamily,
+                  onChanged: onChanged,
+                  flat: true,
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('完成'),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            PalettePickerButton(
-              selectedIndex: selectedIndex,
-              onChanged: onChanged,
-              swatchSize: 28,
-            ),
-          ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasFont = fontFamily != null && fontFamily!.isNotEmpty;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: const _LeadingIcon(Icons.font_download_outlined),
+      title: const Text(
+        '自定义字体',
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          hasFont ? '当前：$fontFamily' : '系统默认字体',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+        ),
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: colorScheme.onSurfaceVariant,
+      ),
+      onTap: () => _showFontEditor(context),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 分区与行：引号与阴影
+// ---------------------------------------------------------------------------
+
+class _QuoteStyleRow extends StatelessWidget {
+  const _QuoteStyleRow({required this.value, required this.onChanged});
+
+  final AppQuoteStyle value;
+  final ValueChanged<AppQuoteStyle> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: const _LeadingIcon(Icons.format_quote_rounded),
+      title: const Text(
+        '引号样式',
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          '选择引号的显示样式',
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+        ),
+      ),
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 54, maxWidth: 64),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<AppQuoteStyle>(
+            value: value,
+            isExpanded: true,
+            alignment: AlignmentDirectional.centerEnd,
+            borderRadius: BorderRadius.circular(16),
+            focusColor: Colors.transparent,
+            dropdownColor: colorScheme.surface,
+            iconEnabledColor: colorScheme.onSurfaceVariant,
+            items: AppQuoteStyle.selectableValues.map((style) {
+              return DropdownMenuItem<AppQuoteStyle>(
+                value: style,
+                child: Text(
+                  '${style.leading}${style.trailing}',
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              );
+            }).toList(),
+            onChanged: (style) {
+              if (style != null) {
+                onChanged(style);
+              }
+            },
+          ),
         ),
       ),
     );
   }
 }
 
-class _BodyTextColorConfigTile extends StatelessWidget {
-  const _BodyTextColorConfigTile({
+class _ShadowSwitchRow extends StatelessWidget {
+  const _ShadowSwitchRow({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: const _LeadingIcon(Icons.auto_awesome_outlined),
+      title: const Text(
+        '聊天消息字体阴影',
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          '为正文文字增加柔和投影，提升可读性',
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+        ),
+      ),
+      trailing: Switch(value: value, onChanged: onChanged),
+      onTap: () => onChanged(!value),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 分区与行：文本样式
+// ---------------------------------------------------------------------------
+
+class _BodyTextColorRow extends StatelessWidget {
+  const _BodyTextColorRow({
     required this.settings,
     required this.lightValue,
     required this.darkValue,
@@ -440,8 +627,6 @@ class _BodyTextColorConfigTile extends StatelessWidget {
       seedColor: seedColor,
       brightness: Brightness.dark,
     );
-    final lightBackground = lightColorScheme.surfaceContainerLow;
-    final darkBackground = darkColorScheme.surfaceContainerLow;
     final customEnabled = lightValue != null || darkValue != null;
     final effectiveLightIndex =
         lightValue ?? defaultBodyTextColorPaletteIndex(Brightness.light);
@@ -449,8 +634,8 @@ class _BodyTextColorConfigTile extends StatelessWidget {
         darkValue ?? defaultBodyTextColorPaletteIndex(Brightness.dark);
     final effectiveTextColor = customEnabled
         ? (colorScheme.brightness == Brightness.dark
-            ? paletteColorAt(effectiveDarkIndex)
-            : paletteColorAt(effectiveLightIndex))
+              ? paletteColorAt(effectiveDarkIndex)
+              : paletteColorAt(effectiveLightIndex))
         : colorScheme.onSurface;
     final previewStyle = buildBaseMessageTextStyle(
       textColor: effectiveTextColor,
@@ -458,101 +643,91 @@ class _BodyTextColorConfigTile extends StatelessWidget {
       enableShadow: chatTextTheme.enableMessageTextShadow,
     );
 
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '正文颜色',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _LeadingIcon(Icons.text_format_rounded),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '正文颜色',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w500,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        customEnabled ? '使用自定义正文颜色' : '跟随当前主题正文色',
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.4,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      customEnabled ? '使用自定义正文颜色' : '跟随当前主题正文色',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.35,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Switch(
-                  value: customEnabled,
-                  onChanged: (enabled) {
-                    if (enabled) {
-                      onChanged(
-                        defaultBodyTextColorPaletteIndex(Brightness.light),
-                        defaultBodyTextColorPaletteIndex(Brightness.dark),
-                      );
-                    } else {
-                      onChanged(null, null);
-                    }
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+              ),
+              Switch(
+                value: customEnabled,
+                onChanged: (enabled) {
+                  if (enabled) {
+                    onChanged(
+                      defaultBodyTextColorPaletteIndex(Brightness.light),
+                      defaultBodyTextColorPaletteIndex(Brightness.dark),
+                    );
+                  } else {
+                    onChanged(null, null);
+                  }
+                },
+              ),
+            ],
+          ),
+          if (customEnabled) ...[
+            const SizedBox(height: 8),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(child: Text('示例正文', style: previewStyle)),
-                if (customEnabled) ...[
-                  const SizedBox(width: 12),
-                  DualPalettePickerButton(
-                    lightIndex: effectiveLightIndex,
-                    darkIndex: effectiveDarkIndex,
-                    onChanged: (light, dark) =>
-                        onChanged(light, dark),
-                    swatchSize: 20,
-                    lightBackground: lightBackground,
-                    darkBackground: darkBackground,
-                  ),
-                ],
+                const SizedBox(width: 12),
+                DualPalettePickerButton(
+                  lightIndex: effectiveLightIndex,
+                  darkIndex: effectiveDarkIndex,
+                  onChanged: (light, dark) => onChanged(light, dark),
+                  swatchSize: 20,
+                  lightBackground: lightColorScheme.surfaceContainerLow,
+                  darkBackground: darkColorScheme.surfaceContainerLow,
+                ),
               ],
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 }
 
-class _TextStyleConfigTile extends StatelessWidget {
-  const _TextStyleConfigTile({
+class _TextStyleRow extends StatelessWidget {
+  const _TextStyleRow({
     required this.settings,
     required this.title,
+    required this.icon,
     required this.value,
     required this.onChanged,
   });
 
   final AppSettings settings;
   final String title;
+  final IconData icon;
   final ChatTextStyleConfig value;
   final ValueChanged<ChatTextStyleConfig> onChanged;
 
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final chatTextTheme = resolveActiveChatTextTheme(settings);
+  void _showEditor(BuildContext context) {
     final seedColor = resolveThemeColor(settings);
     final lightColorScheme = ColorScheme.fromSeed(
       seedColor: seedColor,
@@ -562,8 +737,31 @@ class _TextStyleConfigTile extends StatelessWidget {
       seedColor: seedColor,
       brightness: Brightness.dark,
     );
-    final lightBackground = lightColorScheme.surfaceContainerLow;
-    final darkBackground = darkColorScheme.surfaceContainerLow;
+
+    showModalBottomSheet<ChatTextStyleConfig>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return _TextStyleEditorSheet(
+          title: title,
+          initial: value,
+          settings: settings,
+          lightBackground: lightColorScheme.surfaceContainerLow,
+          darkBackground: darkColorScheme.surfaceContainerLow,
+        );
+      },
+    ).then((result) {
+      if (result != null) {
+        onChanged(result);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final chatTextTheme = resolveActiveChatTextTheme(settings);
     final previewBaseStyle = buildBaseMessageTextStyle(
       textColor: colorScheme.onSurface,
       brightness: colorScheme.brightness,
@@ -575,97 +773,178 @@ class _TextStyleConfigTile extends StatelessWidget {
       brightness: colorScheme.brightness,
     );
 
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colorScheme.outlineVariant),
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: _LeadingIcon(icon),
+      title: Text(
+        title,
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          '${value.fontStyleMode.label} · ${(value.opacity * 100).round()}%',
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('示例', style: previewStyle.copyWith(fontSize: 15)),
+          const SizedBox(width: 4),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ],
+      ),
+      onTap: () => _showEditor(context),
+    );
+  }
+}
+
+class _TextStyleEditorSheet extends StatefulWidget {
+  const _TextStyleEditorSheet({
+    required this.title,
+    required this.initial,
+    required this.settings,
+    required this.lightBackground,
+    required this.darkBackground,
+  });
+
+  final String title;
+  final ChatTextStyleConfig initial;
+  final AppSettings settings;
+  final Color lightBackground;
+  final Color darkBackground;
+
+  @override
+  State<_TextStyleEditorSheet> createState() => _TextStyleEditorSheetState();
+}
+
+class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
+  late ChatTextStyleConfig _config;
+
+  @override
+  void initState() {
+    super.initState();
+    _config = widget.initial;
+  }
+
+  TextStyle get _previewStyle {
+    final colorScheme = Theme.of(context).colorScheme;
+    final chatTextTheme = resolveActiveChatTextTheme(widget.settings);
+    final baseStyle = buildBaseMessageTextStyle(
+      textColor: colorScheme.onSurface,
+      brightness: colorScheme.brightness,
+      enableShadow: chatTextTheme.enableMessageTextShadow,
+    );
+    return buildDecoratedChatTextStyle(
+      baseStyle: baseStyle,
+      config: _config,
+      brightness: colorScheme.brightness,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              title,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(child: Text('示例文本', style: previewStyle)),
-                const SizedBox(width: 12),
-                DualPalettePickerButton(
-                  lightIndex: value.paletteIndex,
-                  darkIndex: value.darkPaletteIndex ?? value.paletteIndex,
-                  onChanged: (light, dark) =>
-                      onChanged(value.copyWith(
-                        paletteIndex: light,
-                        darkPaletteIndex: dark,
-                      )),
-                  swatchSize: 20,
-                  lightBackground: lightBackground,
-                  darkBackground: darkBackground,
-                ),
-              ],
+              '编辑「${widget.title}」',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 14),
-            Text(
-              '样式',
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurfaceVariant,
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: colorScheme.outlineVariant),
               ),
+              child: Text('示例文本 Aa 123', style: _previewStyle),
             ),
+            const SizedBox(height: 18),
+            _EditorLabel('颜色（浅色 / 深色）'),
             const SizedBox(height: 8),
-            DropdownButtonFormField<ChatTextFontStyleMode>(
-              initialValue: value.fontStyleMode,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: OutlineInputBorder(),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: DualPalettePickerButton(
+                lightIndex: _config.paletteIndex,
+                darkIndex: _config.darkPaletteIndex ?? _config.paletteIndex,
+                onChanged: (light, dark) => setState(() {
+                  _config = _config.copyWith(
+                    paletteIndex: light,
+                    darkPaletteIndex: dark,
+                  );
+                }),
+                swatchSize: 22,
+                lightBackground: widget.lightBackground,
+                darkBackground: widget.darkBackground,
               ),
-              items: ChatTextFontStyleMode.values.map((mode) {
-                return DropdownMenuItem<ChatTextFontStyleMode>(
-                  value: mode,
-                  child: Text(mode.label),
-                );
-              }).toList(),
-              onChanged: (next) {
-                if (next != null) {
-                  onChanged(value.copyWith(fontStyleMode: next));
-                }
-              },
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
+            _EditorLabel('样式'),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ChatTextFontStyleMode>(
+                segments: [
+                  for (final mode in ChatTextFontStyleMode.values)
+                    ButtonSegment<ChatTextFontStyleMode>(
+                      value: mode,
+                      label: Text(mode.label),
+                    ),
+                ],
+                selected: {_config.fontStyleMode},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) => setState(() {
+                  _config = _config.copyWith(fontStyleMode: selection.first);
+                }),
+              ),
+            ),
+            const SizedBox(height: 18),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                _EditorLabel('透明度'),
                 Text(
-                  '透明度',
+                  '${(_config.opacity * 100).round()}%',
                   style: TextStyle(
                     fontSize: 13,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  '${(value.opacity * 100).round()}%',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.primary,
                     fontWeight: FontWeight.w600,
+                    color: colorScheme.primary,
                   ),
                 ),
               ],
             ),
             Slider(
-              value: value.opacity,
+              value: _config.opacity,
               min: 0.1,
               max: 1.0,
               divisions: 18,
-              onChanged: (next) => onChanged(value.copyWith(opacity: next)),
+              onChanged: (next) => setState(() {
+                _config = _config.copyWith(opacity: next);
+              }),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(_config),
+                child: const Text('完成'),
+              ),
             ),
           ],
         ),
@@ -674,54 +953,97 @@ class _TextStyleConfigTile extends StatelessWidget {
   }
 }
 
-class _SwitchTile extends StatelessWidget {
-  const _SwitchTile({
-    required this.title,
-    required this.value,
-    required this.onChanged,
-  });
+class _EditorLabel extends StatelessWidget {
+  const _EditorLabel(this.text);
 
-  final String title;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 通用视觉组件
+// ---------------------------------------------------------------------------
+
+/// 分区小标题，M3 设置页常见的主题色 label。
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.label);
+
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: () => onChanged(!value),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colorScheme.outlineVariant),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(value: value, onChanged: onChanged),
-            ],
-          ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
         ),
       ),
+    );
+  }
+}
+
+/// 分组卡片：圆角容器内承载一组设置行。
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(mainAxisSize: MainAxisSize.min, children: children),
+    );
+  }
+}
+
+/// 分组内相邻行之间的分隔线，缩进与文字对齐。
+Widget _groupDivider(BuildContext context) {
+  final colorScheme = Theme.of(context).colorScheme;
+  return Divider(
+    height: 1,
+    thickness: 1,
+    indent: 72,
+    endIndent: 16,
+    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+  );
+}
+
+/// 行首的圆角图标徽标。
+class _LeadingIcon extends StatelessWidget {
+  const _LeadingIcon(this.icon);
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: colorScheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: 22, color: colorScheme.primary),
     );
   }
 }
