@@ -554,7 +554,7 @@ class _EntryRow extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(8),
                 child: Icon(
-                  Icons.drag_handle,
+                  Icons.drag_indicator_rounded,
                   size: 22,
                   color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
                 ),

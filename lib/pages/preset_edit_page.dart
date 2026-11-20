@@ -636,7 +636,7 @@ class _PromptCardState extends State<_PromptCard> {
                     child: Padding(
                       padding: const EdgeInsets.all(8),
                       child: Icon(
-                        Icons.drag_handle,
+                        Icons.drag_indicator_rounded,
                         color: colorScheme.onSurfaceVariant.withValues(
                           alpha: 0.65,
                         ),

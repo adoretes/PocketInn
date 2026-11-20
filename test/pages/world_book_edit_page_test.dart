@@ -202,7 +202,7 @@ void main() {
     expect(topOf('第一条内容') < topOf('第二条内容'), isTrue);
 
     final gesture = await tester.startGesture(
-      tester.getCenter(find.byIcon(Icons.drag_handle).first),
+      tester.getCenter(find.byIcon(Icons.drag_indicator_rounded).first),
     );
     await tester.pump(const Duration(milliseconds: 60));
     await gesture.moveBy(const Offset(0, 160));
