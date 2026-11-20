@@ -241,7 +241,7 @@ class _WorldBookEditPageState extends State<WorldBookEditPage> {
     _descriptionController = TextEditingController(
       text: widget.worldBook.description,
     );
-    _entries = widget.worldBook.entries.map((item) => item.copyWith()).toList();
+    _entries = widget.worldBook.withUniqueEntryIds().entries.toList();
     _baseline = widget.worldBook;
   }
 

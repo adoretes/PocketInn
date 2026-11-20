@@ -763,9 +763,7 @@ class CharacterService {
       if (book != null) {
         return {
           'name': book.name,
-          'entries': book.entries
-              .map((entry) => _exportCharacterBookEntry(entry))
-              .toList(),
+          'entries': _exportCharacterBookEntries(book.entries),
           'extensions': record.characterBookExtensions,
         };
       }
@@ -807,7 +805,7 @@ class CharacterService {
         colorValue: 0xFF4B6CB7,
         entries: _worldBookEntriesFromCharacterBook(characterBook),
         updatedAt: DateTime.now(),
-      );
+      ).withUniqueEntryIds();
       await WorldBookService.instance.save(worldBook);
       worldBookId = worldBook.id;
     } else if (existingWorldBookId != null && existingWorldBookId.isNotEmpty) {
@@ -857,9 +855,13 @@ class CharacterService {
 
     final positionValue = entry['position'];
     final position = _normalizeWorldBookPosition(positionValue);
+    final sourceId = entry['id']?.toString();
+    final id = sourceId == null || sourceId.trim().isEmpty
+        ? fallbackId
+        : sourceId;
 
     return WorldBookEntry(
-      id: 'entry-${entry['id'] ?? fallbackId}',
+      id: 'entry-$id',
       key:
           (entry['key'] as List<dynamic>? ??
                   entry['keys'] as List<dynamic>? ??
@@ -916,7 +918,33 @@ class CharacterService {
     return <String, dynamic>{};
   }
 
-  Map<String, dynamic> _exportCharacterBookEntry(WorldBookEntry entry) {
+  List<Map<String, dynamic>> _exportCharacterBookEntries(
+    List<WorldBookEntry> entries,
+  ) {
+    // 不同内部 ID 可能有相同数字尾缀，或根本没有数字尾缀。
+    // 在集合范围内分配导出 ID，且不占用后续条目原有的有效数字 ID。
+    final candidates = entries
+        .map((entry) => _parseExportEntryId(entry.id))
+        .toList();
+    final reserved = candidates.whereType<int>().toSet();
+    final used = <int>{};
+    var nextId = 0;
+    final result = <Map<String, dynamic>>[];
+    for (var i = 0; i < entries.length; i++) {
+      var id = candidates[i];
+      if (id == null || used.contains(id)) {
+        while (reserved.contains(nextId) || used.contains(nextId)) {
+          nextId++;
+        }
+        id = nextId++;
+      }
+      used.add(id);
+      result.add(_exportCharacterBookEntry(entries[i], id));
+    }
+    return result;
+  }
+
+  Map<String, dynamic> _exportCharacterBookEntry(WorldBookEntry entry, int id) {
     final extensions = Map<String, dynamic>.from(entry.extensions);
     final position = entry.position == 1 ? 'after_char' : 'before_char';
 
@@ -949,7 +977,7 @@ class CharacterService {
       },
       'enabled': entry.isEnabled,
       'insertion_order': entry.order,
-      'id': _parseExportEntryId(entry.id),
+      'id': id,
       'name': entry.comment,
       'comment': entry.comment,
       'selective': entry.selective,
@@ -957,13 +985,13 @@ class CharacterService {
       'case_sensitive': extensions['case_sensitive'] ?? false,
       'constant': entry.constant,
       'position': position,
-      'display_index': _parseExportEntryId(entry.id) + 1,
+      'display_index': id + 1,
     };
   }
 
-  int _parseExportEntryId(String rawId) {
+  int? _parseExportEntryId(String rawId) {
     final digits = RegExp(r'(\d+)$').firstMatch(rawId)?.group(1);
-    return int.tryParse(digits ?? '') ?? 0;
+    return int.tryParse(digits ?? '');
   }
 
   Future<String?> _pickExportPath(

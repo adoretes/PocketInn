@@ -176,6 +176,9 @@ class WorldBookService {
   Future<void> save(WorldBook book) async {
     _checkInitialized();
 
+    // 保存前兜底校验，避免角色卡或备份中的重复 ID 继续落盘。
+    book = book.withUniqueEntryIds();
+
     // 保存完整数据到单独文件
     final file = File('$_worldBooksPath/${book.id}.json');
     final content = const JsonEncoder.withIndent('  ').convert(book.toJson());
@@ -388,10 +391,9 @@ class WorldBookService {
     }
 
     final newEntries = [...book.entries, entry];
-    final updatedBook = book.copyWith(
-      entries: newEntries,
-      updatedAt: DateTime.now(),
-    );
+    final updatedBook = book
+        .copyWith(entries: newEntries, updatedAt: DateTime.now())
+        .withUniqueEntryIds();
 
     await save(updatedBook);
     return updatedBook;

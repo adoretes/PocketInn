@@ -206,7 +206,34 @@ abstract class WorldBook with _$WorldBook {
   }) = _WorldBook;
 
   factory WorldBook.fromJson(Map<String, dynamic> json) =>
-      _$WorldBookFromJson(json);
+      _$WorldBookFromJson(json).withUniqueEntryIds();
+
+  /// 修复缺失或重复的内部 ID，保留条目内容、顺序以及首次出现的有效 ID。
+  ///
+  /// 预留所有现有 ID，避免补号占用后面条目的 ID；确定性补号也保证历史
+  /// 文件在保存前重复加载时得到相同结果。名称和内容相同的条目仍独立保留。
+  WorldBook withUniqueEntryIds() {
+    final reserved = entries
+        .map((entry) => entry.id)
+        .where((id) => id.trim().isNotEmpty)
+        .toSet();
+    final used = <String>{};
+    var nextId = 0;
+    var changed = false;
+    final normalized = entries.map((entry) {
+      if (entry.id.trim().isNotEmpty && used.add(entry.id)) {
+        return entry;
+      }
+      String id;
+      do {
+        id = 'entry-${nextId++}';
+      } while (reserved.contains(id) || used.contains(id));
+      used.add(id);
+      changed = true;
+      return entry.copyWith(id: id);
+    }).toList();
+    return changed ? copyWith(entries: normalized) : this;
+  }
 
   /// 从 SillyTavern 格式创建
   factory WorldBook.fromSillyTavernJson(

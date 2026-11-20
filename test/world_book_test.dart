@@ -110,6 +110,78 @@ void main() {
     });
   });
 
+  group('世界书条目身份修复', () {
+    test('只修复缺失和重复 ID，并预留后续合法 ID', () {
+      final entries = <Map<String, dynamic>>[
+        {},
+        {'id': null},
+        {'id': ''},
+        {'id': '  '},
+        {'id': 'entry-0'},
+        {'id': 'entry-0'},
+        {'id': 'entry-1'},
+      ];
+      final json = <String, dynamic>{
+        'id': 'wb-identity',
+        'name': '身份测试',
+        'entries': [
+          for (var i = 0; i < entries.length; i++)
+            {
+              ...entries[i],
+              'comment': '同名条目',
+              'content': '内容-$i',
+              'isEnabled': i.isEven,
+              'extensions': {'probability': 60},
+            },
+        ],
+      };
+
+      final book = WorldBook.fromJson(json);
+      expect(book.entries.map((entry) => entry.id), [
+        'entry-2',
+        'entry-3',
+        'entry-4',
+        'entry-5',
+        'entry-0',
+        'entry-6',
+        'entry-1',
+      ]);
+      expect(book.entries.map((entry) => entry.content), [
+        for (var i = 0; i < entries.length; i++) '内容-$i',
+      ]);
+      expect(book.entries.every((entry) => entry.comment == '同名条目'), isTrue);
+      expect(book.entries.map((entry) => entry.isEnabled), [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+      ]);
+      expect(
+        book.entries.every((entry) => entry.extensions['probability'] == 60),
+        isTrue,
+      );
+      expect(identical(book.withUniqueEntryIds(), book), isTrue);
+      expect(WorldBook.fromJson(json), book);
+      expect(WorldBook.fromJson(book.toJson()), book);
+    });
+
+    test('独立 ST 导入的同名同内容条目保持独立，不按 uid 合并', () {
+      final entry = {'uid': 1, 'comment': '同名条目', 'content': '相同内容'};
+      final book = WorldBook.fromSillyTavernJson(
+        jsonEncode({
+          'entries': {'1': entry, '8': entry},
+        }),
+      );
+
+      expect(book.entries.map((entry) => entry.id), ['entry-1', 'entry-8']);
+      expect(identical(book.withUniqueEntryIds(), book), isTrue);
+      expect(book.toSillyTavernJson()['entries'], hasLength(2));
+    });
+  });
+
   test('服务生成的 ID 不重复', () {
     final ids = {
       for (var i = 0; i < 100; i++) WorldBookService.instance.generateId(),
@@ -135,6 +207,67 @@ void main() {
     setUp(() async {
       await StorageService.instance.clearAllData();
       await WorldBookService.instance.clearAllData();
+    });
+
+    test('保存和追加条目会修复重复 ID，返回值与落盘一致', () async {
+      final book = await WorldBookService.instance.create(name: '重复 ID 测试');
+      const entry = WorldBookEntry(
+        id: 'entry-0',
+        comment: '同名条目',
+        content: '内容',
+      );
+      await WorldBookService.instance.save(
+        book.copyWith(entries: [entry, entry]),
+      );
+      final rawFile = File(
+        '${StorageService.instance.dataDir}/world_books/${book.id}.json',
+      );
+      final saved = jsonDecode(await rawFile.readAsString()) as Map;
+      expect((saved['entries'] as List).map((item) => item['id']), [
+        'entry-0',
+        'entry-1',
+      ]);
+      final updated = await WorldBookService.instance.addEntry(book.id, entry);
+      expect(updated.entries.map((item) => item.id).toSet(), hasLength(3));
+      expect(await WorldBookService.instance.loadById(book.id), updated);
+    });
+
+    test('加载历史脏文件后只更新或删除选中的条目', () async {
+      final book = await WorldBookService.instance.create(name: '历史 ID 测试');
+      const entry = WorldBookEntry(
+        id: 'entry-0',
+        comment: '同名条目',
+        content: '第一条',
+      );
+      final rawFile = File(
+        '${StorageService.instance.dataDir}/world_books/${book.id}.json',
+      );
+      await rawFile.writeAsString(
+        jsonEncode(
+          book
+              .copyWith(
+                entries: [
+                  entry,
+                  entry.copyWith(content: '第二条'),
+                ],
+              )
+              .toJson(),
+        ),
+      );
+
+      final loaded = (await WorldBookService.instance.loadById(book.id))!;
+      expect(loaded.entries.map((item) => item.id), ['entry-0', 'entry-1']);
+      final updated = await WorldBookService.instance.updateEntry(
+        book.id,
+        loaded.entries[1].copyWith(content: '仅修改第二条', isEnabled: false),
+      );
+      expect(updated.entries.map((item) => item.content), ['第一条', '仅修改第二条']);
+      expect(updated.entries.map((item) => item.isEnabled), [true, false]);
+      final deleted = await WorldBookService.instance.deleteEntry(
+        book.id,
+        loaded.entries[0].id,
+      );
+      expect(deleted.entries.single.content, '仅修改第二条');
     });
 
     test('索引文件损坏时按目录重建，不会丢书', () async {
