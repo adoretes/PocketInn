@@ -136,6 +136,64 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('空条目时显示占位提示', (tester) async {
+    final book = WorldBook(
+      id: 'wb-empty',
+      name: '空世界书',
+      description: '',
+      colorValue: 0xFF2E7D6B,
+      entries: const [],
+    );
+    await _pumpBook(tester, book);
+
+    expect(find.text('暂无条目'), findsOneWidget);
+    expect(find.text('点击右上角「新建」添加第一条条目'), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
+  });
+
+  testWidgets('窄屏浏览条目列表无布局溢出', (tester) async {
+    final book = WorldBook(
+      id: 'wb-narrow',
+      name: '窄屏世界书',
+      description: '简短描述',
+      colorValue: 0xFF2E7D6B,
+      entries: [
+        for (var i = 0; i < 8; i++)
+          WorldBookEntry(
+            id: 'e$i',
+            key: ['关键词$i'],
+            content: '第 $i 条条目的内容，用于测试窄屏下的换行与溢出表现。',
+            comment: '条目 $i',
+          ),
+      ],
+    );
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(home: WorldBookEditPage(worldBook: book)),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(Scrollable).first;
+    for (var i = 0; i < 10; i++) {
+      await tester.drag(scrollable, const Offset(0, -260));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    }
+  });
+}
+
+Future<void> _pumpBook(WidgetTester tester, WorldBook book) async {
+  tester.view.physicalSize = const Size(1200, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MaterialApp(home: WorldBookEditPage(worldBook: book)),
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pumpDuplicateEntries(WidgetTester tester, String id) async {
