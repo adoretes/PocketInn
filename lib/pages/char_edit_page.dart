@@ -45,7 +45,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
   late TextEditingController personalityController;
   late TextEditingController scenarioController;
   late TextEditingController firstMesController;
-  late TextEditingController mesExampleController;
+  late List<TextEditingController> _mesExampleControllers;
   late TextEditingController creatorNotesController;
   late TextEditingController systemPromptController;
   late TextEditingController postHistoryInstructionsController;
@@ -53,6 +53,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
   late List<String> alternateGreetings;
   late List<TextEditingController> _greetingControllers;
   int _currentGreetingIndex = 0;
+  int _currentExampleIndex = 0;
   late List<String> tags;
   List<ChatVariable> _variables = [];
 
@@ -84,9 +85,12 @@ class _RoleEditPageState extends State<RoleEditPage> {
     );
     scenarioController = TextEditingController(text: data['scenario'] ?? '');
     firstMesController = TextEditingController(text: data['first_mes'] ?? '');
-    mesExampleController = TextEditingController(
-      text: data['mes_example'] ?? '',
-    );
+    _mesExampleControllers = _splitMesExamples(
+      data['mes_example'] as String? ?? '',
+    ).map((example) => TextEditingController(text: example)).toList();
+    if (_mesExampleControllers.isEmpty) {
+      _mesExampleControllers = [TextEditingController()];
+    }
     creatorNotesController = TextEditingController(
       text: data['creator_notes'] ?? '',
     );
@@ -143,7 +147,9 @@ class _RoleEditPageState extends State<RoleEditPage> {
     personalityController.dispose();
     scenarioController.dispose();
     firstMesController.dispose();
-    mesExampleController.dispose();
+    for (final controller in _mesExampleControllers) {
+      controller.dispose();
+    }
     creatorNotesController.dispose();
     systemPromptController.dispose();
     postHistoryInstructionsController.dispose();
@@ -217,7 +223,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
       'personality': personalityController.text.trim(),
       'scenario': scenarioController.text.trim(),
       'first_mes': trimmedFirstMes,
-      'mes_example': mesExampleController.text.trim(),
+      'mes_example': _joinMesExamples(),
       'creator_notes': creatorNotesController.text.trim(),
       'system_prompt': systemPromptController.text.trim(),
       'post_history_instructions': postHistoryInstructionsController.text
@@ -440,6 +446,61 @@ class _RoleEditPageState extends State<RoleEditPage> {
     if (_currentGreetingIndex >= _greetingControllers.length - 1) return;
     setState(() {
       _currentGreetingIndex++;
+    });
+  }
+
+  static List<String> _splitMesExamples(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return [];
+    // 角色卡中多条对话示例以 <START> 分隔，逐段拆分为独立条目。
+    return trimmed
+        .split(RegExp(r'<START>', caseSensitive: false))
+        .map((segment) => segment.trim())
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+  }
+
+  String _joinMesExamples() {
+    final examples = _mesExampleControllers
+        .map((controller) => controller.text.trim())
+        .where((text) => text.isNotEmpty)
+        .toList();
+    if (examples.isEmpty) return '';
+    return '<START>\n${examples.join('\n<START>\n')}';
+  }
+
+  void _removeCurrentExample() {
+    if (_mesExampleControllers.isEmpty) return;
+    setState(() {
+      _mesExampleControllers[_currentExampleIndex].dispose();
+      _mesExampleControllers.removeAt(_currentExampleIndex);
+      if (_mesExampleControllers.isEmpty) {
+        _mesExampleControllers = [TextEditingController()];
+        _currentExampleIndex = 0;
+      } else if (_currentExampleIndex >= _mesExampleControllers.length) {
+        _currentExampleIndex = _mesExampleControllers.length - 1;
+      }
+    });
+  }
+
+  void _addNewExample() {
+    setState(() {
+      _mesExampleControllers.add(TextEditingController());
+      _currentExampleIndex = _mesExampleControllers.length - 1;
+    });
+  }
+
+  void _previousExample() {
+    if (_currentExampleIndex <= 0) return;
+    setState(() {
+      _currentExampleIndex--;
+    });
+  }
+
+  void _nextExample() {
+    if (_currentExampleIndex >= _mesExampleControllers.length - 1) return;
+    setState(() {
+      _currentExampleIndex++;
     });
   }
 
@@ -789,9 +850,10 @@ class _RoleEditPageState extends State<RoleEditPage> {
                     ),
                     const SizedBox(height: 16),
                     feathered(
-                      TextFormField(
+                      ExpandedTextEditorField(
                         controller: personalityController,
                         maxLines: 2,
+                        dialogTitle: '编辑性格、好恶',
                         decoration: InputDecoration(
                           labelText: '性格、好恶',
                           border: const OutlineInputBorder(),
@@ -846,7 +908,7 @@ class _RoleEditPageState extends State<RoleEditPage> {
                           ),
                           childrenPadding: const EdgeInsets.fromLTRB(
                             12,
-                            12,
+                            6,
                             12,
                             12,
                           ),
@@ -863,12 +925,119 @@ class _RoleEditPageState extends State<RoleEditPage> {
                             style: TextStyle(fontWeight: FontWeight.w500),
                           ),
                           children: [
-                            TextFormField(
-                              controller: mesExampleController,
-                              maxLines: 4,
+                            Row(
+                              children: [
+                                const Text(
+                                  '对话示例',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.keyboard_arrow_left,
+                                    size: 20,
+                                  ),
+                                  tooltip: '上一个',
+                                  onPressed: _currentExampleIndex > 0
+                                      ? _previousExample
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 2,
+                                  ),
+                                  child: Text(
+                                    '${_currentExampleIndex + 1} / ${_mesExampleControllers.length}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.keyboard_arrow_right,
+                                    size: 20,
+                                  ),
+                                  tooltip: '下一个',
+                                  onPressed:
+                                      _currentExampleIndex <
+                                          _mesExampleControllers.length - 1
+                                      ? _nextExample
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.add_circle_outline,
+                                    size: 20,
+                                  ),
+                                  tooltip: '增加',
+                                  onPressed: _addNewExample,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 20,
+                                  ),
+                                  tooltip: '删除',
+                                  onPressed: _removeCurrentExample,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ExpandedTextEditorField(
+                              controller:
+                                  _mesExampleControllers[_currentExampleIndex],
+                              maxLines: 5,
+                              minLines: 5,
+                              dialogTitle: '编辑对话示例',
                               decoration: const InputDecoration(
-                                labelText: '对话示例',
                                 border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -879,84 +1048,111 @@ class _RoleEditPageState extends State<RoleEditPage> {
                                   style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  '${_currentGreetingIndex + 1} / ${_greetingControllers.length}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: colorScheme.onSurfaceVariant,
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.keyboard_arrow_left,
+                                    size: 20,
+                                  ),
+                                  tooltip: '上一个',
+                                  onPressed: _currentGreetingIndex > 0
+                                      ? _previousGreeting
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 2,
+                                  ),
+                                  child: Text(
+                                    '${_currentGreetingIndex + 1} / ${_greetingControllers.length}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.keyboard_arrow_right,
+                                    size: 20,
+                                  ),
+                                  tooltip: '下一个',
+                                  onPressed:
+                                      _currentGreetingIndex <
+                                          _greetingControllers.length - 1
+                                      ? _nextGreeting
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.add_circle_outline,
+                                    size: 20,
+                                  ),
+                                  tooltip: '增加',
+                                  onPressed: _addNewGreeting,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 20,
+                                  ),
+                                  tooltip: '删除',
+                                  onPressed: _removeCurrentGreeting,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            TextFormField(
+                            const SizedBox(height: 6),
+                            ExpandedTextEditorField(
                               controller:
                                   _greetingControllers[_currentGreetingIndex],
                               maxLines: 5,
                               minLines: 5,
-                              decoration: InputDecoration(
-                                border: const OutlineInputBorder(),
-                                contentPadding: const EdgeInsets.symmetric(
+                              dialogTitle: '编辑替代问候语',
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
                                   horizontal: 12,
                                   vertical: 8,
-                                ),
-                                suffixIconConstraints: const BoxConstraints(
-                                  minWidth: 36,
-                                  minHeight: 0,
-                                ),
-                                suffixIcon: Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.keyboard_arrow_up,
-                                          size: 20,
-                                        ),
-                                        onPressed: _currentGreetingIndex > 0
-                                            ? _previousGreeting
-                                            : null,
-                                        visualDensity: VisualDensity.compact,
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.keyboard_arrow_down,
-                                          size: 20,
-                                        ),
-                                        onPressed:
-                                            _currentGreetingIndex <
-                                                _greetingControllers.length - 1
-                                            ? _nextGreeting
-                                            : null,
-                                        visualDensity: VisualDensity.compact,
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.add_circle_outline,
-                                          size: 20,
-                                        ),
-                                        onPressed: _addNewGreeting,
-                                        visualDensity: VisualDensity.compact,
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 20,
-                                        ),
-                                        onPressed: _removeCurrentGreeting,
-                                        visualDensity: VisualDensity.compact,
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                    ],
-                                  ),
                                 ),
                               ),
                             ),
