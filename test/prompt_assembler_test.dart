@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_inn/models/chat_message.dart';
 import 'package:pocket_inn/models/preset.dart';
 import 'package:pocket_inn/models/prompt_assembly.dart';
+import 'package:pocket_inn/models/prompt_context_entry.dart';
 import 'package:pocket_inn/models/world_book.dart';
 import 'package:pocket_inn/services/prompt_assembler.dart';
 
@@ -830,6 +831,292 @@ void main() {
       expect(result.messages.first.content, 'Before all history');
       expect(result.messages.last.role, 'user');
       expect(result.messages.last.content, '第一句');
+    });
+
+    test('contextEntries 按来源、role 与聊天记录顺序展开', () {
+      final result = PromptAssembler.build(
+        PromptAssemblyContext(
+          characterName: '艾琳',
+          characterCardData: _cardData(systemPrompt: '角色卡 main'),
+          userName: '林澈',
+          userSettingPrompt: '用户设定内容',
+          preset: Preset(
+            id: 'preset-1',
+            name: '测试预设',
+            updatedAt: DateTime(2026),
+            prompts: [
+              PresetPrompt(
+                identifier: 'personaDescription',
+                name: 'Persona',
+                marker: true,
+              ),
+              PresetPrompt(
+                identifier: 'main',
+                name: 'Main Prompt',
+                content: '预设 main',
+              ),
+              PresetPrompt(
+                identifier: 'worldInfoBefore',
+                name: 'World Before',
+                marker: true,
+              ),
+              PresetPrompt(
+                identifier: 'longTermMemory',
+                name: 'Memory',
+                marker: true,
+              ),
+              PresetPrompt(
+                identifier: 'chatHistory',
+                name: 'Chat History',
+                marker: true,
+              ),
+              PresetPrompt(
+                identifier: 'jailbreak',
+                name: 'Post-History Instructions',
+                content: '禁止 Markdown',
+              ),
+            ],
+          ),
+          selectedWorldBooks: [
+            WorldBook(
+              id: 'wb-1',
+              name: '世界书',
+              description: '',
+              colorValue: 0xFF000000,
+              entries: const [
+                WorldBookEntry(
+                  id: 'entry-1',
+                  key: ['溪桥'],
+                  keysecondary: [],
+                  content: '世界书内容',
+                  comment: '桥',
+                  constant: true,
+                  selective: false,
+                  selectiveLogic: 0,
+                  order: 10,
+                  position: 0,
+                  depth: 4,
+                  sticky: 0,
+                  cooldown: 0,
+                  delay: 0,
+                  isEnabled: true,
+                  extensions: {},
+                ),
+              ],
+            ),
+          ],
+          chatMessages: [
+            ChatMessage(text: '第一句', isMe: true),
+            ChatMessage(text: '第二句', isMe: false),
+          ],
+          currentInput: '第三句',
+          memoryContext: const ['记忆内容'],
+        ),
+      );
+
+      expect(result.contextEntries.map((entry) => entry.source).toList(), [
+        PromptContextSource.userSetting,
+        PromptContextSource.characterCard,
+        PromptContextSource.worldBook,
+        PromptContextSource.memory,
+        PromptContextSource.history,
+        PromptContextSource.history,
+        PromptContextSource.history,
+        PromptContextSource.postInstruction,
+      ]);
+      expect(result.contextEntries.map((entry) => entry.role).toList(), [
+        'system',
+        'system',
+        'system',
+        'system',
+        'user',
+        'assistant',
+        'user',
+        'system',
+      ]);
+      expect(result.contextEntries[1].name, '角色卡 · system_prompt');
+      expect(result.contextEntries[1].content, '角色卡 main');
+      expect(result.contextEntries[2].name, '世界书 · 桥');
+      expect(result.contextEntries[4].content, '第一句');
+      expect(result.contextEntries[5].content, '第二句');
+      expect(result.contextEntries[6].content, '第三句');
+    });
+  });
+
+  group('世界书上下文与实际请求一致', () {
+    PromptAssemblyResult buildWorldContext({
+      required List<WorldBookEntry> entries,
+      required List<PresetPrompt> prompts,
+      Map<String, String> variables = const {},
+    }) => PromptAssembler.build(
+      PromptAssemblyContext(
+        characterName: '艾琳',
+        characterCardData: _cardData(),
+        userName: '林澈',
+        userSettingPrompt: '',
+        preset: Preset(
+          id: 'world-context',
+          name: '测试预设',
+          updatedAt: DateTime(2026),
+          prompts: prompts,
+        ),
+        selectedWorldBooks: [
+          WorldBook(
+            id: 'book',
+            name: '世界书',
+            description: '',
+            colorValue: 0,
+            entries: entries,
+          ),
+        ],
+        chatMessages: const [],
+        currentInput: '你好',
+        chatVariables: variables,
+      ),
+    );
+
+    test('后续 setvar 不改变已经组装的世界书日志正文', () {
+      final result = buildWorldContext(
+        entries: const [
+          WorldBookEntry(
+            id: 'entry',
+            content: 'phase={{getvar::phase}}',
+            comment: '状态',
+            constant: true,
+          ),
+        ],
+        prompts: [
+          PresetPrompt(
+            identifier: 'worldInfoBefore',
+            name: 'Before',
+            marker: true,
+          ),
+          PresetPrompt(
+            identifier: 'later',
+            name: 'Later',
+            content: '{{setvar::phase::after}}tail',
+          ),
+          PresetPrompt(
+            identifier: 'worldInfoBefore',
+            name: 'Before Again',
+            marker: true,
+          ),
+        ],
+        variables: const {'phase': 'before'},
+      );
+
+      final worlds = result.contextEntries
+          .where((entry) => entry.source == PromptContextSource.worldBook)
+          .toList();
+      expect(worlds.map((entry) => entry.content), [
+        'phase=before',
+        'phase=after',
+      ]);
+      expect(
+        result.messages.single.content,
+        'phase=before\n\ntail\n\nphase=after',
+      );
+    });
+
+    test('条目间 setvar/getvar 按原顺序求值且忽略无正文的赋值条目', () {
+      final result = buildWorldContext(
+        entries: const [
+          WorldBookEntry(
+            id: 'set',
+            content: '{{setvar::phase::book}}',
+            comment: '赋值',
+            constant: true,
+            order: 1,
+          ),
+          WorldBookEntry(
+            id: 'get',
+            content: 'phase={{getvar::phase}}',
+            comment: '读取',
+            constant: true,
+            order: 2,
+          ),
+        ],
+        prompts: [
+          PresetPrompt(
+            identifier: 'worldInfoBefore',
+            name: 'Before',
+            marker: true,
+          ),
+          PresetPrompt(
+            identifier: 'later',
+            name: 'Later',
+            content: '{{setvar::phase::after}}tail',
+          ),
+        ],
+      );
+
+      final world = result.contextEntries.first;
+      expect(world.name, '世界书 · 读取');
+      expect(world.content, 'phase=book');
+      expect(result.messages.single.content, 'phase=book\n\ntail');
+    });
+
+    test('跨条目 trim 宏使用实际解析后的整段正文', () {
+      final result = buildWorldContext(
+        entries: const [
+          WorldBookEntry(
+            id: 'a',
+            content: 'alpha\n\n{{trim}}',
+            comment: 'A',
+            constant: true,
+            order: 1,
+          ),
+          WorldBookEntry(
+            id: 'b',
+            content: 'beta',
+            comment: 'B',
+            constant: true,
+            order: 2,
+          ),
+        ],
+        prompts: [
+          PresetPrompt(
+            identifier: 'worldInfoBefore',
+            name: 'Before',
+            marker: true,
+          ),
+        ],
+      );
+
+      expect(result.messages.single.content, 'alphabeta');
+      expect(
+        result.contextEntries.single.content,
+        result.messages.single.content,
+      );
+      expect(
+        result.contextEntries.single.source,
+        PromptContextSource.worldBook,
+      );
+    });
+
+    test('后置世界书日志沿用所有非零位置的请求语义', () {
+      final result = buildWorldContext(
+        entries: const [
+          WorldBookEntry(
+            id: 'after',
+            content: '后置条目',
+            comment: 'After',
+            constant: true,
+            position: 2,
+          ),
+        ],
+        prompts: [
+          PresetPrompt(
+            identifier: 'worldInfoAfter',
+            name: 'After',
+            marker: true,
+          ),
+        ],
+      );
+
+      expect(result.messages.single.content, '后置条目');
+      expect(result.contextEntries.single.name, '世界书 · After');
+      expect(result.contextEntries.single.content, '后置条目');
     });
   });
 }

@@ -10,6 +10,7 @@ import 'package:pocket_inn/models/api_config.dart';
 import 'package:pocket_inn/models/character_card.dart';
 import 'package:pocket_inn/models/chat_message.dart';
 import 'package:pocket_inn/models/chat_session.dart';
+import 'package:pocket_inn/models/prompt_context_entry.dart';
 import 'package:pocket_inn/pages/chat/chat_view_model.dart';
 import 'package:pocket_inn/pages/chat/widgets/message_edit_dialog.dart';
 import 'package:pocket_inn/services/character_service.dart';
@@ -64,6 +65,7 @@ class _FakeOpenAiApiService implements IOpenAiApiService {
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
     ChatCompletionCancelToken? cancellationToken,
   }) async {
     callCount++;
@@ -75,6 +77,7 @@ class _FakeOpenAiApiService implements IOpenAiApiService {
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
     ChatCompletionCancelToken? cancellationToken,
   }) => throw UnimplementedError();
 

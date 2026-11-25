@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../models/api_config.dart';
+import '../models/prompt_context_entry.dart';
 import 'openai_compatible_api_service.dart';
 
 abstract class IOpenAiApiService {
@@ -12,6 +13,7 @@ abstract class IOpenAiApiService {
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
     ChatCompletionCancelToken? cancellationToken,
   });
 
@@ -19,6 +21,7 @@ abstract class IOpenAiApiService {
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
     ChatCompletionCancelToken? cancellationToken,
   });
 }

@@ -12,6 +12,7 @@ import '../models/chat_session.dart';
 import '../models/chat_variables.dart';
 import '../models/preset.dart';
 import '../models/prompt_assembly.dart';
+import '../models/prompt_context_entry.dart';
 import '../models/regex_rule_group.dart';
 import '../models/world_book.dart';
 import 'chat_character_resolver.dart';
@@ -461,11 +462,22 @@ class ChatService {
       if (continueNudge.isNotEmpty)
         {'role': fixedRole, 'content': continueNudge},
     ];
+    final contextEntries = <PromptContextEntry>[
+      ...promptAssembly.contextEntries,
+      if (continueNudge.isNotEmpty)
+        PromptContextEntry(
+          source: PromptContextSource.preset,
+          role: fixedRole,
+          name: '继续提示',
+          content: continueNudge,
+        ),
+    ];
 
     try {
       final completion = await _createCompletionFromMessages(
         config,
         messages: requestMessages,
+        contextEntries: contextEntries,
         preset: preset,
         useStreaming: useStreaming,
         selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
@@ -595,11 +607,21 @@ class ChatService {
         {'role': message.role, 'content': message.content},
       {'role': fixedRole, 'content': choiceInstruction},
     ];
+    final contextEntries = <PromptContextEntry>[
+      ...promptAssembly.contextEntries,
+      PromptContextEntry(
+        source: PromptContextSource.preset,
+        role: fixedRole,
+        name: '选项生成提示',
+        content: choiceInstruction,
+      ),
+    ];
 
     try {
       final completion = await _createCompletionFromMessages(
         config,
         messages: requestMessages,
+        contextEntries: contextEntries,
         preset: preset,
         useStreaming: false,
         selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
@@ -704,11 +726,22 @@ class ChatService {
       if (impersonationPrompt.isNotEmpty)
         {'role': fixedRole, 'content': impersonationPrompt},
     ];
+    final contextEntries = <PromptContextEntry>[
+      ...promptAssembly.contextEntries,
+      if (impersonationPrompt.isNotEmpty)
+        PromptContextEntry(
+          source: PromptContextSource.preset,
+          role: fixedRole,
+          name: '扮演提示',
+          content: impersonationPrompt,
+        ),
+    ];
 
     try {
       final completion = await _createCompletionFromMessages(
         config,
         messages: requestMessages,
+        contextEntries: contextEntries,
         preset: preset,
         useStreaming: useStreaming,
         selectedRegexRuleGroupIds: effectiveRegexRuleGroupIds,
@@ -835,6 +868,7 @@ class ChatService {
     return _createCompletionFromMessages(
       config,
       messages: requestMessages,
+      contextEntries: promptAssembly.contextEntries,
       preset: preset,
       useStreaming: useStreaming,
       selectedRegexRuleGroupIds: selectedRegexRuleGroupIds,
@@ -849,23 +883,24 @@ class ChatService {
     required Preset preset,
     required bool useStreaming,
     required Set<String> selectedRegexRuleGroupIds,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
     ChatCompletionCancelToken? cancellationToken,
     void Function(ChatCompletionProgress progress)? onStreamProgress,
   }) async {
     final ruleGroups = await _loadRegexGroups(selectedRegexRuleGroupIds);
-    final requestMessages = ruleGroups.isEmpty
-        ? messages
-        : RegexReplacementService().applyToRequestMessages(
-            messages: messages,
-            groups: ruleGroups,
-          );
+    final request = RegexReplacementService().applyToRequestWithContext(
+      messages: messages,
+      groups: ruleGroups,
+      contextEntries: contextEntries,
+    );
 
     final api = GetIt.instance<IOpenAiApiService>();
     if (!useStreaming) {
       return api.createChatCompletion(
         config,
-        messages: requestMessages,
+        messages: request.messages,
         defaults: _buildCompletionDefaults(preset, useStreaming: false),
+        contextEntries: request.contextEntries,
         cancellationToken: cancellationToken,
       );
     }
@@ -875,8 +910,9 @@ class ChatService {
     try {
       await for (final progress in api.createStreamingChatCompletion(
         config,
-        messages: requestMessages,
+        messages: request.messages,
         defaults: _buildCompletionDefaults(preset, useStreaming: true),
+        contextEntries: request.contextEntries,
         cancellationToken: cancellationToken,
       )) {
         if (progress.textDelta.isNotEmpty) {
@@ -979,9 +1015,7 @@ class ChatService {
       count: memoryConfig.recallCount,
     );
     return memories
-        .map(
-          (m) => '[${m.type.label}${m.isPinned ? '·常驻' : ''}] ${m.content}',
-        )
+        .map((m) => '[${m.type.label}${m.isPinned ? '·常驻' : ''}] ${m.content}')
         .toList();
   }
 

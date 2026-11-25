@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/prompt_context_entry.dart';
 import 'storage_service.dart';
 
 @immutable
@@ -20,6 +21,7 @@ class ApiRequestLogEntry {
     this.statusCode,
     this.errorMessage,
     this.usage,
+    this.context = const <PromptContextEntry>[],
   });
 
   final String id;
@@ -35,6 +37,9 @@ class ApiRequestLogEntry {
   final int? statusCode;
   final String? errorMessage;
   final Map<String, dynamic>? usage;
+
+  /// 提示词组装出的上下文片段；后台子任务或旧日志可能为空。
+  final List<PromptContextEntry> context;
 
   factory ApiRequestLogEntry.fromJson(Map<String, dynamic> json) {
     return ApiRequestLogEntry(
@@ -55,6 +60,7 @@ class ApiRequestLogEntry {
       usage: json['usage'] is Map
           ? Map<String, dynamic>.from(json['usage'] as Map)
           : null,
+      context: _parseContextEntries(json['context']),
     );
   }
 
@@ -73,13 +79,16 @@ class ApiRequestLogEntry {
       'statusCode': statusCode,
       'errorMessage': errorMessage,
       'usage': usage,
+      if (context.isNotEmpty)
+        'context': context
+            .map((entry) => entry.toJson())
+            .toList(growable: false),
     };
   }
 }
 
 class ApiRequestLogService {
   ApiRequestLogService._();
-
   static final ApiRequestLogService instance = ApiRequestLogService._();
 
   static const String _fileName = 'api_request_logs.json';
@@ -133,6 +142,7 @@ class ApiRequestLogService {
     String? responseBody,
     String? errorMessage,
     Map<String, dynamic>? usage,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
   }) async {
     await initialize();
     final nextEntry = ApiRequestLogEntry(
@@ -149,6 +159,7 @@ class ApiRequestLogService {
       statusCode: statusCode,
       errorMessage: _normalizeText(errorMessage),
       usage: usage,
+      context: contextEntries,
     );
     final nextLogs = [
       nextEntry,
@@ -237,4 +248,16 @@ class ApiRequestLogService {
         : const JsonEncoder.withIndent('  ').convert(value);
     return rawText.trim();
   }
+}
+
+List<PromptContextEntry> _parseContextEntries(Object? value) {
+  if (value is! List) {
+    return const <PromptContextEntry>[];
+  }
+  return value
+      .whereType<Map>()
+      .map(
+        (item) => PromptContextEntry.fromJson(Map<String, dynamic>.from(item)),
+      )
+      .toList(growable: false);
 }

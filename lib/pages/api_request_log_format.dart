@@ -13,6 +13,28 @@ String formatApiRequestLogTime(DateTime value) {
   return '${local.year}-$month-$day $hour:$minute:$second';
 }
 
+/// 从请求体 JSON 中读取 `reasoning_effort`（思考强度）。
+///
+/// 请求体不是合法 JSON、或未携带该字段时返回 null。
+String? formatApiRequestLogReasoningEffort(String requestBody) {
+  final text = requestBody.trim();
+  if (text.isEmpty) {
+    return null;
+  }
+  try {
+    final decoded = jsonDecode(text);
+    if (decoded is Map) {
+      final value = decoded['reasoning_effort'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+  } on Object {
+    // 请求体不是合法 JSON 时忽略。
+  }
+  return null;
+}
+
 /// 用量字段中已单独展示、无需再原样输出的键。
 const Set<String> _usageHandledKeys = {
   'prompt_tokens',

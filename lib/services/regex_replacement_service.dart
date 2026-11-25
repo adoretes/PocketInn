@@ -1,3 +1,4 @@
+import '../models/prompt_context_entry.dart';
 import '../models/regex_rule_group.dart';
 
 /// 执行结果：文本是否被修改。
@@ -117,11 +118,10 @@ class RegexReplacementService {
     required int depth,
     RegexExecutionMode mode = RegexExecutionMode.store,
   }) {
-    return compile(groups: groups, mode: mode).applyToMessage(
-      text: text,
-      isUserMessage: isUserMessage,
-      depth: depth,
-    );
+    return compile(
+      groups: groups,
+      mode: mode,
+    ).applyToMessage(text: text, isUserMessage: isUserMessage, depth: depth);
   }
 
   /// 对送往模型的请求消息列表应用请求前规则。
@@ -149,6 +149,106 @@ class RegexReplacementService {
               .text,
         },
     ];
+  }
+
+  /// 按实际请求消息执行规则，并同步请求日志中的上下文。
+  ///
+  /// 不能逐来源片段执行：同 role 片段可能已经合并，规则也可能跨片段
+  /// 匹配或限定消息深度。多片段消息被修改时，记录处理后的整条消息。
+  ({
+    List<Map<String, dynamic>> messages,
+    List<PromptContextEntry> contextEntries,
+  })
+  applyToRequestWithContext({
+    required List<Map<String, dynamic>> messages,
+    required List<RegexRuleGroup> groups,
+    required List<PromptContextEntry> contextEntries,
+  }) {
+    final requestMessages = applyToRequestMessages(
+      messages: messages,
+      groups: groups,
+    );
+    if (contextEntries.isEmpty ||
+        !List.generate(
+          messages.length,
+          (i) => messages[i]['content'] != requestMessages[i]['content'],
+        ).any((changed) => changed)) {
+      return (messages: requestMessages, contextEntries: contextEntries);
+    }
+
+    List<PromptContextEntry> processedMessages() => [
+      for (final message in requestMessages)
+        PromptContextEntry(
+          source: PromptContextSource.request,
+          role: message['role'] as String? ?? '',
+          name: '',
+          content: message['content'] as String? ?? '',
+        ),
+    ];
+
+    final updatedEntries = <PromptContextEntry>[];
+    var contextIndex = 0;
+    for (var i = 0; i < messages.length; i++) {
+      final original = messages[i];
+      final originalContent = original['content'] as String? ?? '';
+      final fragments = <PromptContextEntry>[];
+      final joinedContent = StringBuffer();
+      while (true) {
+        if (contextIndex >= contextEntries.length ||
+            contextEntries[contextIndex].role != original['role']) {
+          return (
+            messages: requestMessages,
+            contextEntries: processedMessages(),
+          );
+        }
+        final fragment = contextEntries[contextIndex++];
+        if (fragments.isNotEmpty) joinedContent.write('\n\n');
+        fragments.add(fragment);
+        joinedContent.write(fragment.content);
+        final content = joinedContent.toString();
+        if (content == originalContent) break;
+        if (content.length >= originalContent.length ||
+            !originalContent.startsWith(content)) {
+          // 来源片段无法无损对应请求时，以最终消息为准，避免保留旧正文。
+          return (
+            messages: requestMessages,
+            contextEntries: processedMessages(),
+          );
+        }
+      }
+
+      final request = requestMessages[i];
+      if (request['content'] == original['content']) {
+        updatedEntries.addAll(fragments);
+      } else {
+        final singleSource = fragments.length == 1;
+        updatedEntries.add(
+          PromptContextEntry(
+            source: singleSource
+                ? fragments.single.source
+                : PromptContextSource.request,
+            role: request['role'] as String? ?? '',
+            name: singleSource
+                ? fragments.single.name
+                : fragments
+                      .map(
+                        (entry) => entry.name.isEmpty
+                            ? entry.source.label
+                            : entry.name,
+                      )
+                      .toSet()
+                      .join(' / '),
+            content: request['content'] as String? ?? '',
+          ),
+        );
+      }
+    }
+    return (
+      messages: requestMessages,
+      contextEntries: contextIndex == contextEntries.length
+          ? updatedEntries
+          : processedMessages(),
+    );
   }
 
   bool _matchesMode(RegexRule rule, RegexExecutionMode mode) {

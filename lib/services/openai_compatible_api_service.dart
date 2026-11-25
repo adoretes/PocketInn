@@ -6,6 +6,7 @@ import '../models/api/openai_chat_completion_chunk.dart';
 import '../models/api/openai_chat_completion_response.dart';
 import '../models/api/openai_models_response.dart';
 import '../models/api_config.dart';
+import '../models/prompt_context_entry.dart';
 import 'api_request_log_service.dart';
 import 'i_openai_api_service.dart';
 
@@ -84,11 +85,7 @@ class ApiConnectionTestResult {
 }
 
 class FetchedModelInfo {
-  const FetchedModelInfo({
-    required this.modelId,
-    this.ownedBy,
-    this.object,
-  });
+  const FetchedModelInfo({required this.modelId, this.ownedBy, this.object});
 
   final String modelId;
   final String? ownedBy;
@@ -163,15 +160,20 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
     }
 
     final seen = <String>{};
-    final models = modelsResponse.data
-        .where((item) => item.id.trim().isNotEmpty && seen.add(item.id.trim()))
-        .map((item) => FetchedModelInfo(
-              modelId: item.id.trim(),
-              ownedBy: item.ownedBy,
-              object: item.object,
-            ))
-        .toList()
-      ..sort((a, b) => a.modelId.compareTo(b.modelId));
+    final models =
+        modelsResponse.data
+            .where(
+              (item) => item.id.trim().isNotEmpty && seen.add(item.id.trim()),
+            )
+            .map(
+              (item) => FetchedModelInfo(
+                modelId: item.id.trim(),
+                ownedBy: item.ownedBy,
+                object: item.object,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.modelId.compareTo(b.modelId));
 
     _modelsFetchCache[cacheKey] = _CachedFetchedModels(
       models: models,
@@ -181,7 +183,9 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
   }
 
   @override
-  Future<ApiConnectionTestResult> testConnection(ResolvedApiConfig config) async {
+  Future<ApiConnectionTestResult> testConnection(
+    ResolvedApiConfig config,
+  ) async {
     try {
       _validateConfig(config);
       if (config.model.trim().isNotEmpty) {
@@ -229,6 +233,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
     ChatCompletionCancelToken? cancellationToken,
   }) async {
     _validateConfig(config);
@@ -241,6 +246,11 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
     final requestBody = config.buildRequestBody(
       messages: messages,
       defaults: defaults,
+    );
+    final logContextEntries = _requestLogContextEntries(
+      contextEntries: contextEntries,
+      requestBody: _sanitizeJsonValue(requestBody) as Map<String, dynamic>,
+      originalMessageCount: messages.length,
     );
     final stopwatch = Stopwatch()..start();
     _HttpTextResponse response;
@@ -265,6 +275,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
         durationMs: stopwatch.elapsedMilliseconds,
         requestBody: _sanitizeJsonValue(requestBody),
         errorMessage: error.toString(),
+        contextEntries: logContextEntries,
       );
       rethrow;
     }
@@ -282,6 +293,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
         responseBody: response.body,
         errorMessage:
             '请求失败，HTTP ${response.statusCode}${response.body.trim().isEmpty ? '' : ': ${_truncate(response.body.trim())}'}',
+        contextEntries: logContextEntries,
       );
       throw HttpException(
         '请求失败，HTTP ${response.statusCode}${response.body.trim().isEmpty ? '' : ': ${_truncate(response.body.trim())}'}',
@@ -323,6 +335,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       requestBody: _sanitizeJsonValue(requestBody),
       responseBody: response.body,
       usage: completionResponse.usage,
+      contextEntries: logContextEntries,
     );
     return ChatCompletionResult(
       text: text,
@@ -335,6 +348,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
     ResolvedApiConfig config, {
     required List<Map<String, dynamic>> messages,
     Map<String, dynamic>? defaults,
+    List<PromptContextEntry> contextEntries = const <PromptContextEntry>[],
     ChatCompletionCancelToken? cancellationToken,
   }) async* {
     _validateConfig(config);
@@ -354,6 +368,11 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       defaults: {if (defaults != null) ...defaults, 'stream': true},
     );
     final sanitizedBody = _sanitizeJsonValue(body) as Map<String, dynamic>;
+    final logContextEntries = _requestLogContextEntries(
+      contextEntries: contextEntries,
+      requestBody: sanitizedBody,
+      originalMessageCount: messages.length,
+    );
     int? statusCode;
     var failureLogged = false;
     final usage = <String, dynamic>{};
@@ -383,6 +402,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
           responseBody: responseBody,
           errorMessage:
               '请求失败，HTTP ${response.statusCode}${responseBody.trim().isEmpty ? '' : ': ${_truncate(responseBody.trim())}'}',
+          contextEntries: logContextEntries,
         );
         failureLogged = true;
         throw HttpException(
@@ -403,10 +423,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
           if (eventPayload.isEmpty) {
             continue;
           }
-          final progress = _parseStreamingEvent(
-            eventPayload,
-            usageSink: usage,
-          );
+          final progress = _parseStreamingEvent(eventPayload, usageSink: usage);
           if (progress == null) {
             continue;
           }
@@ -432,6 +449,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
                 reasoningBuffer.toString(),
               ),
               usage: usage.isEmpty ? null : Map<String, dynamic>.from(usage),
+              contextEntries: logContextEntries,
             );
             return;
           }
@@ -472,6 +490,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
           reasoningBuffer.toString(),
         ),
         usage: usage.isEmpty ? null : Map<String, dynamic>.from(usage),
+        contextEntries: logContextEntries,
       );
       yield const ChatCompletionProgress(done: true);
     } on ChatCompletionCancelledException {
@@ -495,6 +514,7 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
             reasoningBuffer.toString(),
           ),
           errorMessage: error.toString(),
+          contextEntries: logContextEntries,
         );
       }
       rethrow;
@@ -528,7 +548,9 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
     );
   }
 
-  Future<ApiConnectionTestResult> _probeReachability(ResolvedApiConfig config) async {
+  Future<ApiConnectionTestResult> _probeReachability(
+    ResolvedApiConfig config,
+  ) async {
     try {
       final response = await _sendJson(
         'GET',
@@ -711,6 +733,71 @@ class OpenAICompatibleApiService implements IOpenAiApiService {
       return sanitized;
     }
     return _sanitizeString(value.toString());
+  }
+
+  /// 将请求体中追加的自定义消息补入结构化日志上下文。
+  ///
+  /// 旧调用可能没有提供上下文；此时必须保留空列表，让详情页从完整请求体
+  /// 回退展示，避免构造只包含自定义消息的上下文而隐藏主消息。
+  List<PromptContextEntry> _requestLogContextEntries({
+    required List<PromptContextEntry> contextEntries,
+    required Map<String, dynamic> requestBody,
+    required int originalMessageCount,
+  }) {
+    final entries = _sanitizeContextEntries(contextEntries);
+    if (entries.isEmpty) {
+      return entries;
+    }
+
+    final requestMessages = requestBody['messages'];
+    if (requestMessages is! List ||
+        requestMessages.length <= originalMessageCount) {
+      return entries;
+    }
+
+    for (final rawMessage in requestMessages.skip(originalMessageCount)) {
+      if (rawMessage is! Map) {
+        continue;
+      }
+      final message = Map<String, dynamic>.from(rawMessage);
+      final rawContent = message['content'];
+      entries.add(
+        PromptContextEntry(
+          source: PromptContextSource.request,
+          role: message['role']?.toString() ?? '',
+          name: message['name']?.toString() ?? '',
+          content: message.containsKey('content')
+              ? _formatContextContent(rawContent)
+              : '',
+        ),
+      );
+    }
+    return entries;
+  }
+
+  String _formatContextContent(Object? content) {
+    if (content is String) {
+      return _sanitizeString(content);
+    }
+    return _sanitizeString(jsonEncode(content));
+  }
+
+  /// 上下文同样写入日志文件，需要和请求体一样剔除不成对的 UTF-16 代理项。
+  List<PromptContextEntry> _sanitizeContextEntries(
+    List<PromptContextEntry> entries,
+  ) {
+    if (entries.isEmpty) {
+      return const <PromptContextEntry>[];
+    }
+    return [
+      for (final entry in entries)
+        PromptContextEntry(
+          source: entry.source,
+          role: _sanitizeString(entry.role),
+          name: _sanitizeString(entry.name),
+          content: _sanitizeString(entry.content),
+        ),
+    ];
   }
 
   String _sanitizeString(String input) {

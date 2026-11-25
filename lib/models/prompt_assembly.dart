@@ -1,5 +1,6 @@
 import 'chat_message.dart';
 import 'preset.dart';
+import 'prompt_context_entry.dart';
 import 'world_book.dart';
 
 class PromptAssemblyContext {
@@ -89,6 +90,7 @@ class PromptAssemblyResult {
     required this.mergedText,
     required this.activatedWorldBookEntries,
     required this.segments,
+    required this.contextEntries,
     required this.unusedCharacterOverrides,
   });
 
@@ -96,5 +98,10 @@ class PromptAssemblyResult {
   final String mergedText;
   final List<ActivatedWorldBookEntry> activatedWorldBookEntries;
   final List<PromptSegment> segments;
+
+  /// 未合并的上下文片段，按实际提示词组装顺序展开（含聊天记录、世界书条目等），
+  /// 供请求日志的「上下文」视图使用。
+  final List<PromptContextEntry> contextEntries;
+
   final List<UnusedCharacterOverride> unusedCharacterOverrides;
 }

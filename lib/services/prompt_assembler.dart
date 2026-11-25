@@ -1,7 +1,8 @@
 import '../models/character_card.dart';
 import '../models/chat_message.dart';
-import '../models/prompt_assembly.dart';
 import '../models/preset.dart';
+import '../models/prompt_assembly.dart';
+import '../models/prompt_context_entry.dart';
 import '../models/world_book.dart';
 import 'chat_memory_service.dart';
 import 'chat_variable_service.dart';
@@ -46,6 +47,12 @@ class PromptAssembler {
         appliedOverrides.add(cardOverride.field);
       }
 
+      // 保留该世界书段真正参与组装时的状态，后续提示词可能继续 setvar。
+      final worldBookMacroState =
+          prompt.identifier == 'worldInfoBefore' ||
+              prompt.identifier == 'worldInfoAfter'
+          ? macroState.copy()
+          : null;
       final content = _resolvePromptContent(
         prompt: prompt,
         cardData: cardData,
@@ -74,6 +81,20 @@ class PromptAssembler {
             source: _sourceLabel(prompt),
             identifier: prompt.identifier,
           ),
+          sourceOverride: cardOverride == null
+              ? null
+              : PromptContextSource.characterCard,
+          nameOverride: cardOverride == null
+              ? null
+              : _cardOverrideName(cardOverride.field),
+          contextEntries: worldBookMacroState == null
+              ? null
+              : _resolveWorldBookContextEntries(
+                  prompt: prompt,
+                  activatedEntries: activatedEntries,
+                  macroState: worldBookMacroState,
+                  resolvedContent: content.trim(),
+                ),
         ),
       );
     }
@@ -107,6 +128,11 @@ class PromptAssembler {
       mergedText: _buildMergedText(_mergeAdjacentMessages(topLevelSegments)),
       activatedWorldBookEntries: activatedEntries,
       segments: topLevelSegments,
+      contextEntries: _buildContextEntries(
+        resolvedEntries: resolvedEntries,
+        inChatEntries: inChatEntries,
+        context: context,
+      ),
       unusedCharacterOverrides: _buildUnusedOverrides(
         cardOverrides,
         appliedOverrides,
@@ -524,7 +550,7 @@ class PromptAssembler {
       );
     }
 
-    final injectionsByIndex = _groupInChatMessages(
+    final injectionsByIndex = _groupInChatEntries(
       inChatEntries: inChatEntries,
       historyLength: baseMessages.length,
     );
@@ -532,7 +558,14 @@ class PromptAssembler {
     for (var index = 0; index <= baseMessages.length; index++) {
       final injections = injectionsByIndex[index];
       if (injections != null) {
-        expanded.addAll(injections);
+        expanded.addAll([
+          for (final entry in injections)
+            PromptMessage(
+              role: entry.segment.role,
+              content: entry.segment.content,
+              sources: [entry.segment.source],
+            ),
+        ]);
       }
       if (index < baseMessages.length) {
         expanded.add(baseMessages[index]);
@@ -541,7 +574,7 @@ class PromptAssembler {
     return expanded;
   }
 
-  static Map<int, List<PromptMessage>> _groupInChatMessages({
+  static Map<int, List<_ResolvedPromptEntry>> _groupInChatEntries({
     required List<_ResolvedPromptEntry> inChatEntries,
     required int historyLength,
   }) {
@@ -554,7 +587,7 @@ class PromptAssembler {
       entriesByIndex.putIfAbsent(insertionIndex, () => []).add(entry);
     }
 
-    final grouped = <int, List<PromptMessage>>{};
+    final grouped = <int, List<_ResolvedPromptEntry>>{};
     for (final item in entriesByIndex.entries) {
       final sortedEntries = [...item.value]
         ..sort((a, b) {
@@ -574,14 +607,7 @@ class PromptAssembler {
           return a.sequence.compareTo(b.sequence);
         });
 
-      grouped[item.key] = [
-        for (final entry in sortedEntries)
-          PromptMessage(
-            role: entry.segment.role,
-            content: entry.segment.content,
-            sources: [entry.segment.source],
-          ),
-      ];
+      grouped[item.key] = sortedEntries;
     }
     return grouped;
   }
@@ -724,6 +750,222 @@ class PromptAssembler {
         .join('\n\n');
   }
 
+  /// 按提示词组装顺序生成未合并的上下文片段。
+  ///
+  /// 与 [_buildOpenAiMessages] 使用同一套展开规则，但不做相邻同 role 合并，
+  /// 因此「预设 / 世界书 / 记忆 / 角色卡 / 历史」各自可辨认。
+  static List<PromptContextEntry> _buildContextEntries({
+    required List<_ResolvedPromptEntry> resolvedEntries,
+    required List<_ResolvedPromptEntry> inChatEntries,
+    required PromptAssemblyContext context,
+  }) {
+    final entries = <PromptContextEntry>[];
+    for (final item in resolvedEntries) {
+      if (_isInChatPrompt(item.prompt)) {
+        continue;
+      }
+
+      final identifier = item.prompt.identifier;
+      if (identifier == 'chatHistory') {
+        entries.addAll(
+          _buildChatHistoryContextEntries(
+            context: context,
+            inChatEntries: inChatEntries,
+          ),
+        );
+        continue;
+      }
+
+      entries.addAll(item.contextEntries ?? [_buildPromptContextEntry(item)]);
+    }
+    return entries;
+  }
+
+  /// 在世界书段组装时缓存来源片段，不在日志阶段用最终变量状态重算。
+  static List<PromptContextEntry>? _resolveWorldBookContextEntries({
+    required PresetPrompt prompt,
+    required List<ActivatedWorldBookEntry> activatedEntries,
+    required PromptMacroState macroState,
+    required String resolvedContent,
+  }) {
+    final worldEntries = activatedEntries.where(
+      (item) => prompt.identifier == 'worldInfoBefore'
+          ? item.entry.position == 0
+          : item.entry.position != 0,
+    );
+    final entries = <PromptContextEntry>[];
+    for (final item in worldEntries) {
+      // 使用该段进入前的独立快照，保留条目间 setvar/getvar 的执行顺序。
+      final content = _resolvePromptText(item.entry.content, macroState).trim();
+      if (content.isEmpty) continue;
+      entries.add(
+        PromptContextEntry(
+          source: PromptContextSource.worldBook,
+          role: prompt.role.trim().isEmpty ? 'system' : prompt.role.trim(),
+          name: _worldBookEntryName(
+            bookName: item.bookName,
+            entryTitle: item.entry.title,
+          ),
+          content: content,
+        ),
+      );
+    }
+    // trim 等宏可能跨条目消费换行；此时保留实际解析后的整段文本。
+    return entries.map((entry) => entry.content).join('\n\n') == resolvedContent
+        ? entries
+        : null;
+  }
+
+  static List<PromptContextEntry> _buildChatHistoryContextEntries({
+    required PromptAssemblyContext context,
+    required List<_ResolvedPromptEntry> inChatEntries,
+  }) {
+    final baseEntries = <PromptContextEntry>[
+      for (final chatMessage in context.chatMessages)
+        PromptContextEntry(
+          source: PromptContextSource.history,
+          role: chatMessage.isMe ? 'user' : 'assistant',
+          name: chatMessage.isMe ? context.userName : context.characterName,
+          content: _replaceVariables(chatMessage.text, context).trim(),
+        ),
+    ];
+
+    final currentInput = _replaceVariables(
+      context.currentInput,
+      context,
+    ).trim();
+    if (currentInput.isNotEmpty) {
+      baseEntries.add(
+        PromptContextEntry(
+          source: PromptContextSource.history,
+          role: 'user',
+          name: context.userName,
+          content: currentInput,
+        ),
+      );
+    }
+
+    final injectionsByIndex = _groupInChatEntries(
+      inChatEntries: inChatEntries,
+      historyLength: baseEntries.length,
+    );
+    final entries = <PromptContextEntry>[];
+    final newChatPrompt = _resolveNewChatPrompt(context);
+    if (newChatPrompt.isNotEmpty) {
+      entries.add(
+        PromptContextEntry(
+          source: PromptContextSource.history,
+          role: 'system',
+          name: '会话开场',
+          content: newChatPrompt,
+        ),
+      );
+    }
+
+    for (var index = 0; index <= baseEntries.length; index++) {
+      final injections = injectionsByIndex[index];
+      if (injections != null) {
+        entries.addAll(
+          injections.expand(
+            (item) => item.contextEntries ?? [_buildPromptContextEntry(item)],
+          ),
+        );
+      }
+      if (index < baseEntries.length) {
+        entries.add(baseEntries[index]);
+      }
+    }
+    return entries;
+  }
+
+  static PromptContextEntry _buildPromptContextEntry(
+    _ResolvedPromptEntry item,
+  ) {
+    return PromptContextEntry(
+      source: item.sourceOverride ?? _contextSource(item.prompt.identifier),
+      role: item.segment.role,
+      name: item.nameOverride ?? _contextName(item.prompt),
+      content: item.segment.content,
+    );
+  }
+
+  static String _cardOverrideName(String field) {
+    switch (field) {
+      case 'system_prompt':
+        return '角色卡 · system_prompt';
+      case 'post_history_instructions':
+        return '角色卡 · post_history_instructions';
+      default:
+        return '角色卡';
+    }
+  }
+
+  static String _worldBookEntryName({
+    required String bookName,
+    required String entryTitle,
+  }) {
+    final book = bookName.trim();
+    final title = entryTitle.trim();
+    if (title.isEmpty) {
+      return book.isEmpty ? '世界书条目' : book;
+    }
+    if (book.isEmpty || book == title) {
+      return title;
+    }
+    return '$book · $title';
+  }
+
+  static PromptContextSource _contextSource(String identifier) {
+    switch (identifier) {
+      case 'personaDescription':
+        return PromptContextSource.userSetting;
+      case 'charDescription':
+      case 'charPersonality':
+      case 'scenario':
+      case 'dialogueExamples':
+        return PromptContextSource.characterCard;
+      case 'chatHistory':
+        return PromptContextSource.history;
+      case 'worldInfoBefore':
+      case 'worldInfoAfter':
+        return PromptContextSource.worldBook;
+      case 'longTermMemory':
+        return PromptContextSource.memory;
+      case 'jailbreak':
+      case 'post_history_instructions':
+        return PromptContextSource.postInstruction;
+      case 'main':
+      default:
+        return PromptContextSource.preset;
+    }
+  }
+
+  static String _contextName(PresetPrompt prompt) {
+    switch (prompt.identifier) {
+      case 'personaDescription':
+        return '用户设定';
+      case 'charDescription':
+        return '角色描述';
+      case 'charPersonality':
+        return '角色性格';
+      case 'scenario':
+        return '场景';
+      case 'dialogueExamples':
+        return '对话示例';
+      case 'worldInfoBefore':
+        return '世界书（前）';
+      case 'worldInfoAfter':
+        return '世界书（后）';
+      case 'longTermMemory':
+        return '长期记忆';
+      case 'chatHistory':
+        return '聊天记录';
+      default:
+        final name = prompt.name.trim();
+        return name.isEmpty ? prompt.identifier : name;
+    }
+  }
+
   static String _resolveNewChatPrompt(PromptAssemblyContext context) {
     final newChatPrompt =
         context.preset.extra['new_chat_prompt'] as String? ?? '';
@@ -770,11 +1012,21 @@ class _ResolvedPromptEntry {
     required this.prompt,
     required this.segment,
     required this.sequence,
+    this.sourceOverride,
+    this.nameOverride,
+    this.contextEntries,
   });
 
   final PresetPrompt prompt;
   final PromptSegment segment;
   final int sequence;
+
+  /// 角色卡覆盖预设提示词时，上下文来源应标为角色卡而不是预设。
+  final PromptContextSource? sourceOverride;
+  final String? nameOverride;
+
+  /// 与该段解析时刻对应的世界书来源片段。
+  final List<PromptContextEntry>? contextEntries;
 }
 
 /// 角色卡对预设提示词的覆盖声明：字段非空时，命中 [targetIdentifiers] 的
