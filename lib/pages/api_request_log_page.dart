@@ -1,10 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../services/api_request_log_service.dart';
+import 'api_request_log_detail_page.dart';
+import 'api_request_log_format.dart';
 
+/// API 请求日志列表页：展示最近请求摘要，点击进入单条详情。
 class ApiRequestLogPage extends StatelessWidget {
   const ApiRequestLogPage({super.key});
 
@@ -26,14 +26,14 @@ class ApiRequestLogPage extends StatelessWidget {
             ],
           ),
           body: logs.isEmpty
-              ? const Center(child: Text('最近还没有 API 请求日志'))
+              ? const _EmptyState()
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   itemCount: logs.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final entry = logs[index];
-                    return _LogCard(entry: entry);
+                    return _LogListItem(entry: entry);
                   },
                 ),
         );
@@ -67,8 +67,48 @@ class ApiRequestLogPage extends StatelessWidget {
   }
 }
 
-class _LogCard extends StatelessWidget {
-  const _LogCard({required this.entry});
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 44,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '最近还没有 API 请求日志',
+              style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '发送请求后会自动记录最近十条日志',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 单条日志的摘要卡片，点击进入详情页。
+class _LogListItem extends StatelessWidget {
+  const _LogListItem({required this.entry});
 
   final ApiRequestLogEntry entry;
 
@@ -76,418 +116,83 @@ class _LogCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final statusColor = entry.success ? Colors.green : colorScheme.error;
-    final summary = [
-      '${entry.method} ${_pathLabel(entry.endpoint)}',
+    final metadata = [
+      formatApiRequestLogTime(entry.timestamp),
       if (entry.statusCode != null) 'HTTP ${entry.statusCode}',
-      '${entry.durationMs} ms',
-    ].join('  ·  ');
+    ].join(' · ');
 
     return Card(
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          shape: const RoundedRectangleBorder(side: BorderSide.none),
-          collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
-          leading: Icon(
-            entry.success ? Icons.check_circle_outline : Icons.error_outline,
-            color: statusColor,
-          ),
-          title: Text(
-            entry.configName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('${_formatDateTime(entry.timestamp)}\n$summary'),
-          ),
-          children: [
-            _FieldBlock(
-              label: '模型',
-              value: entry.model.isEmpty ? '未填写' : entry.model,
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ApiRequestLogDetailPage(entry: entry),
             ),
-            if (entry.usage != null && entry.usage!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _FieldBlock(
-                label: '用量',
-                value: _formatUsage(entry.usage!),
-                copyValue: _formatUsage(entry.usage!),
-              ),
-            ],
-            const SizedBox(height: 12),
-            _FieldBlock(label: '请求地址', value: entry.endpoint),
-            const SizedBox(height: 12),
-            entry.requestBody.isEmpty
-                ? _FieldBlock(label: '请求体', value: '无', copyValue: null)
-                : _CollapsibleJsonBlock(
-                    label: '请求体',
-                    jsonString: entry.requestBody,
-                    copyValue: entry.requestBody,
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          child: Row(
+            children: [
+              Semantics(
+                label: entry.success ? '请求成功' : '请求失败',
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-            const SizedBox(height: 12),
-            _FieldBlock(
-              label: '响应',
-              value: entry.responseBody.isEmpty ? '无' : entry.responseBody,
-              copyValue: entry.responseBody,
-            ),
-            if (entry.errorMessage != null &&
-                entry.errorMessage!.trim().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _FieldBlock(
-                label: '错误',
-                value: entry.errorMessage!,
-                copyValue: entry.errorMessage!,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatDateTime(DateTime value) {
-    final local = value.toLocal();
-    final month = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    final second = local.second.toString().padLeft(2, '0');
-    return '${local.year}-$month-$day $hour:$minute:$second';
-  }
-
-  String _pathLabel(String endpoint) {
-    final uri = Uri.tryParse(endpoint);
-    if (uri == null) {
-      return endpoint;
-    }
-    final path = uri.path.isEmpty ? '/' : uri.path;
-    return uri.hasQuery ? '$path?${uri.query}' : path;
-  }
-
-  static const Set<String> _usageHandledKeys = {
-    'prompt_tokens',
-    'completion_tokens',
-    'total_tokens',
-    'prompt_cache_hit_tokens',
-    'prompt_cache_miss_tokens',
-    'prompt_tokens_details',
-    'completion_tokens_details',
-  };
-
-  String _formatUsage(Map<String, dynamic> usage) {
-    final lines = <String>[];
-
-    final summary = <String>[
-      if (usage['prompt_tokens'] != null) '输入 ${usage['prompt_tokens']}',
-      if (usage['completion_tokens'] != null)
-        '输出 ${usage['completion_tokens']}',
-      if (usage['total_tokens'] != null) '合计 ${usage['total_tokens']}',
-    ];
-    if (summary.isNotEmpty) {
-      lines.add(summary.join(' · '));
-    }
-
-    final cacheHit =
-        _readNestedInt(usage, 'prompt_tokens_details', 'cached_tokens') ??
-            usage['prompt_cache_hit_tokens'];
-    final cacheMiss = usage['prompt_cache_miss_tokens'];
-    if (cacheHit != null || cacheMiss != null) {
-      lines.add(
-        [
-          if (cacheHit != null) '缓存命中 $cacheHit',
-          if (cacheMiss != null) '缓存未命中 $cacheMiss',
-        ].join(' · '),
-      );
-    }
-
-    final reasoningTokens =
-        _readNestedInt(usage, 'completion_tokens_details', 'reasoning_tokens') ??
-            usage['reasoning_tokens'];
-    if (reasoningTokens != null) {
-      lines.add('思考链 $reasoningTokens');
-    }
-
-    final extraKeys = usage.keys
-        .where((key) => !_usageHandledKeys.contains(key))
-        .toList();
-    if (extraKeys.isNotEmpty) {
-      lines.add(
-        JsonEncoder.withIndent('  ').convert(
-          {for (final key in extraKeys) key: usage[key]},
-        ),
-      );
-    }
-    return lines.join('\n');
-  }
-
-  int? _readNestedInt(
-    Map<String, dynamic> usage,
-    String section,
-    String key,
-  ) {
-    final detail = usage[section];
-    if (detail is Map && detail[key] is num) {
-      return (detail[key] as num).toInt();
-    }
-    return null;
-  }
-}
-
-class _CollapsibleJsonBlock extends StatefulWidget {
-  const _CollapsibleJsonBlock({
-    required this.label,
-    required this.jsonString,
-    required this.copyValue,
-  });
-
-  final String label;
-  final String jsonString;
-  final String? copyValue;
-
-  @override
-  State<_CollapsibleJsonBlock> createState() => _CollapsibleJsonBlockState();
-}
-
-class _CollapsibleJsonBlockState extends State<_CollapsibleJsonBlock> {
-  static const double _lineHeight = 20.0;
-
-  bool _collapsed = true;
-  bool _hasMessages = false;
-  int _foldStart = 0;
-  int _foldEnd = 0;
-  int _messageCount = 0;
-  late List<String> _allLines;
-
-  @override
-  void initState() {
-    super.initState();
-    _parse();
-  }
-
-  void _parse() {
-    _allLines = widget.jsonString.split('\n');
-    for (int i = 0; i < _allLines.length; i++) {
-      if (!_allLines[i].contains('"messages"')) continue;
-      _foldStart = i;
-      int depth = 0;
-      bool inArray = false;
-      for (int j = i; j < _allLines.length; j++) {
-        for (final ch in _allLines[j].runes) {
-          final c = String.fromCharCode(ch);
-          if (c == '[') { depth++; inArray = true; } else if (c == ']') {
-            depth--;
-            if (inArray && depth == 0) { _foldEnd = j; break; }
-          }
-        }
-        if (_foldEnd > 0) break;
-      }
-      if (_foldEnd > _foldStart + 1) {
-        _hasMessages = true;
-        for (int j = _foldStart; j <= _foldEnd && j < _allLines.length; j++) {
-          if (_allLines[j].contains('"role"')) _messageCount++;
-        }
-      }
-      break;
-    }
-  }
-
-  List<String> get _visibleLines {
-    if (!_hasMessages || !_collapsed) return _allLines;
-    final start = _allLines[_foldStart];
-    final end = _allLines[_foldEnd];
-    final bp = start.indexOf('[');
-    final prefix = bp >= 0 ? start.substring(0, bp + 1) : start;
-    final cp = end.indexOf(']');
-    final suffix = cp >= 0 ? end.substring(cp) : end;
-    return [
-      ..._allLines.sublist(0, _foldStart),
-      '$prefix /* $_messageCount 条消息 */ $suffix',
-      ..._allLines.sublist(_foldEnd + 1),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final lines = _visibleLines;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                widget.label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            if (widget.copyValue != null &&
-                widget.copyValue!.trim().isNotEmpty)
-              IconButton(
-                tooltip: '复制',
-                visualDensity: VisualDensity.compact,
-                onPressed: () async {
-                  await Clipboard.setData(
-                    ClipboardData(text: widget.copyValue!),
-                  );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('${widget.label}已复制')));
-                  }
-                },
-                icon: const Icon(Icons.content_copy_outlined, size: 18),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Container(
-          width: double.infinity,
-          padding: EdgeInsets.only(
-            left: _hasMessages ? 0 : 12,
-            top: 12,
-            right: 12,
-            bottom: 12,
-          ),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outlineVariant),
-          ),
-          child: _hasMessages ? _buildLines(lines, colorScheme) : SelectableText(widget.jsonString),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLines(List<String> lines, ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (int i = 0; i < lines.length; i++)
-          _buildLine(i, lines[i], colorScheme),
-      ],
-    );
-  }
-
-  Widget _buildLine(int index, String text, ColorScheme colorScheme) {
-    final isFoldLine = index == _foldStart;
-    final isPlaceholder = _hasMessages && _collapsed && isFoldLine;
-    final textStyle = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: 13,
-      height: _lineHeight / 13,
-      color: colorScheme.onSurface,
-    );
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 20,
-          height: _lineHeight,
-          child: isFoldLine
-              ? GestureDetector(
-                  onTap: () => setState(() => _collapsed = !_collapsed),
                   child: Icon(
-                    _collapsed ? Icons.keyboard_arrow_right_rounded : Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant,
+                    entry.success
+                        ? Icons.check_circle_outline
+                        : Icons.error_outline,
+                    color: statusColor,
+                    size: 22,
                   ),
-                )
-              : null,
-        ),
-        Expanded(
-          child: isPlaceholder
-              ? _buildPlaceholderText(text, colorScheme, textStyle)
-              : Text(text, style: textStyle),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPlaceholderText(String text, ColorScheme colorScheme, TextStyle baseStyle) {
-    final cs = text.indexOf('/*');
-    final ce = text.indexOf('*/') + 2;
-    if (cs < 0 || ce <= cs) return Text(text, style: baseStyle);
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: text.substring(0, cs), style: baseStyle),
-          TextSpan(
-            text: text.substring(cs, ce),
-            style: baseStyle.copyWith(
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          TextSpan(text: text.substring(ce), style: baseStyle),
-        ],
-      ),
-    );
-  }
-}
-
-class _FieldBlock extends StatelessWidget {
-  const _FieldBlock({required this.label, required this.value, this.copyValue});
-
-  final String label;
-  final String value;
-  final String? copyValue;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.configName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      metadata,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${entry.durationMs} ms',
                 style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
-            ),
-            if (copyValue != null && copyValue!.trim().isNotEmpty)
-              IconButton(
-                tooltip: '复制',
-                visualDensity: VisualDensity.compact,
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: copyValue!));
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('$label已复制')));
-                  }
-                },
-                icon: const Icon(Icons.content_copy_outlined, size: 18),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outlineVariant),
+            ],
           ),
-          child: SelectableText(value),
         ),
-      ],
+      ),
     );
   }
 }
